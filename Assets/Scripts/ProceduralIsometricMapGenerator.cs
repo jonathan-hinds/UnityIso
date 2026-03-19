@@ -53,6 +53,8 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
     private static Sprite cachedDefaultRightSideSprite;
     private Sprite cachedTopLeftEdgeShadowSprite;
     private Sprite cachedTopRightEdgeShadowSprite;
+    private Sprite cachedBottomLeftEdgeShadowSprite;
+    private Sprite cachedBottomRightEdgeShadowSprite;
 
     private readonly List<SpriteRenderer> spawnedRenderers = new List<SpriteRenderer>();
 
@@ -99,17 +101,18 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                     2);
                 ConfigureTopTile(partName: $"Top_{x}_{y}_{height}", generatedRoot: generatedRoot, gridX: x, gridY: y, height: height);
 
-                // Treat the terrain as stacked isometric columns. Every top tile needs
-                // the two viewer-facing side skirts at its topmost layer so the surface
-                // reads as a solid block, then any additional cliff depth below that is
-                // added only where the front neighbor is shorter. In this projection the
-                // screen-facing/front neighbors are the tiles directly below the current
-                // diamond on screen: (x - 1, y) for the lower-left edge and (x, y - 1)
-                // for the lower-right edge. Using the back neighbors here causes the
-                // cliff accents to appear scattered across plateaus instead of tracing the
-                // visible lip of each raised area.
-                int frontLeftNeighborHeight = GetHeight(generatedHeights, x - 1, y);
-                int frontRightNeighborHeight = GetHeight(generatedHeights, x, y - 1);
+                // Treat the terrain as stacked isometric columns. The vertical side faces
+                // are still only visible on the two screen-facing edges, but the top-edge
+                // cliff shadow should behave like a perimeter outline around each plateau.
+                // That means every diamond edge checks the neighboring column that shares
+                // that edge and draws a shadow band only when the neighbor is lower. Equal
+                // heights therefore merge into one platform with no shadow seam between
+                // tiles, while lower surrounding tiles get a continuous border around the
+                // raised area.
+                int lowerLeftNeighborHeight = GetHeight(generatedHeights, x - 1, y);
+                int lowerRightNeighborHeight = GetHeight(generatedHeights, x, y - 1);
+                int upperLeftNeighborHeight = GetHeight(generatedHeights, x, y + 1);
+                int upperRightNeighborHeight = GetHeight(generatedHeights, x + 1, y);
 
                 CreateTilePart(
                     generatedRoot,
@@ -133,7 +136,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
 
                 if (addCliffEdgeShadows)
                 {
-                    if (frontLeftNeighborHeight < height)
+                    if (upperLeftNeighborHeight < height)
                     {
                         CreateTilePart(
                             generatedRoot,
@@ -146,7 +149,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                             3);
                     }
 
-                    if (frontRightNeighborHeight < height)
+                    if (upperRightNeighborHeight < height)
                     {
                         CreateTilePart(
                             generatedRoot,
@@ -158,13 +161,39 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                             height,
                             4);
                     }
+
+                    if (lowerLeftNeighborHeight < height)
+                    {
+                        CreateTilePart(
+                            generatedRoot,
+                            cachedBottomLeftEdgeShadowSprite,
+                            topPosition,
+                            $"BottomLeftShadow_{x}_{y}_{height}",
+                            x,
+                            y,
+                            height,
+                            5);
+                    }
+
+                    if (lowerRightNeighborHeight < height)
+                    {
+                        CreateTilePart(
+                            generatedRoot,
+                            cachedBottomRightEdgeShadowSprite,
+                            topPosition,
+                            $"BottomRightShadow_{x}_{y}_{height}",
+                            x,
+                            y,
+                            height,
+                            6);
+                    }
                 }
 
                 for (int layer = 1; layer < height; layer++)
                 {
                     Vector3 sidePosition = GridToWorld(x, y, layer);
 
-                    if (frontLeftNeighborHeight < layer)
+                    if (lowerLeftNeighborHeight < layer)
                     {
                         CreateTilePart(
                             generatedRoot,
@@ -177,7 +206,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                             0);
                     }
 
-                    if (frontRightNeighborHeight < layer)
+                    if (lowerRightNeighborHeight < layer)
                     {
                         CreateTilePart(
                             generatedRoot,
@@ -482,8 +511,19 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
             cachedDefaultRightSideSprite = CreateRightSideSprite();
         }
 
-        cachedTopLeftEdgeShadowSprite = CreateTopEdgeShadowSprite(isLeftEdge: true);
-        cachedTopRightEdgeShadowSprite = CreateTopEdgeShadowSprite(isLeftEdge: false);
+        cachedTopLeftEdgeShadowSprite = CreateTopEdgeShadowSprite(TopShadowEdge.TopLeft);
+        cachedTopRightEdgeShadowSprite = CreateTopEdgeShadowSprite(TopShadowEdge.TopRight);
+        cachedBottomLeftEdgeShadowSprite = CreateTopEdgeShadowSprite(TopShadowEdge.BottomLeft);
+        cachedBottomRightEdgeShadowSprite = CreateTopEdgeShadowSprite(TopShadowEdge.BottomRight);
+    }
+
+
+    private enum TopShadowEdge
+    {
+        TopLeft,
+        TopRight,
+        BottomLeft,
+        BottomRight
     }
 
     private Sprite CreateTopSprite()
@@ -533,14 +573,40 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         return FinalizeSprite(texture, "Default_Isometric_Right");
     }
 
-    private Sprite CreateTopEdgeShadowSprite(bool isLeftEdge)
+    private Sprite CreateTopEdgeShadowSprite(TopShadowEdge edge)
     {
         Texture2D texture = CreateTransparentTexture();
         Vector2 center = new Vector2(64f, 64f);
         float inset = Mathf.Clamp01(cliffShadowWidth);
 
-        Vector2 edgeStart = isLeftEdge ? new Vector2(0f, 64f) : new Vector2(64f, 32f);
-        Vector2 edgeEnd = isLeftEdge ? new Vector2(64f, 32f) : new Vector2(127f, 64f);
+        Vector2 edgeStart;
+        Vector2 edgeEnd;
+        string spriteName;
+
+        switch (edge)
+        {
+            case TopShadowEdge.TopLeft:
+                edgeStart = new Vector2(64f, 96f);
+                edgeEnd = new Vector2(0f, 64f);
+                spriteName = "Default_Isometric_TopLeftShadow";
+                break;
+            case TopShadowEdge.TopRight:
+                edgeStart = new Vector2(127f, 64f);
+                edgeEnd = new Vector2(64f, 96f);
+                spriteName = "Default_Isometric_TopRightShadow";
+                break;
+            case TopShadowEdge.BottomLeft:
+                edgeStart = new Vector2(0f, 64f);
+                edgeEnd = new Vector2(64f, 32f);
+                spriteName = "Default_Isometric_BottomLeftShadow";
+                break;
+            default:
+                edgeStart = new Vector2(64f, 32f);
+                edgeEnd = new Vector2(127f, 64f);
+                spriteName = "Default_Isometric_BottomRightShadow";
+                break;
+        }
+
         Vector2 innerEnd = Vector2.Lerp(edgeEnd, center, inset);
         Vector2 innerStart = Vector2.Lerp(edgeStart, center, inset);
 
@@ -553,7 +619,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         };
 
         FillPolygon(texture, shadowBand, cliffShadowColor);
-        return FinalizeSprite(texture, isLeftEdge ? "Default_Isometric_TopLeftShadow" : "Default_Isometric_TopRightShadow");
+        return FinalizeSprite(texture, spriteName);
     }
 
     private Texture2D CreateTransparentTexture()
