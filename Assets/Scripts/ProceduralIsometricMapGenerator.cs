@@ -92,16 +92,39 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                     2);
                 ConfigureTopTile(partName: $"Top_{x}_{y}_{height}", generatedRoot: generatedRoot, gridX: x, gridY: y, height: height);
 
-                // Treat the terrain as stacked voxel columns: place one top on the
-                // highest occupied layer, then expose the viewer-facing wall faces for
-                // each occupied layer whose neighboring voxel is missing. In this map's
-                // projection and sorting scheme, the camera-facing neighbors are x - 1
-                // and y - 1 because smaller x + y values are closer to the viewer.
-                for (int layer = 1; layer <= height; layer++)
+                // Treat the terrain as stacked isometric columns. Every top tile needs
+                // the two viewer-facing side skirts at its topmost layer so the surface
+                // reads as a solid block, then any additional cliff depth below that is
+                // added only where the front neighbor is shorter. In this projection the
+                // screen-facing/front neighbors are (x, y + 1) and (x + 1, y).
+                int frontLeftNeighborHeight = GetHeight(generatedHeights, x, y + 1);
+                int frontRightNeighborHeight = GetHeight(generatedHeights, x + 1, y);
+
+                CreateTilePart(
+                    generatedRoot,
+                    leftSideSprite != null ? leftSideSprite : cachedDefaultLeftSideSprite,
+                    GridToWorld(x, y, height),
+                    $"Left_{x}_{y}_{height}",
+                    x,
+                    y,
+                    height,
+                    0);
+
+                CreateTilePart(
+                    generatedRoot,
+                    rightSideSprite != null ? rightSideSprite : cachedDefaultRightSideSprite,
+                    GridToWorld(x, y, height),
+                    $"Right_{x}_{y}_{height}",
+                    x,
+                    y,
+                    height,
+                    1);
+
+                for (int layer = 1; layer < height; layer++)
                 {
                     Vector3 sidePosition = GridToWorld(x, y, layer);
 
-                    if (!HasSolidVoxel(generatedHeights, x - 1, y, layer))
+                    if (frontLeftNeighborHeight < layer)
                     {
                         CreateTilePart(
                             generatedRoot,
@@ -114,7 +137,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                             0);
                     }
 
-                    if (!HasSolidVoxel(generatedHeights, x, y - 1, layer))
+                    if (frontRightNeighborHeight < layer)
                     {
                         CreateTilePart(
                             generatedRoot,
@@ -275,11 +298,6 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         }
 
         return heights[x, y];
-    }
-
-    private bool HasSolidVoxel(int[,] heights, int x, int y, int layer)
-    {
-        return GetHeight(heights, x, y) >= layer;
     }
 
     private Vector3 GridToWorld(int x, int y, int elevation)
