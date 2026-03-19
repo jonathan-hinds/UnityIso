@@ -92,39 +92,40 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                     2);
                 ConfigureTopTile(partName: $"Top_{x}_{y}_{height}", generatedRoot: generatedRoot, gridX: x, gridY: y, height: height);
 
-                // Render the two player-facing faces for the tile column. In an isometric
-                // heightfield, the visible walls come from the neighbors in front of the
-                // current tile on screen, not the tiles behind it. Comparing against the
-                // back neighbors creates contradictory depth cues and leads to the
-                // impossible-staircase / Penrose-style artifact.
-                int leftNeighborHeight = GetHeight(generatedHeights, x, y + 1);
-                int rightNeighborHeight = GetHeight(generatedHeights, x + 1, y);
-                for (int layer = leftNeighborHeight + 1; layer <= height; layer++)
+                // Treat the terrain as stacked voxel columns: place one top on the
+                // highest occupied layer, then expose the viewer-facing wall faces for
+                // each occupied layer whose neighboring voxel is missing. In this map's
+                // projection and sorting scheme, the camera-facing neighbors are x - 1
+                // and y - 1 because smaller x + y values are closer to the viewer.
+                for (int layer = 1; layer <= height; layer++)
                 {
                     Vector3 sidePosition = GridToWorld(x, y, layer);
-                    CreateTilePart(
-                        generatedRoot,
-                        leftSideSprite != null ? leftSideSprite : cachedDefaultLeftSideSprite,
-                        sidePosition,
-                        $"Left_{x}_{y}_{layer}",
-                        x,
-                        y,
-                        layer,
-                        0);
-                }
 
-                for (int layer = rightNeighborHeight + 1; layer <= height; layer++)
-                {
-                    Vector3 sidePosition = GridToWorld(x, y, layer);
-                    CreateTilePart(
-                        generatedRoot,
-                        rightSideSprite != null ? rightSideSprite : cachedDefaultRightSideSprite,
-                        sidePosition,
-                        $"Right_{x}_{y}_{layer}",
-                        x,
-                        y,
-                        layer,
-                        1);
+                    if (!HasSolidVoxel(generatedHeights, x - 1, y, layer))
+                    {
+                        CreateTilePart(
+                            generatedRoot,
+                            leftSideSprite != null ? leftSideSprite : cachedDefaultLeftSideSprite,
+                            sidePosition,
+                            $"Left_{x}_{y}_{layer}",
+                            x,
+                            y,
+                            layer,
+                            0);
+                    }
+
+                    if (!HasSolidVoxel(generatedHeights, x, y - 1, layer))
+                    {
+                        CreateTilePart(
+                            generatedRoot,
+                            rightSideSprite != null ? rightSideSprite : cachedDefaultRightSideSprite,
+                            sidePosition,
+                            $"Right_{x}_{y}_{layer}",
+                            x,
+                            y,
+                            layer,
+                            1);
+                    }
                 }
             }
         }
@@ -274,6 +275,11 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         }
 
         return heights[x, y];
+    }
+
+    private bool HasSolidVoxel(int[,] heights, int x, int y, int layer)
+    {
+        return GetHeight(heights, x, y) >= layer;
     }
 
     private Vector3 GridToWorld(int x, int y, int elevation)
