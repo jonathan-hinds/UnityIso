@@ -29,6 +29,11 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
     [SerializeField] private Color defaultRightSideColor = new Color(0.20f, 0.38f, 0.17f, 1f);
     [SerializeField] private Color defaultOutlineColor = new Color(0.12f, 0.20f, 0.10f, 1f);
 
+    [Header("Depth Cues")]
+    [SerializeField] private bool addCliffEdgeShadows = true;
+    [SerializeField, Range(0.05f, 0.5f)] private float cliffShadowWidth = 0.22f;
+    [SerializeField] private Color cliffShadowColor = new Color(0.05f, 0.08f, 0.04f, 0.45f);
+
     [Header("Layout")]
     [SerializeField, Min(0.1f)] private float tileWidth = 1f;
     [SerializeField, Min(0.1f)] private float tileHeight = 0.5f;
@@ -46,6 +51,8 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
     private static Sprite cachedDefaultTopSprite;
     private static Sprite cachedDefaultLeftSideSprite;
     private static Sprite cachedDefaultRightSideSprite;
+    private Sprite cachedTopLeftEdgeShadowSprite;
+    private Sprite cachedTopRightEdgeShadowSprite;
 
     private readonly List<SpriteRenderer> spawnedRenderers = new List<SpriteRenderer>();
 
@@ -119,6 +126,35 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                     y,
                     height,
                     1);
+
+                if (addCliffEdgeShadows)
+                {
+                    if (frontLeftNeighborHeight < height)
+                    {
+                        CreateTilePart(
+                            generatedRoot,
+                            cachedTopLeftEdgeShadowSprite,
+                            topPosition,
+                            $"TopLeftShadow_{x}_{y}_{height}",
+                            x,
+                            y,
+                            height,
+                            3);
+                    }
+
+                    if (frontRightNeighborHeight < height)
+                    {
+                        CreateTilePart(
+                            generatedRoot,
+                            cachedTopRightEdgeShadowSprite,
+                            topPosition,
+                            $"TopRightShadow_{x}_{y}_{height}",
+                            x,
+                            y,
+                            height,
+                            4);
+                    }
+                }
 
                 for (int layer = 1; layer < height; layer++)
                 {
@@ -441,6 +477,9 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         {
             cachedDefaultRightSideSprite = CreateRightSideSprite();
         }
+
+        cachedTopLeftEdgeShadowSprite = CreateTopEdgeShadowSprite(isLeftEdge: true);
+        cachedTopRightEdgeShadowSprite = CreateTopEdgeShadowSprite(isLeftEdge: false);
     }
 
     private Sprite CreateTopSprite()
@@ -488,6 +527,29 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         FillPolygon(texture, rightFace, defaultRightSideColor);
         StrokePolygon(texture, rightFace, defaultOutlineColor);
         return FinalizeSprite(texture, "Default_Isometric_Right");
+    }
+
+    private Sprite CreateTopEdgeShadowSprite(bool isLeftEdge)
+    {
+        Texture2D texture = CreateTransparentTexture();
+        Vector2 center = new Vector2(64f, 64f);
+        float inset = Mathf.Clamp01(cliffShadowWidth);
+
+        Vector2 edgeStart = isLeftEdge ? new Vector2(0f, 64f) : new Vector2(64f, 32f);
+        Vector2 edgeEnd = isLeftEdge ? new Vector2(64f, 32f) : new Vector2(127f, 64f);
+        Vector2 innerEnd = Vector2.Lerp(edgeEnd, center, inset);
+        Vector2 innerStart = Vector2.Lerp(edgeStart, center, inset);
+
+        Vector2[] shadowBand =
+        {
+            edgeStart,
+            edgeEnd,
+            innerEnd,
+            innerStart
+        };
+
+        FillPolygon(texture, shadowBand, cliffShadowColor);
+        return FinalizeSprite(texture, isLeftEdge ? "Default_Isometric_TopLeftShadow" : "Default_Isometric_TopRightShadow");
     }
 
     private Texture2D CreateTransparentTexture()
