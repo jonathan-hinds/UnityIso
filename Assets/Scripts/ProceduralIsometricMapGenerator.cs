@@ -341,20 +341,30 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
             return Vector3.zero;
         }
 
-        // Default generated side art is authored on a padded centered canvas.
-        // Tight custom side sprites need to be shifted into that same alignment space.
-        float spriteWorldWidth = sprite.bounds.size.x;
-        float spriteWorldHeight = sprite.bounds.size.y;
-        bool looksLikeTightSideSprite = spriteWorldWidth < (tileWidth * 0.75f);
+        float pixelsPerUnit = Mathf.Max(0.0001f, sprite.pixelsPerUnit);
+        float canvasWidth = sprite.rect.width / pixelsPerUnit;
+        float canvasHeight = sprite.rect.height / pixelsPerUnit;
+
+        float expectedFaceWidth = tileWidth * 0.5f;
+        float expectedFaceHeight = elevationStep + (tileHeight * 0.5f);
+        float widthTolerance = Mathf.Max(0.01f, expectedFaceWidth * 0.15f);
+        float heightTolerance = Mathf.Max(0.01f, expectedFaceHeight * 0.15f);
+        bool looksLikeTightSideSprite =
+            Mathf.Abs(canvasWidth - expectedFaceWidth) <= widthTolerance &&
+            Mathf.Abs(canvasHeight - expectedFaceHeight) <= heightTolerance;
+
         if (!looksLikeTightSideSprite)
         {
             return Vector3.zero;
         }
 
-        float horizontalOffset = spriteWorldWidth * 0.5f;
-        float verticalOffset = spriteWorldHeight * 0.5f;
-        float x = isLeftFace ? -horizontalOffset : horizontalOffset;
-        return new Vector3(x, -verticalOffset, 0f);
+        float localCenterX = ((sprite.rect.width * 0.5f) - sprite.pivot.x) / pixelsPerUnit;
+        float localCenterY = ((sprite.rect.height * 0.5f) - sprite.pivot.y) / pixelsPerUnit;
+
+        float targetCenterX = isLeftFace ? (-tileWidth * 0.25f) : (tileWidth * 0.25f);
+        float targetCenterY = -(elevationStep * 0.5f) - (tileHeight * 0.25f);
+
+        return new Vector3(targetCenterX - localCenterX, targetCenterY - localCenterY, 0f);
     }
 
     private void ConfigureTopTile(string partName, Transform generatedRoot, int gridX, int gridY, int height)
