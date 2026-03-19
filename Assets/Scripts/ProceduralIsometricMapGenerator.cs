@@ -92,8 +92,13 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                     2);
                 ConfigureTopTile(partName: $"Top_{x}_{y}_{height}", generatedRoot: generatedRoot, gridX: x, gridY: y, height: height);
 
-                int leftNeighborHeight = GetHeight(generatedHeights, x - 1, y);
-                int rightNeighborHeight = GetHeight(generatedHeights, x, y - 1);
+                // Render the two player-facing faces for the tile column. In an isometric
+                // heightfield, the visible walls come from the neighbors in front of the
+                // current tile on screen, not the tiles behind it. Comparing against the
+                // back neighbors creates contradictory depth cues and leads to the
+                // impossible-staircase / Penrose-style artifact.
+                int leftNeighborHeight = GetHeight(generatedHeights, x, y + 1);
+                int rightNeighborHeight = GetHeight(generatedHeights, x + 1, y);
                 for (int layer = leftNeighborHeight + 1; layer <= height; layer++)
                 {
                     Vector3 sidePosition = GridToWorld(x, y, layer);
@@ -321,11 +326,14 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
 
     private int CalculateSortingOrder(int gridX, int gridY, int layer, int sortBias)
     {
+        // Sort by screen depth first (back to front), then stabilize ties so a full
+        // column behaves like stacked blocks instead of interleaved paper cutouts.
         int maxDepth = width + length + maxElevation + 2;
         int tileDepth = gridX + gridY + layer;
         int backToFrontOrder = (maxDepth - tileDepth) * 100;
-        int diagonalTieBreak = (width - gridX) * 4;
-        return backToFrontOrder + diagonalTieBreak + sortBias;
+        int rowTieBreak = (length - gridY) * 10;
+        int columnTieBreak = (width - gridX) * 2;
+        return backToFrontOrder + rowTieBreak + columnTieBreak + sortBias;
     }
 
     private void FrameMainCamera()
