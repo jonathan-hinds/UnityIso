@@ -439,7 +439,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   generateOnStart: 1
   seed: 1233
-  length: 10
+  length: 30
   width: 10
   minElevation: 0
   maxElevation: 8
@@ -448,7 +448,7 @@ MonoBehaviour:
   persistence: 0.5
   lacunarity: 2
   smoothingPasses: 1
-  topSprite: {fileID: 9175949603623958504, guid: 2e5a80f334064084f803c846d2b85312, type: 3}
+  topSprite: {fileID: -5643105228771564274, guid: ff09a196802070443b0f84d14af980f2, type: 3}
   leftSideSprite: {fileID: 0}
   rightSideSprite: {fileID: 0}
   defaultTopColor: {r: 0.4, g: 0.74, b: 0.33, a: 1}

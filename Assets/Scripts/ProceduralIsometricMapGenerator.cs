@@ -319,12 +319,42 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
     {
         GameObject part = new GameObject(objectName);
         part.transform.SetParent(parent, false);
-        part.transform.localPosition = position;
+        part.transform.localPosition = position + GetSpriteOffset(sprite, sortBias);
 
         SpriteRenderer renderer = part.AddComponent<SpriteRenderer>();
         renderer.sprite = sprite;
         renderer.sortingOrder = CalculateSortingOrder(gridX, gridY, layer, sortBias);
         spawnedRenderers.Add(renderer);
+    }
+
+    private Vector3 GetSpriteOffset(Sprite sprite, int sortBias)
+    {
+        if (sprite == null)
+        {
+            return Vector3.zero;
+        }
+
+        bool isLeftFace = sortBias == 0;
+        bool isRightFace = sortBias == 1;
+        if (!isLeftFace && !isRightFace)
+        {
+            return Vector3.zero;
+        }
+
+        // Default generated side art is authored on a padded centered canvas.
+        // Tight custom side sprites need to be shifted into that same alignment space.
+        float spriteWorldWidth = sprite.bounds.size.x;
+        float spriteWorldHeight = sprite.bounds.size.y;
+        bool looksLikeTightSideSprite = spriteWorldWidth < (tileWidth * 0.75f);
+        if (!looksLikeTightSideSprite)
+        {
+            return Vector3.zero;
+        }
+
+        float horizontalOffset = spriteWorldWidth * 0.5f;
+        float verticalOffset = spriteWorldHeight * 0.5f;
+        float x = isLeftFace ? -horizontalOffset : horizontalOffset;
+        return new Vector3(x, -verticalOffset, 0f);
     }
 
     private void ConfigureTopTile(string partName, Transform generatedRoot, int gridX, int gridY, int height)
