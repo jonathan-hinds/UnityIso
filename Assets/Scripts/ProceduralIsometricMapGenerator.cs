@@ -103,9 +103,13 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                 // the two viewer-facing side skirts at its topmost layer so the surface
                 // reads as a solid block, then any additional cliff depth below that is
                 // added only where the front neighbor is shorter. In this projection the
-                // screen-facing/front neighbors are (x, y + 1) and (x + 1, y).
-                int frontLeftNeighborHeight = GetHeight(generatedHeights, x, y + 1);
-                int frontRightNeighborHeight = GetHeight(generatedHeights, x + 1, y);
+                // screen-facing/front neighbors are the tiles directly below the current
+                // diamond on screen: (x - 1, y) for the lower-left edge and (x, y - 1)
+                // for the lower-right edge. Using the back neighbors here causes the
+                // cliff accents to appear scattered across plateaus instead of tracing the
+                // visible lip of each raised area.
+                int frontLeftNeighborHeight = GetHeight(generatedHeights, x - 1, y);
+                int frontRightNeighborHeight = GetHeight(generatedHeights, x, y - 1);
 
                 CreateTilePart(
                     generatedRoot,
