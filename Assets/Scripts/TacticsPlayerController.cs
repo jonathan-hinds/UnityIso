@@ -15,6 +15,7 @@ public class TacticsPlayerController : MonoBehaviour
     [SerializeField] private Camera targetCamera;
     [SerializeField] private bool blockWhenPointerOverUi = true;
     [SerializeField] private TacticsActionMenuView actionMenuView;
+    [SerializeField] private TacticsSelectionPanelView selectionPanelView;
 
     private TacticsCharacterController selectedCharacter;
     private SelectionState selectionState;
@@ -30,6 +31,11 @@ public class TacticsPlayerController : MonoBehaviour
         {
             actionMenuView = FindFirstObjectByType<TacticsActionMenuView>();
         }
+
+        if (selectionPanelView == null)
+        {
+            selectionPanelView = FindFirstObjectByType<TacticsSelectionPanelView>();
+        }
     }
 
     private void OnEnable()
@@ -37,6 +43,11 @@ public class TacticsPlayerController : MonoBehaviour
         if (actionMenuView == null)
         {
             actionMenuView = FindFirstObjectByType<TacticsActionMenuView>();
+        }
+
+        if (selectionPanelView == null)
+        {
+            selectionPanelView = FindFirstObjectByType<TacticsSelectionPanelView>();
         }
 
         if (actionMenuView != null)
@@ -208,6 +219,12 @@ public class TacticsPlayerController : MonoBehaviour
         RefreshHud();
     }
 
+    public void AssignSelectionHud(TacticsSelectionPanelView view)
+    {
+        selectionPanelView = view;
+        RefreshHud();
+    }
+
     private void HandleActionSelected(TacticsHudActionType actionType)
     {
         if (selectedCharacter == null)
@@ -253,17 +270,18 @@ public class TacticsPlayerController : MonoBehaviour
 
     private void RefreshHud()
     {
-        if (actionMenuView == null)
-        {
-            return;
-        }
-
         if (selectedCharacter == null)
         {
-            actionMenuView.Hide();
+            actionMenuView?.Hide();
+            selectionPanelView?.Hide();
             return;
         }
 
-        actionMenuView.ShowForCharacter(selectedCharacter, selectionState == SelectionState.AwaitingMoveTarget);
+        if (actionMenuView != null)
+        {
+            actionMenuView.ShowForCharacter(selectedCharacter, selectionState == SelectionState.AwaitingMoveTarget);
+        }
+
+        selectionPanelView?.Show(selectedCharacter);
     }
 }

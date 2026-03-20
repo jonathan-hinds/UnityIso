@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using UnityEngine.Serialization;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -46,6 +47,7 @@ public sealed class TacticsCharacterDefinition : ScriptableObject
     public Vector2 TileAnchorOffset => tileAnchorOffset;
     public Vector2Int PreferredSpawnTile => preferredSpawnTile;
     public TacticsCharacterStats BaseStats => baseStats;
+    public TacticsCharacterDerivedStats DerivedStats => baseStats.CalculateDerivedStats();
 
     public bool TryGetOrderedSprites(out IReadOnlyList<Sprite> sprites)
     {
@@ -130,29 +132,139 @@ public sealed class TacticsCharacterDefinition : ScriptableObject
 [Serializable]
 public struct TacticsCharacterStats
 {
-    [Min(1)] public int maxHitPoints;
-    [Min(0)] public int maxManaPoints;
-    [Min(1)] public int speed;
-    [Min(1)] public int physicalAttack;
-    [Min(1)] public int magicAttack;
-    [Min(1)] public int moveRange;
-    [Min(0)] public int jumpHeight;
-    [Range(0, 100)] public int brave;
-    [Range(0, 100)] public int faith;
+    public TacticsPrimaryStats primaryStats;
+    public TacticsDerivedStatModifiers derivedStatModifiers;
+    public TacticsMobilityStats mobilityStats;
+
+    public int MoveRange => Mathf.Max(0, mobilityStats.moveRange);
+    public int JumpHeight => Mathf.Max(0, mobilityStats.jumpHeight);
+
+    public TacticsCharacterDerivedStats CalculateDerivedStats()
+    {
+        int maxHitPoints = 40 + (primaryStats.stamina * 8) + (primaryStats.strength * 2) + derivedStatModifiers.bonusMaxHitPoints;
+        int maxStamina = 15 + (primaryStats.stamina * 6) + (primaryStats.agility * 2) + derivedStatModifiers.bonusMaxStamina;
+        int maxMana = 10 + (primaryStats.intelligence * 6) + (primaryStats.wisdom * 4) + derivedStatModifiers.bonusMaxMana;
+
+        int calculatedBaseDamageMin = 1 + (primaryStats.strength * 2) + Mathf.FloorToInt(primaryStats.agility * 0.5f) + derivedStatModifiers.bonusBaseDamageMin;
+        int clampedBaseDamageMin = Mathf.Max(0, calculatedBaseDamageMin);
+        int calculatedBaseDamageMax = calculatedBaseDamageMin + Mathf.Max(1, primaryStats.strength + Mathf.CeilToInt(primaryStats.agility * 0.5f)) + derivedStatModifiers.bonusBaseDamageMax;
+
+        return new TacticsCharacterDerivedStats
+        {
+            maxHitPoints = Mathf.Max(1, maxHitPoints),
+            maxStamina = Mathf.Max(0, maxStamina),
+            maxMana = Mathf.Max(0, maxMana),
+            baseDamageMin = clampedBaseDamageMin,
+            baseDamageMax = Mathf.Max(clampedBaseDamageMin, calculatedBaseDamageMax)
+        };
+    }
+
+    public TacticsCharacterRuntimeResources CreateRuntimeResources()
+    {
+        return TacticsCharacterRuntimeResources.FromDerivedStats(CalculateDerivedStats());
+    }
 
     public static TacticsCharacterStats Default()
     {
         return new TacticsCharacterStats
         {
-            maxHitPoints = 70,
-            maxManaPoints = 20,
-            speed = 6,
-            physicalAttack = 7,
-            magicAttack = 5,
+            primaryStats = TacticsPrimaryStats.Default(),
+            derivedStatModifiers = TacticsDerivedStatModifiers.Default(),
+            mobilityStats = TacticsMobilityStats.Default()
+        };
+    }
+}
+
+[Serializable]
+public struct TacticsPrimaryStats
+{
+    [Min(1)] public int stamina;
+    [Min(1)] public int strength;
+    [Min(1)] public int agility;
+    [Min(1)] public int wisdom;
+    [FormerlySerializedAs("magicAttack")]
+    [Min(1)] public int intelligence;
+
+    public static TacticsPrimaryStats Default()
+    {
+        return new TacticsPrimaryStats
+        {
+            stamina = 5,
+            strength = 5,
+            agility = 5,
+            wisdom = 5,
+            intelligence = 5
+        };
+    }
+}
+
+[Serializable]
+public struct TacticsDerivedStatModifiers
+{
+    [FormerlySerializedAs("maxHitPoints")]
+    public int bonusMaxHitPoints;
+    [FormerlySerializedAs("maxManaPoints")]
+    public int bonusMaxMana;
+    public int bonusMaxStamina;
+    [FormerlySerializedAs("physicalAttack")]
+    public int bonusBaseDamageMin;
+    public int bonusBaseDamageMax;
+
+    public static TacticsDerivedStatModifiers Default()
+    {
+        return new TacticsDerivedStatModifiers
+        {
+            bonusMaxHitPoints = 0,
+            bonusMaxMana = 0,
+            bonusMaxStamina = 0,
+            bonusBaseDamageMin = 0,
+            bonusBaseDamageMax = 0
+        };
+    }
+}
+
+[Serializable]
+public struct TacticsMobilityStats
+{
+    [FormerlySerializedAs("moveRange")]
+    [Min(1)] public int moveRange;
+    [FormerlySerializedAs("jumpHeight")]
+    [Min(0)] public int jumpHeight;
+
+    public static TacticsMobilityStats Default()
+    {
+        return new TacticsMobilityStats
+        {
             moveRange = 4,
-            jumpHeight = 2,
-            brave = 70,
-            faith = 60
+            jumpHeight = 2
+        };
+    }
+}
+
+[Serializable]
+public struct TacticsCharacterDerivedStats
+{
+    [Min(1)] public int maxHitPoints;
+    [Min(0)] public int maxStamina;
+    [Min(0)] public int maxMana;
+    [Min(0)] public int baseDamageMin;
+    [Min(0)] public int baseDamageMax;
+}
+
+[Serializable]
+public struct TacticsCharacterRuntimeResources
+{
+    [Min(0)] public int hitPoints;
+    [Min(0)] public int stamina;
+    [Min(0)] public int mana;
+
+    public static TacticsCharacterRuntimeResources FromDerivedStats(TacticsCharacterDerivedStats derivedStats)
+    {
+        return new TacticsCharacterRuntimeResources
+        {
+            hitPoints = derivedStats.maxHitPoints,
+            stamina = derivedStats.maxStamina,
+            mana = derivedStats.maxMana
         };
     }
 }

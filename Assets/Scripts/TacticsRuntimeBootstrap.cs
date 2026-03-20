@@ -62,8 +62,9 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
     {
         EnsureEventSystem();
         TacticsActionMenuView actionMenuView = EnsureActionMenuView();
+        TacticsSelectionPanelView selectionPanelView = EnsureSelectionPanelView();
         EnsurePlayerController();
-        BindHud(actionMenuView);
+        BindHud(actionMenuView, selectionPanelView);
         EnsureCharacters();
     }
 
@@ -108,12 +109,25 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         return hudObject.AddComponent<TacticsActionMenuView>();
     }
 
-    private void BindHud(TacticsActionMenuView actionMenuView)
+    private TacticsSelectionPanelView EnsureSelectionPanelView()
+    {
+        TacticsSelectionPanelView existingView = FindFirstObjectByType<TacticsSelectionPanelView>();
+        if (existingView != null)
+        {
+            return existingView;
+        }
+
+        GameObject hudObject = new GameObject("Tactics Selection Panel HUD");
+        return hudObject.AddComponent<TacticsSelectionPanelView>();
+    }
+
+    private void BindHud(TacticsActionMenuView actionMenuView, TacticsSelectionPanelView selectionPanelView)
     {
         TacticsPlayerController playerController = FindFirstObjectByType<TacticsPlayerController>();
         if (playerController != null)
         {
             playerController.AssignHud(actionMenuView);
+            playerController.AssignSelectionHud(selectionPanelView);
         }
     }
 

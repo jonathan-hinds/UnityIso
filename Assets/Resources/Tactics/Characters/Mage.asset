@@ -26,12 +26,18 @@ MonoBehaviour:
   tileAnchorOffset: {x: 0.18, y: 0.125}
   preferredSpawnTile: {x: 1, y: 0}
   baseStats:
-    maxHitPoints: 58
-    maxManaPoints: 40
-    speed: 6
-    physicalAttack: 4
-    magicAttack: 8
-    moveRange: 4
-    jumpHeight: 2
-    brave: 62
-    faith: 78
+    primaryStats:
+      stamina: 4
+      strength: 3
+      agility: 5
+      wisdom: 7
+      intelligence: 8
+    derivedStatModifiers:
+      bonusMaxHitPoints: -6
+      bonusMaxMana: -14
+      bonusMaxStamina: 0
+      bonusBaseDamageMin: -3
+      bonusBaseDamageMax: -1
+    mobilityStats:
+      moveRange: 4
+      jumpHeight: 2

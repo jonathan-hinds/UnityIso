@@ -43,7 +43,9 @@ public class TacticsActionMenuView : MonoBehaviour
 
         panelRoot.SetActive(true);
         characterNameText.text = character.DisplayName.ToUpperInvariant();
-        statsText.text = $"MOVE {character.MoveRange}   JUMP {character.JumpHeight}";
+        statsText.text =
+            $"HP {character.CurrentHitPoints}/{character.MaxHitPoints}   ST {character.CurrentStamina}/{character.MaxStamina}   MP {character.CurrentMana}/{character.MaxMana}\n" +
+            $"DMG {character.BaseDamageMin}-{character.BaseDamageMax}   MOVE {character.MoveRange}   JUMP {character.JumpHeight}";
         promptText.text = awaitingMoveTarget
             ? "SELECT A DESTINATION TILE"
             : "CHOOSE AN ACTION";
@@ -96,10 +98,10 @@ public class TacticsActionMenuView : MonoBehaviour
 
         panelRoot = CreateUiObject("Panel", transform);
         RectTransform panelRect = panelRoot.GetComponent<RectTransform>();
-        panelRect.anchorMin = new Vector2(0f, 0f);
-        panelRect.anchorMax = new Vector2(0f, 0f);
-        panelRect.pivot = new Vector2(0f, 0f);
-        panelRect.anchoredPosition = new Vector2(36f, 36f);
+        panelRect.anchorMin = new Vector2(0f, 1f);
+        panelRect.anchorMax = new Vector2(0f, 1f);
+        panelRect.pivot = new Vector2(0f, 1f);
+        panelRect.anchoredPosition = new Vector2(36f, -36f);
         panelRect.sizeDelta = new Vector2(288f, 228f);
 
         Image panelImage = panelRoot.AddComponent<Image>();

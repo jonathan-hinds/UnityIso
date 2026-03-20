@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 [DisallowMultipleComponent]
-public class TacticsCharacterController : MonoBehaviour
+public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTarget
 {
     [Header("References")]
     [SerializeField] private ProceduralIsometricMapGenerator mapGenerator;
@@ -26,15 +26,37 @@ public class TacticsCharacterController : MonoBehaviour
     private Coroutine movementRoutine;
     private TacticsMovementDirection currentDirection = TacticsMovementDirection.SouthWest;
     private Vector2 lastAppliedTileAnchorOffset;
+    private TacticsCharacterDerivedStats derivedStats;
+    private TacticsCharacterRuntimeResources runtimeResources;
 
     public Vector2Int GridPosition { get; private set; }
     public bool IsSelected { get; private set; }
     public bool IsMoving => movementRoutine != null;
     public TacticsCharacterDefinition CharacterDefinition => characterDefinition;
     public string DisplayName => characterDefinition != null ? characterDefinition.DisplayName : name;
-    public int MoveRange => characterDefinition != null ? Mathf.Max(0, characterDefinition.BaseStats.moveRange) : 0;
-    public int JumpHeight => characterDefinition != null ? Mathf.Max(0, characterDefinition.BaseStats.jumpHeight) : 0;
+    public TacticsCharacterDerivedStats DerivedStats => derivedStats;
+    public TacticsCharacterRuntimeResources RuntimeResources => runtimeResources;
+    public int CurrentHitPoints => runtimeResources.hitPoints;
+    public int MaxHitPoints => derivedStats.maxHitPoints;
+    public int CurrentStamina => runtimeResources.stamina;
+    public int MaxStamina => derivedStats.maxStamina;
+    public int CurrentMana => runtimeResources.mana;
+    public int MaxMana => derivedStats.maxMana;
+    public int BaseDamageMin => derivedStats.baseDamageMin;
+    public int BaseDamageMax => derivedStats.baseDamageMax;
+    public int MoveRange => characterDefinition != null ? characterDefinition.BaseStats.MoveRange : 0;
+    public int JumpHeight => characterDefinition != null ? characterDefinition.BaseStats.JumpHeight : 0;
     public bool CanReceiveCommands => mapGenerator != null && mapGenerator.HasGeneratedMap && !IsMoving;
+
+    public TacticsSelectionHudData BuildSelectionHudData()
+    {
+        return new TacticsSelectionHudData(
+            DisplayName,
+            new TacticsSelectionHudResourceData("HP", CurrentHitPoints, MaxHitPoints, new Color(0.72f, 0.23f, 0.27f, 1f)),
+            new TacticsSelectionHudResourceData("MP", CurrentMana, MaxMana, new Color(0.25f, 0.49f, 0.77f, 1f)),
+            new TacticsSelectionHudResourceData("ST", CurrentStamina, MaxStamina, new Color(0.34f, 0.62f, 0.42f, 1f)),
+            characterDefinition != null ? characterDefinition.SelectedColor : Color.white);
+    }
 
     public void Initialize(ProceduralIsometricMapGenerator generator, TacticsCharacterAnimator animator, TacticsCharacterDefinition definition, Vector2Int spawnTile)
     {
@@ -334,5 +356,7 @@ public class TacticsCharacterController : MonoBehaviour
         maxStepDown = definition.MaxStepDown;
         tileAnchorOffset = definition.TileAnchorOffset;
         startingGridPosition = definition.PreferredSpawnTile;
+        derivedStats = definition.BaseStats.CalculateDerivedStats();
+        runtimeResources = definition.BaseStats.CreateRuntimeResources();
     }
 }
