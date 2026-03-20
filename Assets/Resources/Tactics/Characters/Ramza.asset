@@ -18,9 +18,9 @@ MonoBehaviour:
   walkFramesPerSecond: 7
   baseColor: {r: 1, g: 1, b: 1, a: 1}
   selectedColor: {r: 1, g: 0.95, b: 0.65, a: 1}
-  moveSpeed: 2.75
-  jumpDuration: 0.25
-  jumpArcHeight: 0.22
+  moveSpeed: 1
+  jumpDuration: 0.5
+  jumpArcHeight: 0.5
   maxStepUp: 1
   maxStepDown: 1
   tileAnchorOffset: {x: 0.18, y: 0.125}

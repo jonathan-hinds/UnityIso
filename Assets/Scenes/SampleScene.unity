@@ -458,8 +458,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   generateOnStart: 1
   seed: 1233
-  length: 100
-  width: 100
+  length: 15
+  width: 15
   minElevation: 1
   maxElevation: 6
   noiseScale: 5
