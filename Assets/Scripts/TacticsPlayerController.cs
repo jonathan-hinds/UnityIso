@@ -5,10 +5,19 @@ using UnityEngine.InputSystem;
 [DisallowMultipleComponent]
 public class TacticsPlayerController : MonoBehaviour
 {
+    private enum SelectionState
+    {
+        None = 0,
+        CharacterSelected = 1,
+        AwaitingMoveTarget = 2
+    }
+
     [SerializeField] private Camera targetCamera;
     [SerializeField] private bool blockWhenPointerOverUi = true;
+    [SerializeField] private TacticsActionMenuView actionMenuView;
 
     private TacticsCharacterController selectedCharacter;
+    private SelectionState selectionState;
 
     private void Awake()
     {
@@ -16,10 +25,39 @@ public class TacticsPlayerController : MonoBehaviour
         {
             targetCamera = Camera.main;
         }
+
+        if (actionMenuView == null)
+        {
+            actionMenuView = FindFirstObjectByType<TacticsActionMenuView>();
+        }
+    }
+
+    private void OnEnable()
+    {
+        if (actionMenuView == null)
+        {
+            actionMenuView = FindFirstObjectByType<TacticsActionMenuView>();
+        }
+
+        if (actionMenuView != null)
+        {
+            actionMenuView.ActionSelected -= HandleActionSelected;
+            actionMenuView.ActionSelected += HandleActionSelected;
+        }
+    }
+
+    private void OnDisable()
+    {
+        if (actionMenuView != null)
+        {
+            actionMenuView.ActionSelected -= HandleActionSelected;
+        }
     }
 
     private void Update()
     {
+        HandleCancelInput();
+
         Mouse mouse = Mouse.current;
         if (mouse == null || !mouse.leftButton.wasPressedThisFrame)
         {
@@ -51,19 +89,30 @@ public class TacticsPlayerController : MonoBehaviour
             return;
         }
 
-        if (selectedCharacter != null && TryGetClickedTile(hits, out IsometricTileHoverInfo clickedTile))
+        if (selectionState == SelectionState.AwaitingMoveTarget &&
+            selectedCharacter != null &&
+            TryGetClickedTile(hits, out IsometricTileHoverInfo clickedTile))
         {
-            selectedCharacter.TryMoveTo(new Vector2Int(clickedTile.GridX, clickedTile.GridY));
+            if (selectedCharacter.TryMoveTo(new Vector2Int(clickedTile.GridX, clickedTile.GridY)))
+            {
+                selectionState = SelectionState.CharacterSelected;
+                RefreshHud();
+            }
+
             return;
         }
 
-        SelectCharacter(null);
+        if (selectionState == SelectionState.CharacterSelected)
+        {
+            SelectCharacter(null);
+        }
     }
 
     private void SelectCharacter(TacticsCharacterController character)
     {
-        if (selectedCharacter == character)
+        if (selectedCharacter == character && selectionState == SelectionState.CharacterSelected)
         {
+            RefreshHud();
             return;
         }
 
@@ -77,7 +126,14 @@ public class TacticsPlayerController : MonoBehaviour
         if (selectedCharacter != null)
         {
             selectedCharacter.SetSelected(true);
+            selectionState = SelectionState.CharacterSelected;
         }
+        else
+        {
+            selectionState = SelectionState.None;
+        }
+
+        RefreshHud();
     }
 
     private bool TryGetClickedCharacter(Collider2D[] hits, out TacticsCharacterController character)
@@ -132,5 +188,82 @@ public class TacticsPlayerController : MonoBehaviour
         }
 
         return tile != null;
+    }
+
+    public void AssignHud(TacticsActionMenuView view)
+    {
+        if (actionMenuView != null)
+        {
+            actionMenuView.ActionSelected -= HandleActionSelected;
+        }
+
+        actionMenuView = view;
+
+        if (actionMenuView != null)
+        {
+            actionMenuView.ActionSelected -= HandleActionSelected;
+            actionMenuView.ActionSelected += HandleActionSelected;
+        }
+
+        RefreshHud();
+    }
+
+    private void HandleActionSelected(TacticsHudActionType actionType)
+    {
+        if (selectedCharacter == null)
+        {
+            return;
+        }
+
+        switch (actionType)
+        {
+            case TacticsHudActionType.Move:
+                if (selectedCharacter.CanReceiveCommands)
+                {
+                    selectionState = SelectionState.AwaitingMoveTarget;
+                    RefreshHud();
+                }
+
+                break;
+        }
+    }
+
+    private void HandleCancelInput()
+    {
+        bool escapePressed = Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame;
+        bool rightClickPressed = Mouse.current != null && Mouse.current.rightButton.wasPressedThisFrame;
+
+        if (!escapePressed && !rightClickPressed)
+        {
+            return;
+        }
+
+        if (selectionState == SelectionState.AwaitingMoveTarget)
+        {
+            selectionState = SelectionState.CharacterSelected;
+            RefreshHud();
+            return;
+        }
+
+        if (selectionState == SelectionState.CharacterSelected)
+        {
+            SelectCharacter(null);
+        }
+    }
+
+    private void RefreshHud()
+    {
+        if (actionMenuView == null)
+        {
+            return;
+        }
+
+        if (selectedCharacter == null)
+        {
+            actionMenuView.Hide();
+            return;
+        }
+
+        actionMenuView.ShowForCharacter(selectedCharacter, selectionState == SelectionState.AwaitingMoveTarget);
     }
 }

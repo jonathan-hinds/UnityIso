@@ -1,17 +1,12 @@
-using System;
-using System.Linq;
-using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.InputSystem.UI;
 
 [DefaultExecutionOrder(1000)]
 public class TacticsRuntimeBootstrap : MonoBehaviour
 {
     private const string BootstrapName = "Tactics Runtime Bootstrap";
-    private static readonly string[] PreferredSpriteResourcePaths =
-    {
-        "Characters/sprite-sheet_export_8x4_48x64",
-        "Characters/sprite-sheet_export_8x4_24x32"
-    };
+    private const string CharacterRosterResourcePath = "Tactics/CharacterRoster";
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void CreateBootstrap()
@@ -65,8 +60,11 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
     private void SetupScene()
     {
+        EnsureEventSystem();
+        TacticsActionMenuView actionMenuView = EnsureActionMenuView();
         EnsurePlayerController();
-        EnsureCharacter();
+        BindHud(actionMenuView);
+        EnsureCharacters();
     }
 
     private void EnsurePlayerController()
@@ -80,24 +78,82 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         controllerObject.AddComponent<TacticsPlayerController>();
     }
 
-    private void EnsureCharacter()
+    private void EnsureEventSystem()
+    {
+        EventSystem existingEventSystem = FindFirstObjectByType<EventSystem>();
+        if (existingEventSystem != null)
+        {
+            if (existingEventSystem.GetComponent<BaseInputModule>() == null)
+            {
+                existingEventSystem.gameObject.AddComponent<InputSystemUIInputModule>();
+            }
+
+            return;
+        }
+
+        GameObject eventSystemObject = new GameObject("EventSystem");
+        eventSystemObject.AddComponent<EventSystem>();
+        eventSystemObject.AddComponent<InputSystemUIInputModule>();
+    }
+
+    private TacticsActionMenuView EnsureActionMenuView()
+    {
+        TacticsActionMenuView existingView = FindFirstObjectByType<TacticsActionMenuView>();
+        if (existingView != null)
+        {
+            return existingView;
+        }
+
+        GameObject hudObject = new GameObject("Tactics Action Menu HUD");
+        return hudObject.AddComponent<TacticsActionMenuView>();
+    }
+
+    private void BindHud(TacticsActionMenuView actionMenuView)
+    {
+        TacticsPlayerController playerController = FindFirstObjectByType<TacticsPlayerController>();
+        if (playerController != null)
+        {
+            playerController.AssignHud(actionMenuView);
+        }
+    }
+
+    private void EnsureCharacters()
     {
         if (FindFirstObjectByType<TacticsCharacterController>() != null)
         {
             return;
         }
 
-        Sprite[] sheetSprites = LoadCharacterSprites();
-
-        if (sheetSprites.Length < 10)
+        TacticsCharacterRoster roster = Resources.Load<TacticsCharacterRoster>(CharacterRosterResourcePath);
+        if (roster == null || roster.PlayableCharacters.Count == 0)
         {
-            Debug.LogWarning("Tactics bootstrap could not find a sliced character sheet with at least 10 sprites in Assets/Resources/Characters.");
+            Debug.LogWarning($"Tactics bootstrap could not find a playable roster at Resources/{CharacterRosterResourcePath}.");
             return;
         }
 
-        Vector2Int spawnTile = FindSpawnTile();
+        for (int i = 0; i < roster.PlayableCharacters.Count; i++)
+        {
+            TacticsCharacterDefinition definition = roster.PlayableCharacters[i];
+            if (definition == null)
+            {
+                continue;
+            }
 
-        GameObject characterRoot = new GameObject("Player Character");
+            SpawnCharacter(definition);
+        }
+    }
+
+    private void SpawnCharacter(TacticsCharacterDefinition definition)
+    {
+        if (!definition.TryGetOrderedSprites(out _))
+        {
+            Debug.LogWarning($"Tactics bootstrap skipped '{definition.name}' because its sprite data is invalid.");
+            return;
+        }
+
+        Vector2Int spawnTile = FindSpawnTile(definition.PreferredSpawnTile);
+
+        GameObject characterRoot = new GameObject(definition.DisplayName);
         GameObject visualObject = new GameObject("Visual");
         visualObject.transform.SetParent(characterRoot.transform, false);
 
@@ -105,20 +161,25 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         spriteRenderer.sortingLayerName = "Default";
 
         TacticsCharacterAnimator animator = characterRoot.AddComponent<TacticsCharacterAnimator>();
-        animator.Initialize(spriteRenderer, sheetSprites);
+        animator.Initialize(spriteRenderer, definition);
 
         BoxCollider2D selectionCollider = visualObject.AddComponent<BoxCollider2D>();
         Vector2 spriteSize = spriteRenderer.sprite != null ? spriteRenderer.sprite.bounds.size : new Vector2(0.2f, 0.3f);
         selectionCollider.size = spriteSize;
-        selectionCollider.offset = new Vector2(spriteSize.x * 0.5f, spriteSize.y * 0.5f);
+        selectionCollider.offset = Vector2.zero;
 
         TacticsCharacterController characterController = characterRoot.AddComponent<TacticsCharacterController>();
-        characterController.Initialize(mapGenerator, animator, spawnTile);
+        characterController.Initialize(mapGenerator, animator, definition, spawnTile);
     }
 
-    private Vector2Int FindSpawnTile()
+    private Vector2Int FindSpawnTile(Vector2Int requestedTile)
     {
-        Vector2Int center = mapGenerator.GetCenterTile();
+        if (IsSpawnTileAvailable(requestedTile))
+        {
+            return requestedTile;
+        }
+
+        Vector2Int center = requestedTile == default ? mapGenerator.GetCenterTile() : requestedTile;
         int maxRadius = Mathf.Max(mapGenerator.Width, mapGenerator.Length);
 
         for (int radius = 0; radius <= maxRadius; radius++)
@@ -127,86 +188,34 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             {
                 for (int y = center.y - radius; y <= center.y + radius; y++)
                 {
-                    if (mapGenerator.IsTraversable(x, y))
+                    Vector2Int candidate = new Vector2Int(x, y);
+                    if (IsSpawnTileAvailable(candidate))
                     {
-                        return new Vector2Int(x, y);
+                        return candidate;
                     }
                 }
             }
         }
 
-        return center;
+        return mapGenerator.GetCenterTile();
     }
 
-    private static int ParseSpriteIndex(Sprite sprite)
+    private bool IsSpawnTileAvailable(Vector2Int tile)
     {
-        if (sprite == null)
+        if (!mapGenerator.IsTraversable(tile.x, tile.y))
         {
-            return int.MaxValue;
+            return false;
         }
 
-        string[] parts = sprite.name.Split('_');
-        if (parts.Length == 0)
+        TacticsCharacterController[] characters = FindObjectsByType<TacticsCharacterController>(FindObjectsSortMode.None);
+        for (int i = 0; i < characters.Length; i++)
         {
-            return int.MaxValue;
-        }
-
-        return int.TryParse(parts[parts.Length - 1], out int index) ? index : int.MaxValue;
-    }
-
-    private static Sprite[] LoadCharacterSprites()
-    {
-        for (int i = 0; i < PreferredSpriteResourcePaths.Length; i++)
-        {
-            Sprite[] sprites = Resources.LoadAll<Sprite>(PreferredSpriteResourcePaths[i])
-                .OrderBy(ParseSpriteIndex)
-                .ToArray();
-
-            if (sprites.Length >= 10)
+            if (characters[i].GridPosition == tile)
             {
-                return sprites;
+                return false;
             }
         }
 
-        Sprite[] allSprites = Resources.LoadAll<Sprite>("Characters");
-        if (allSprites.Length == 0)
-        {
-            return Array.Empty<Sprite>();
-        }
-
-        List<IGrouping<string, Sprite>> groups = allSprites
-            .GroupBy(GetSpriteSheetPrefix)
-            .OrderByDescending(group => group.Select(GetSpriteArea).DefaultIfEmpty(0f).Average())
-            .ToList();
-
-        for (int i = 0; i < groups.Count; i++)
-        {
-            Sprite[] sprites = groups[i]
-                .OrderBy(ParseSpriteIndex)
-                .ToArray();
-
-            if (sprites.Length >= 10)
-            {
-                return sprites;
-            }
-        }
-
-        return Array.Empty<Sprite>();
-    }
-
-    private static string GetSpriteSheetPrefix(Sprite sprite)
-    {
-        if (sprite == null || string.IsNullOrWhiteSpace(sprite.name))
-        {
-            return string.Empty;
-        }
-
-        int separatorIndex = sprite.name.LastIndexOf('_');
-        return separatorIndex >= 0 ? sprite.name[..separatorIndex] : sprite.name;
-    }
-
-    private static float GetSpriteArea(Sprite sprite)
-    {
-        return sprite == null ? 0f : sprite.rect.width * sprite.rect.height;
+        return true;
     }
 }

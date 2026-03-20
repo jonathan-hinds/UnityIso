@@ -8,6 +8,7 @@ public class TacticsCharacterController : MonoBehaviour
     [Header("References")]
     [SerializeField] private ProceduralIsometricMapGenerator mapGenerator;
     [SerializeField] private TacticsCharacterAnimator characterAnimator;
+    [SerializeField] private TacticsCharacterDefinition characterDefinition;
 
     [Header("Movement")]
     [SerializeField, Min(0.1f)] private float moveSpeed = 2.75f;
@@ -19,17 +20,28 @@ public class TacticsCharacterController : MonoBehaviour
     [Header("Spawn")]
     [SerializeField] private Vector2Int startingGridPosition;
 
+    [Header("Alignment")]
+    [SerializeField] private Vector2 tileAnchorOffset = new Vector2(0.18f, 0.125f);
+
     private Coroutine movementRoutine;
     private TacticsMovementDirection currentDirection = TacticsMovementDirection.SouthWest;
+    private Vector2 lastAppliedTileAnchorOffset;
 
     public Vector2Int GridPosition { get; private set; }
     public bool IsSelected { get; private set; }
     public bool IsMoving => movementRoutine != null;
+    public TacticsCharacterDefinition CharacterDefinition => characterDefinition;
+    public string DisplayName => characterDefinition != null ? characterDefinition.DisplayName : name;
+    public int MoveRange => characterDefinition != null ? Mathf.Max(0, characterDefinition.BaseStats.moveRange) : 0;
+    public int JumpHeight => characterDefinition != null ? Mathf.Max(0, characterDefinition.BaseStats.jumpHeight) : 0;
+    public bool CanReceiveCommands => mapGenerator != null && mapGenerator.HasGeneratedMap && !IsMoving;
 
-    public void Initialize(ProceduralIsometricMapGenerator generator, TacticsCharacterAnimator animator, Vector2Int spawnTile)
+    public void Initialize(ProceduralIsometricMapGenerator generator, TacticsCharacterAnimator animator, TacticsCharacterDefinition definition, Vector2Int spawnTile)
     {
         mapGenerator = generator;
         characterAnimator = animator;
+        characterDefinition = definition;
+        ApplyDefinition(definition);
         startingGridPosition = spawnTile;
         SubscribeToMap();
         SnapToTile(GetBestValidTile(spawnTile));
@@ -52,12 +64,27 @@ public class TacticsCharacterController : MonoBehaviour
             characterAnimator = GetComponentInChildren<TacticsCharacterAnimator>();
         }
 
+        ApplyDefinition(characterDefinition);
+
         if (mapGenerator == null || !mapGenerator.HasGeneratedMap)
         {
             return;
         }
 
         SnapToTile(GetBestValidTile(startingGridPosition));
+    }
+
+    private void Update()
+    {
+        if (mapGenerator == null || !mapGenerator.HasGeneratedMap || IsMoving)
+        {
+            return;
+        }
+
+        if (lastAppliedTileAnchorOffset != tileAnchorOffset)
+        {
+            SnapToTile(GridPosition);
+        }
     }
 
     private void OnDisable()
@@ -73,12 +100,25 @@ public class TacticsCharacterController : MonoBehaviour
 
     public bool TryMoveTo(Vector2Int destination)
     {
+        if (!TryGetMovementPath(destination, out List<Vector2Int> path))
+        {
+            return false;
+        }
+
+        movementRoutine = StartCoroutine(FollowPath(path));
+        return true;
+    }
+
+    public bool TryGetMovementPath(Vector2Int destination, out List<Vector2Int> path)
+    {
+        path = null;
+
         if (mapGenerator == null || !mapGenerator.HasGeneratedMap || IsMoving)
         {
             return false;
         }
 
-        List<Vector2Int> path = IsometricAStarPathfinder.FindPath(
+        path = IsometricAStarPathfinder.FindPath(
             mapGenerator,
             GridPosition,
             destination,
@@ -88,10 +128,16 @@ public class TacticsCharacterController : MonoBehaviour
 
         if (path == null || path.Count <= 1)
         {
+            path = null;
             return false;
         }
 
-        movementRoutine = StartCoroutine(FollowPath(path));
+        if (MoveRange > 0 && (path.Count - 1) > MoveRange)
+        {
+            path = null;
+            return false;
+        }
+
         return true;
     }
 
@@ -113,12 +159,12 @@ public class TacticsCharacterController : MonoBehaviour
     {
         int startElevation = mapGenerator.GetTileElevation(from.x, from.y);
         int endElevation = mapGenerator.GetTileElevation(to.x, to.y);
-        Vector3 startPosition = mapGenerator.GridToWorldPosition(from.x, from.y, startElevation);
-        Vector3 endPosition = mapGenerator.GridToWorldPosition(to.x, to.y, endElevation);
+        Vector3 startPosition = GetTileAnchorWorldPosition(from, startElevation);
+        Vector3 endPosition = GetTileAnchorWorldPosition(to, endElevation);
 
         currentDirection = GetDirection(from, to);
-        bool isAscending = endElevation > startElevation;
-        float duration = isAscending ? jumpDuration : Vector3.Distance(startPosition, endPosition) / moveSpeed;
+        bool changesElevation = endElevation != startElevation;
+        float duration = changesElevation ? jumpDuration : Vector3.Distance(startPosition, endPosition) / moveSpeed;
         duration = Mathf.Max(0.01f, duration);
 
         int startSortingOrder = mapGenerator.GetCharacterSortingOrder(from.x, from.y, startElevation);
@@ -131,7 +177,7 @@ public class TacticsCharacterController : MonoBehaviour
             float t = Mathf.Clamp01(elapsed / duration);
 
             Vector3 position = Vector3.Lerp(startPosition, endPosition, t);
-            if (isAscending)
+            if (changesElevation)
             {
                 position.y += Mathf.Sin(t * Mathf.PI) * jumpArcHeight;
                 characterAnimator?.SetJump(currentDirection);
@@ -193,7 +239,8 @@ public class TacticsCharacterController : MonoBehaviour
         }
 
         GridPosition = tile;
-        transform.position = worldPosition;
+        transform.position = worldPosition + GetTileAnchorOffset();
+        lastAppliedTileAnchorOffset = tileAnchorOffset;
         ApplySorting(mapGenerator.GetCharacterSortingOrder(tile.x, tile.y, mapGenerator.GetTileElevation(tile.x, tile.y)));
         characterAnimator?.SetIdle(currentDirection);
     }
@@ -261,5 +308,31 @@ public class TacticsCharacterController : MonoBehaviour
         {
             mapGenerator.MapGenerated -= HandleMapGenerated;
         }
+    }
+
+    private Vector3 GetTileAnchorWorldPosition(Vector2Int tile, int elevation)
+    {
+        return mapGenerator.GridToWorldPosition(tile.x, tile.y, elevation) + GetTileAnchorOffset();
+    }
+
+    private Vector3 GetTileAnchorOffset()
+    {
+        return new Vector3(tileAnchorOffset.x, tileAnchorOffset.y, 0f);
+    }
+
+    private void ApplyDefinition(TacticsCharacterDefinition definition)
+    {
+        if (definition == null)
+        {
+            return;
+        }
+
+        moveSpeed = definition.MoveSpeed;
+        jumpDuration = definition.JumpDuration;
+        jumpArcHeight = definition.JumpArcHeight;
+        maxStepUp = definition.MaxStepUp;
+        maxStepDown = definition.MaxStepDown;
+        tileAnchorOffset = definition.TileAnchorOffset;
+        startingGridPosition = definition.PreferredSpawnTile;
     }
 }
