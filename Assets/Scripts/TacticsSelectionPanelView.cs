@@ -1,4 +1,3 @@
-using System;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -6,13 +5,14 @@ using UnityEngine.UI;
 public sealed class TacticsSelectionPanelView : MonoBehaviour
 {
     [Header("Theme")]
-    [SerializeField] private Color panelColor = new Color(0.05f, 0.06f, 0.08f, 0.56f);
-    [SerializeField] private Color panelEdgeColor = new Color(0.88f, 0.84f, 0.72f, 0.7f);
-    [SerializeField] private Color panelShadowColor = new Color(0f, 0f, 0f, 0.18f);
+    [SerializeField] private Color panelColor = new Color(0.08f, 0.09f, 0.11f, 0.96f);
+    [SerializeField] private Color panelEdgeColor = new Color(0.88f, 0.84f, 0.72f, 1f);
+    [SerializeField] private Color panelShadowColor = new Color(0f, 0f, 0f, 0.22f);
     [SerializeField] private Color primaryTextColor = new Color(0.96f, 0.94f, 0.89f, 1f);
     [SerializeField] private Color secondaryTextColor = new Color(0.96f, 0.94f, 0.89f, 1f);
-    [SerializeField] private Color barBackgroundColor = new Color(0f, 0f, 0f, 0.32f);
-    [SerializeField] private Color barFrameColor = new Color(1f, 1f, 1f, 0.08f);
+    [SerializeField] private Color accentColor = new Color(0.76f, 0.69f, 0.5f, 1f);
+    [SerializeField] private Color barBackgroundColor = new Color(0.12f, 0.13f, 0.15f, 1f);
+    [SerializeField] private Color barFrameColor = new Color(0.88f, 0.84f, 0.72f, 0.45f);
 
     private Canvas rootCanvas;
     private GameObject panelRoot;
@@ -104,7 +104,7 @@ public sealed class TacticsSelectionPanelView : MonoBehaviour
         panelRect.anchorMax = new Vector2(0f, 0f);
         panelRect.pivot = new Vector2(0f, 0f);
         panelRect.anchoredPosition = new Vector2(36f, 36f);
-        panelRect.sizeDelta = new Vector2(332f, 120f);
+        panelRect.sizeDelta = new Vector2(288f, 116f);
 
         Image panelImage = panelRoot.AddComponent<Image>();
         panelImage.color = panelColor;
@@ -117,55 +117,64 @@ public sealed class TacticsSelectionPanelView : MonoBehaviour
         panelShadow.effectColor = panelShadowColor;
         panelShadow.effectDistance = new Vector2(0f, -4f);
 
-        VerticalLayoutGroup panelLayout = panelRoot.AddComponent<VerticalLayoutGroup>();
-        panelLayout.padding = new RectOffset(14, 14, 10, 12);
-        panelLayout.spacing = 8f;
-        panelLayout.childAlignment = TextAnchor.UpperLeft;
-        panelLayout.childControlHeight = false;
-        panelLayout.childControlWidth = true;
-        panelLayout.childForceExpandHeight = false;
+        GameObject divider = CreateUiObject("HeaderDivider", panelRoot.transform);
+        RectTransform dividerRect = divider.GetComponent<RectTransform>();
+        dividerRect.anchorMin = new Vector2(0f, 1f);
+        dividerRect.anchorMax = new Vector2(1f, 1f);
+        dividerRect.pivot = new Vector2(0.5f, 1f);
+        dividerRect.offsetMin = new Vector2(14f, -36f);
+        dividerRect.offsetMax = new Vector2(-14f, -34f);
 
-        nameText = CreateText("Name", panelRoot.transform, 22, FontStyle.Bold, primaryTextColor);
-        nameText.alignment = TextAnchor.MiddleCenter;
-        LayoutElement nameLayout = nameText.gameObject.AddComponent<LayoutElement>();
-        nameLayout.preferredHeight = 28f;
+        Image dividerImage = divider.AddComponent<Image>();
+        dividerImage.color = accentColor;
 
-        healthBar = CreateSelectionBar("HealthBar", panelRoot.transform);
-        staminaBar = CreateSelectionBar("StaminaBar", panelRoot.transform);
-        manaBar = CreateSelectionBar("ManaBar", panelRoot.transform);
+        nameText = CreateText("Name", panelRoot.transform, 20, FontStyle.Bold, primaryTextColor);
+        RectTransform nameRect = nameText.rectTransform;
+        nameRect.anchorMin = new Vector2(0f, 1f);
+        nameRect.anchorMax = new Vector2(1f, 1f);
+        nameRect.pivot = new Vector2(0.5f, 1f);
+        nameRect.offsetMin = new Vector2(14f, -12f);
+        nameRect.offsetMax = new Vector2(-14f, -12f + 24f);
+        nameText.alignment = TextAnchor.UpperCenter;
+
+        healthBar = CreateSelectionBar("HealthBar", panelRoot.transform, 14f, 50f);
+        staminaBar = CreateSelectionBar("StaminaBar", panelRoot.transform, 14f, 28f);
+        manaBar = CreateSelectionBar("ManaBar", panelRoot.transform, 14f, 6f);
     }
 
     private void ApplyBar(SelectionBarWidgets widgets, TacticsSelectionHudResourceData resourceData)
     {
-        widgets.Label.text = resourceData.Label.ToLowerInvariant();
+        widgets.Label.text = resourceData.Label.ToUpperInvariant();
         widgets.Value.text = $"{resourceData.CurrentValue}/{resourceData.MaxValue}";
         widgets.Fill.color = resourceData.FillColor;
         widgets.Fill.fillAmount = resourceData.FillNormalized;
     }
 
-    private SelectionBarWidgets CreateSelectionBar(string objectName, Transform parent)
+    private SelectionBarWidgets CreateSelectionBar(string objectName, Transform parent, float leftInset, float bottomInset)
     {
         GameObject rowRoot = CreateUiObject(objectName, parent);
-        LayoutElement rowLayout = rowRoot.AddComponent<LayoutElement>();
-        rowLayout.preferredHeight = 20f;
+        RectTransform rowRect = rowRoot.GetComponent<RectTransform>();
+        rowRect.anchorMin = new Vector2(0f, 0f);
+        rowRect.anchorMax = new Vector2(1f, 0f);
+        rowRect.pivot = new Vector2(0.5f, 0f);
+        rowRect.offsetMin = new Vector2(leftInset, bottomInset);
+        rowRect.offsetMax = new Vector2(-14f, bottomInset + 18f);
 
-        HorizontalLayoutGroup rowGroup = rowRoot.AddComponent<HorizontalLayoutGroup>();
-        rowGroup.spacing = 6f;
-        rowGroup.childAlignment = TextAnchor.MiddleLeft;
-        rowGroup.childControlHeight = true;
-        rowGroup.childControlWidth = false;
-        rowGroup.childForceExpandWidth = false;
-        rowGroup.childForceExpandHeight = true;
-
-        Text labelText = CreateText("Label", rowRoot.transform, 16, FontStyle.Bold, secondaryTextColor);
+        Text labelText = CreateText("Label", rowRoot.transform, 15, FontStyle.Bold, secondaryTextColor);
+        RectTransform labelRect = labelText.rectTransform;
+        labelRect.anchorMin = new Vector2(0f, 0f);
+        labelRect.anchorMax = new Vector2(0f, 1f);
+        labelRect.pivot = new Vector2(0f, 0.5f);
+        labelRect.sizeDelta = new Vector2(34f, 0f);
+        labelRect.anchoredPosition = Vector2.zero;
         labelText.alignment = TextAnchor.MiddleLeft;
-        LayoutElement labelLayout = labelText.gameObject.AddComponent<LayoutElement>();
-        labelLayout.preferredWidth = 30f;
 
         GameObject meterRoot = CreateUiObject("Meter", rowRoot.transform);
-        LayoutElement meterLayout = meterRoot.AddComponent<LayoutElement>();
-        meterLayout.flexibleWidth = 1f;
-        meterLayout.preferredHeight = 16f;
+        RectTransform meterRect = meterRoot.GetComponent<RectTransform>();
+        meterRect.anchorMin = new Vector2(0f, 0f);
+        meterRect.anchorMax = new Vector2(1f, 1f);
+        meterRect.offsetMin = new Vector2(38f, 1f);
+        meterRect.offsetMax = new Vector2(-60f, -1f);
 
         Image meterBackground = meterRoot.AddComponent<Image>();
         meterBackground.color = barBackgroundColor;
@@ -178,18 +187,23 @@ public sealed class TacticsSelectionPanelView : MonoBehaviour
         RectTransform fillRect = fillObject.GetComponent<RectTransform>();
         fillRect.anchorMin = Vector2.zero;
         fillRect.anchorMax = Vector2.one;
-        fillRect.offsetMin = Vector2.zero;
-        fillRect.offsetMax = Vector2.zero;
+        fillRect.offsetMin = new Vector2(1f, 1f);
+        fillRect.offsetMax = new Vector2(-1f, -1f);
 
         Image fillImage = fillObject.AddComponent<Image>();
         fillImage.type = Image.Type.Filled;
         fillImage.fillMethod = Image.FillMethod.Horizontal;
         fillImage.fillOrigin = (int)Image.OriginHorizontal.Left;
+        fillImage.fillAmount = 1f;
 
         Text valueText = CreateText("Value", rowRoot.transform, 10, FontStyle.Normal, primaryTextColor);
+        RectTransform valueRect = valueText.rectTransform;
+        valueRect.anchorMin = new Vector2(1f, 0f);
+        valueRect.anchorMax = new Vector2(1f, 1f);
+        valueRect.pivot = new Vector2(1f, 0.5f);
+        valueRect.sizeDelta = new Vector2(56f, 0f);
+        valueRect.anchoredPosition = Vector2.zero;
         valueText.alignment = TextAnchor.MiddleRight;
-        LayoutElement valueLayout = valueText.gameObject.AddComponent<LayoutElement>();
-        valueLayout.preferredWidth = 70f;
 
         return new SelectionBarWidgets(labelText, valueText, fillImage);
     }
@@ -207,14 +221,6 @@ public sealed class TacticsSelectionPanelView : MonoBehaviour
         text.verticalOverflow = VerticalWrapMode.Overflow;
         text.text = string.Empty;
         return text;
-    }
-
-    private static Image CreateImage(string objectName, Transform parent, Color color)
-    {
-        GameObject imageObject = CreateUiObject(objectName, parent);
-        Image image = imageObject.AddComponent<Image>();
-        image.color = color;
-        return image;
     }
 
     private static GameObject CreateUiObject(string objectName, Transform parent)
