@@ -405,10 +405,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   targetCamera: {fileID: 0}
   outlinePadding: 0.03
-  baseLineWidth: 0.05
-  pulseAmount: 0.015
-  pulseSpeed: 2.5
-  dashScrollSpeed: 1.25
+  baseLineWidth: 0.02
+  pulseAmount: 0.009
+  pulseSpeed: 0.5
+  dashScrollSpeed: 0.5
   highlightColor: {r: 1, g: 0.95, b: 0.3, a: 0.95}
   sortingOrder: 30000
   overlayShaderName: Custom/AlwaysOnTopLine
