@@ -46,6 +46,9 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
     [SerializeField] private bool autoFrameCamera = true;
     [SerializeField, Min(0f)] private float cameraPadding = 1f;
 
+    [Header("Enemy Spawns")]
+    [SerializeField] private List<TacticsEnemySpawnEntry> enemySpawnEntries = new();
+
     private const string GeneratedRootName = "Generated Isometric Map";
     private const int DefaultSpritePixels = 128;
     private const float DefaultPixelsPerUnit = 128f;
@@ -60,6 +63,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
 
     private readonly List<SpriteRenderer> spawnedRenderers = new List<SpriteRenderer>();
     private int[,] currentHeights;
+    private System.Random spawnPlacementRandom;
 
     public int Length => length;
     public int Width => width;
@@ -67,6 +71,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
     public float TileHeight => tileHeight;
     public float ElevationStep => elevationStep;
     public bool HasGeneratedMap => currentHeights != null;
+    public IReadOnlyList<TacticsEnemySpawnEntry> EnemySpawnEntries => enemySpawnEntries;
 
     private void Start()
     {
@@ -87,6 +92,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         spawnedRenderers.Clear();
 
         currentHeights = GenerateHeights();
+        spawnPlacementRandom = CreateSpawnPlacementRandom();
         Transform generatedRoot = CreateGeneratedRoot();
 
         for (int x = 0; x < width; x++)
@@ -417,6 +423,44 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
     public Vector2Int GetCenterTile()
     {
         return new Vector2Int(width / 2, length / 2);
+    }
+
+    public List<Vector2Int> GetRandomSpawnTiles(int count, IReadOnlyCollection<Vector2Int> blockedTiles = null)
+    {
+        List<Vector2Int> spawnTiles = new List<Vector2Int>();
+        if (count <= 0 || currentHeights == null)
+        {
+            return spawnTiles;
+        }
+
+        spawnPlacementRandom ??= CreateSpawnPlacementRandom();
+
+        HashSet<Vector2Int> blocked = blockedTiles != null
+            ? new HashSet<Vector2Int>(blockedTiles)
+            : new HashSet<Vector2Int>();
+
+        List<Vector2Int> candidates = new List<Vector2Int>();
+        for (int x = 0; x < width; x++)
+        {
+            for (int y = 0; y < length; y++)
+            {
+                Vector2Int tile = new Vector2Int(x, y);
+                if (IsTraversable(x, y) && !blocked.Contains(tile))
+                {
+                    candidates.Add(tile);
+                }
+            }
+        }
+
+        ShuffleCandidates(candidates);
+
+        int spawnCount = Mathf.Min(count, candidates.Count);
+        for (int i = 0; i < spawnCount; i++)
+        {
+            spawnTiles.Add(candidates[i]);
+        }
+
+        return spawnTiles;
     }
 
     private int GetHeight(int[,] heights, int x, int y)
@@ -825,5 +869,24 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         }
 
         return value;
+    }
+
+    private System.Random CreateSpawnPlacementRandom()
+    {
+        int mapHash = seed;
+        mapHash = (mapHash * 397) ^ width;
+        mapHash = (mapHash * 397) ^ length;
+        mapHash = (mapHash * 397) ^ minElevation;
+        mapHash = (mapHash * 397) ^ maxElevation;
+        return new System.Random(mapHash);
+    }
+
+    private void ShuffleCandidates(List<Vector2Int> candidates)
+    {
+        for (int i = candidates.Count - 1; i > 0; i--)
+        {
+            int swapIndex = spawnPlacementRandom.Next(i + 1);
+            (candidates[i], candidates[swapIndex]) = (candidates[swapIndex], candidates[i]);
+        }
     }
 }

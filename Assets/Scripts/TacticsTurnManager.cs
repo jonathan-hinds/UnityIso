@@ -8,7 +8,6 @@ using UnityEngine;
 public sealed class TacticsTurnManager : MonoBehaviour
 {
     [SerializeField] private TacticsTurnCameraDirector cameraDirector;
-    [SerializeField, Min(0f)] private float nonPlayerAutoEndDelay = 0.75f;
 
     private readonly List<ITacticsTurnParticipant> participants = new();
     private Coroutine turnTransitionRoutine;
@@ -178,16 +177,8 @@ public sealed class TacticsTurnManager : MonoBehaviour
             yield return cameraDirector.FocusOnWorldPoint(ActiveParticipant.TurnFocusPoint);
         }
 
-        bool shouldAutoEnd = !ActiveParticipant.IsPlayerControlled && ActiveParticipant.CanEndTurn;
-        ITacticsTurnParticipant participantToAutoEnd = ActiveParticipant;
-
         turnTransitionRoutine = null;
         NotifyTurnStateChanged();
-
-        if (shouldAutoEnd)
-        {
-            StartCoroutine(AutoEndTurnRoutine(participantToAutoEnd));
-        }
     }
 
     private ITacticsTurnParticipant GetNextEligibleParticipant()
@@ -241,16 +232,6 @@ public sealed class TacticsTurnManager : MonoBehaviour
     private void NotifyTurnStateChanged()
     {
         TurnStateChanged?.Invoke();
-    }
-
-    private IEnumerator AutoEndTurnRoutine(ITacticsTurnParticipant participant)
-    {
-        yield return new WaitForSecondsRealtime(nonPlayerAutoEndDelay);
-
-        if (ReferenceEquals(ActiveParticipant, participant))
-        {
-            participant.TryEndTurn();
-        }
     }
 
     private static int CompareParticipants(ITacticsTurnParticipant left, ITacticsTurnParticipant right)

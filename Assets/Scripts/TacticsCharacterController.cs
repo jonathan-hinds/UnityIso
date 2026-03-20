@@ -146,7 +146,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
             return false;
         }
 
-        if (!TryGetMovementPath(destination, out List<Vector2Int> path))
+        if (!TryGetPathTo(destination, out List<Vector2Int> path))
         {
             return false;
         }
@@ -179,6 +179,11 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
 
     public bool TryGetMovementPath(Vector2Int destination, out List<Vector2Int> path)
     {
+        return TryGetPathTo(destination, out path, enforceMoveRange: true);
+    }
+
+    public bool TryGetPathTo(Vector2Int destination, out List<Vector2Int> path, bool enforceMoveRange = true)
+    {
         path = null;
 
         if (mapGenerator == null || !mapGenerator.HasGeneratedMap || IsMoving)
@@ -200,7 +205,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
             return false;
         }
 
-        if (MoveRange > 0 && (path.Count - 1) > MoveRange)
+        if (enforceMoveRange && MoveRange > 0 && (path.Count - 1) > MoveRange)
         {
             path = null;
             return false;

@@ -483,6 +483,9 @@ MonoBehaviour:
   mapOffset: {x: 0, y: 0, z: 0}
   autoFrameCamera: 1
   cameraPadding: 1
+  enemySpawnEntries:
+  - characterDefinition: {fileID: 11400000, guid: c1fa1a9f62e740d7b31d67ad0043cbe8, type: 2}
+    count: 1
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

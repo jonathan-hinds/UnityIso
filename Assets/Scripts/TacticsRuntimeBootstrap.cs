@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
@@ -164,62 +165,97 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
     private void EnsureCharacters()
     {
-        if (FindFirstObjectByType<TacticsCharacterController>() != null)
-        {
-            return;
-        }
+        TacticsCharacterController[] existingCharacters = FindObjectsByType<TacticsCharacterController>(FindObjectsSortMode.None);
+        HashSet<Vector2Int> occupiedTiles = new HashSet<Vector2Int>();
+        bool hasPlayerCharacters = false;
+        bool hasEnemyCharacters = false;
 
-        TacticsCharacterRoster roster = Resources.Load<TacticsCharacterRoster>(CharacterRosterResourcePath);
-        if (roster == null || roster.PlayableCharacters.Count == 0)
+        for (int i = 0; i < existingCharacters.Length; i++)
         {
-            Debug.LogWarning($"Tactics bootstrap could not find a playable roster at Resources/{CharacterRosterResourcePath}.");
-            return;
-        }
-
-        for (int i = 0; i < roster.PlayableCharacters.Count; i++)
-        {
-            TacticsCharacterDefinition definition = roster.PlayableCharacters[i];
-            if (definition == null)
+            TacticsCharacterController existingCharacter = existingCharacters[i];
+            if (existingCharacter == null)
             {
                 continue;
             }
 
-            SpawnCharacter(definition);
-        }
-    }
+            occupiedTiles.Add(existingCharacter.GridPosition);
 
-    private void SpawnCharacter(TacticsCharacterDefinition definition)
-    {
-        if (!definition.TryGetOrderedSprites(out _))
+            if (existingCharacter.Team == TacticsUnitTeam.Player)
+            {
+                hasPlayerCharacters = true;
+            }
+            else if (existingCharacter.Team == TacticsUnitTeam.Enemy)
+            {
+                hasEnemyCharacters = true;
+            }
+        }
+
+        if (!hasPlayerCharacters)
         {
-            Debug.LogWarning($"Tactics bootstrap skipped '{definition.name}' because its sprite data is invalid.");
+            TacticsCharacterRoster roster = Resources.Load<TacticsCharacterRoster>(CharacterRosterResourcePath);
+            if (roster == null || roster.PlayableCharacters.Count == 0)
+            {
+                Debug.LogWarning($"Tactics bootstrap could not find a playable roster at Resources/{CharacterRosterResourcePath}.");
+                return;
+            }
+
+            for (int i = 0; i < roster.PlayableCharacters.Count; i++)
+            {
+                TacticsCharacterDefinition definition = roster.PlayableCharacters[i];
+                if (definition == null)
+                {
+                    continue;
+                }
+
+                Vector2Int spawnTile = FindSpawnTile(definition.PreferredSpawnTile, occupiedTiles);
+                TacticsCharacterController character = TacticsCharacterSpawner.SpawnCharacter(mapGenerator, definition, spawnTile);
+                if (character != null)
+                {
+                    occupiedTiles.Add(character.GridPosition);
+                }
+            }
+        }
+
+        if (hasEnemyCharacters)
+        {
             return;
         }
 
-        Vector2Int spawnTile = FindSpawnTile(definition.PreferredSpawnTile);
+        IReadOnlyList<TacticsEnemySpawnEntry> enemySpawnEntries = mapGenerator.EnemySpawnEntries;
+        for (int i = 0; i < enemySpawnEntries.Count; i++)
+        {
+            TacticsEnemySpawnEntry spawnEntry = enemySpawnEntries[i];
+            if (!spawnEntry.IsValid)
+            {
+                continue;
+            }
 
-        GameObject characterRoot = new GameObject(definition.DisplayName);
-        GameObject visualObject = new GameObject("Visual");
-        visualObject.transform.SetParent(characterRoot.transform, false);
+            List<Vector2Int> spawnTiles = mapGenerator.GetRandomSpawnTiles(spawnEntry.Count, occupiedTiles);
+            if (spawnTiles.Count < spawnEntry.Count)
+            {
+                Debug.LogWarning(
+                    $"Tactics bootstrap could only find {spawnTiles.Count} valid spawn tiles for '{spawnEntry.CharacterDefinition.DisplayName}' " +
+                    $"out of the requested {spawnEntry.Count}.");
+            }
 
-        SpriteRenderer spriteRenderer = visualObject.AddComponent<SpriteRenderer>();
-        spriteRenderer.sortingLayerName = "Default";
+            for (int tileIndex = 0; tileIndex < spawnTiles.Count; tileIndex++)
+            {
+                TacticsCharacterController enemy = TacticsCharacterSpawner.SpawnCharacter(
+                    mapGenerator,
+                    spawnEntry.CharacterDefinition,
+                    spawnTiles[tileIndex]);
 
-        TacticsCharacterAnimator animator = characterRoot.AddComponent<TacticsCharacterAnimator>();
-        animator.Initialize(spriteRenderer, definition);
-
-        BoxCollider2D selectionCollider = visualObject.AddComponent<BoxCollider2D>();
-        Vector2 spriteSize = spriteRenderer.sprite != null ? spriteRenderer.sprite.bounds.size : new Vector2(0.2f, 0.3f);
-        selectionCollider.size = spriteSize;
-        selectionCollider.offset = Vector2.zero;
-
-        TacticsCharacterController characterController = characterRoot.AddComponent<TacticsCharacterController>();
-        characterController.Initialize(mapGenerator, animator, definition, spawnTile);
+                if (enemy != null)
+                {
+                    occupiedTiles.Add(enemy.GridPosition);
+                }
+            }
+        }
     }
 
-    private Vector2Int FindSpawnTile(Vector2Int requestedTile)
+    private Vector2Int FindSpawnTile(Vector2Int requestedTile, HashSet<Vector2Int> occupiedTiles)
     {
-        if (IsSpawnTileAvailable(requestedTile))
+        if (IsSpawnTileAvailable(requestedTile, occupiedTiles))
         {
             return requestedTile;
         }
@@ -234,7 +270,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
                 for (int y = center.y - radius; y <= center.y + radius; y++)
                 {
                     Vector2Int candidate = new Vector2Int(x, y);
-                    if (IsSpawnTileAvailable(candidate))
+                    if (IsSpawnTileAvailable(candidate, occupiedTiles))
                     {
                         return candidate;
                     }
@@ -245,17 +281,22 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         return mapGenerator.GetCenterTile();
     }
 
-    private bool IsSpawnTileAvailable(Vector2Int tile)
+    private bool IsSpawnTileAvailable(Vector2Int tile, HashSet<Vector2Int> occupiedTiles)
     {
         if (!mapGenerator.IsTraversable(tile.x, tile.y))
         {
             return false;
         }
 
-        TacticsCharacterController[] characters = FindObjectsByType<TacticsCharacterController>(FindObjectsSortMode.None);
-        for (int i = 0; i < characters.Length; i++)
+        if (occupiedTiles != null && occupiedTiles.Contains(tile))
         {
-            if (characters[i].GridPosition == tile)
+            return false;
+        }
+
+        TacticsCharacterController[] existingCharacters = FindObjectsByType<TacticsCharacterController>(FindObjectsSortMode.None);
+        for (int i = 0; i < existingCharacters.Length; i++)
+        {
+            if (existingCharacters[i] != null && existingCharacters[i].GridPosition == tile)
             {
                 return false;
             }

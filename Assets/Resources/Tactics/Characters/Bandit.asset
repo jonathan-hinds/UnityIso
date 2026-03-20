@@ -1,0 +1,44 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 22e7b594db971ee418d48f83c5b2661c, type: 3}
+  m_Name: Bandit
+  m_EditorClassIdentifier: 
+  characterId: bandit
+  displayName: Bandit
+  team: 1
+  spriteSheetResourcePath: Characters/sprite-sheet_export_8x4_48x64
+  walkFramesPerSecond: 7
+  baseColor: {r: 1, g: 0.82, b: 0.82, a: 1}
+  selectedColor: {r: 1, g: 0.58, b: 0.58, a: 1}
+  moveSpeed: 1
+  jumpDuration: 0.5
+  jumpArcHeight: 0.5
+  maxStepUp: 1
+  maxStepDown: 1
+  tileAnchorOffset: {x: 0.18, y: 0.125}
+  preferredSpawnTile: {x: 7, y: 7}
+  baseStats:
+    primaryStats:
+      stamina: 4
+      strength: 5
+      agility: 4
+      wisdom: 3
+      intelligence: 3
+    derivedStatModifiers:
+      bonusMaxHitPoints: -2
+      bonusMaxMana: -12
+      bonusMaxStamina: 0
+      bonusBaseDamageMin: -1
+      bonusBaseDamageMax: 0
+    mobilityStats:
+      moveRange: 4
+      jumpHeight: 2
