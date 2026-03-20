@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 [DisallowMultipleComponent]
 public class IsometricTileHoverHighlighter : MonoBehaviour
@@ -85,8 +86,16 @@ public class IsometricTileHoverHighlighter : MonoBehaviour
 
     private void UpdateHoveredTile()
     {
-        Vector3 mousePosition = Input.mousePosition;
-        Vector3 worldPosition = targetCamera.ScreenToWorldPoint(mousePosition);
+        Mouse mouse = Mouse.current;
+        if (mouse == null)
+        {
+            currentTile = null;
+            lineRenderer.enabled = false;
+            return;
+        }
+
+        Vector2 screenPosition = mouse.position.ReadValue();
+        Vector3 worldPosition = targetCamera.ScreenToWorldPoint(new Vector3(screenPosition.x, screenPosition.y, 0f));
         Vector2 point = new Vector2(worldPosition.x, worldPosition.y);
 
         Collider2D[] hits = Physics2D.OverlapPointAll(point);
