@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
 
 [DisallowMultipleComponent]
 [RequireComponent(typeof(Camera))]
@@ -52,19 +53,32 @@ public class MouseCameraController : MonoBehaviour
 
     private void HandleZoomInput()
     {
-        float scrollDelta = Input.mouseScrollDelta.y;
+        Mouse mouse = Mouse.current;
+        if (mouse == null)
+        {
+            return;
+        }
+
+        float scrollDelta = mouse.scroll.ReadValue().y;
         if (Mathf.Approximately(scrollDelta, 0f))
         {
             return;
         }
 
-        targetZoom -= scrollDelta * zoomStep;
+        targetZoom -= Mathf.Sign(scrollDelta) * zoomStep;
         targetZoom = Mathf.Clamp(targetZoom, minZoom, maxZoom);
     }
 
     private void HandlePanInput()
     {
-        if (Input.GetMouseButtonDown(2))
+        Mouse mouse = Mouse.current;
+        if (mouse == null)
+        {
+            isDragging = false;
+            return;
+        }
+
+        if (mouse.middleButton.wasPressedThisFrame)
         {
             if (blockWhenPointerOverUi && IsPointerOverUi())
             {
@@ -78,7 +92,7 @@ public class MouseCameraController : MonoBehaviour
             }
         }
 
-        if (Input.GetMouseButtonUp(2))
+        if (mouse.middleButton.wasReleasedThisFrame)
         {
             isDragging = false;
         }
@@ -121,7 +135,14 @@ public class MouseCameraController : MonoBehaviour
 
     private bool TryGetMouseWorldPoint(out Vector3 worldPoint)
     {
-        Ray ray = controlledCamera.ScreenPointToRay(Input.mousePosition);
+        if (controlledCamera == null || Mouse.current == null)
+        {
+            worldPoint = default;
+            return false;
+        }
+
+        Vector2 screenPosition = Mouse.current.position.ReadValue();
+        Ray ray = controlledCamera.ScreenPointToRay(screenPosition);
         if (dragPlane.Raycast(ray, out float enter))
         {
             worldPoint = ray.GetPoint(enter);

@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
 
 [DisallowMultipleComponent]
 public class TacticsPlayerController : MonoBehaviour
@@ -19,7 +20,8 @@ public class TacticsPlayerController : MonoBehaviour
 
     private void Update()
     {
-        if (!Input.GetMouseButtonDown(0))
+        Mouse mouse = Mouse.current;
+        if (mouse == null || !mouse.leftButton.wasPressedThisFrame)
         {
             return;
         }
@@ -38,7 +40,8 @@ public class TacticsPlayerController : MonoBehaviour
             }
         }
 
-        Vector3 worldPosition = targetCamera.ScreenToWorldPoint(Input.mousePosition);
+        Vector2 screenPosition = mouse.position.ReadValue();
+        Vector3 worldPosition = targetCamera.ScreenToWorldPoint(new Vector3(screenPosition.x, screenPosition.y, 0f));
         Vector2 point = new Vector2(worldPosition.x, worldPosition.y);
         Collider2D[] hits = Physics2D.OverlapPointAll(point);
 
