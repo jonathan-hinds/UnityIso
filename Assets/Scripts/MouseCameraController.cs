@@ -19,6 +19,7 @@ public class MouseCameraController : MonoBehaviour
     private Plane dragPlane;
     private Vector3 targetPosition;
     private Vector3 dragStartWorldPoint;
+    private Vector3 dragStartCameraPosition;
     private float targetZoom;
     private bool isDragging;
 
@@ -31,6 +32,15 @@ public class MouseCameraController : MonoBehaviour
         targetPosition = transform.position;
         targetZoom = controlledCamera.orthographicSize;
         ClampTargets();
+    }
+
+    private void OnEnable()
+    {
+        targetPosition = transform.position;
+        if (controlledCamera != null)
+        {
+            targetZoom = controlledCamera.orthographicSize;
+        }
     }
 
     private void Update()
@@ -63,6 +73,7 @@ public class MouseCameraController : MonoBehaviour
 
             if (TryGetMouseWorldPoint(out dragStartWorldPoint))
             {
+                dragStartCameraPosition = targetPosition;
                 isDragging = true;
             }
         }
@@ -83,7 +94,8 @@ public class MouseCameraController : MonoBehaviour
         }
 
         Vector3 dragOffset = dragStartWorldPoint - currentWorldPoint;
-        targetPosition += dragOffset;
+        targetPosition = dragStartCameraPosition + dragOffset;
+        targetPosition.z = transform.position.z;
     }
 
     private void SmoothCameraMotion()
