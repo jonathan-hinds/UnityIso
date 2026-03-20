@@ -5,6 +5,8 @@ using UnityEngine;
 [DisallowMultipleComponent]
 public class ProceduralIsometricMapGenerator : MonoBehaviour
 {
+    public event Action MapGenerated;
+
     [Header("Generation")]
     [SerializeField] private bool generateOnStart = true;
     [SerializeField] private int seed = 12345;
@@ -57,6 +59,14 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
     private Sprite cachedBottomRightEdgeShadowSprite;
 
     private readonly List<SpriteRenderer> spawnedRenderers = new List<SpriteRenderer>();
+    private int[,] currentHeights;
+
+    public int Length => length;
+    public int Width => width;
+    public float TileWidth => tileWidth;
+    public float TileHeight => tileHeight;
+    public float ElevationStep => elevationStep;
+    public bool HasGeneratedMap => currentHeights != null;
 
     private void Start()
     {
@@ -76,14 +86,14 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         ClearGeneratedMap();
         spawnedRenderers.Clear();
 
-        int[,] generatedHeights = GenerateHeights();
+        currentHeights = GenerateHeights();
         Transform generatedRoot = CreateGeneratedRoot();
 
         for (int x = 0; x < width; x++)
         {
             for (int y = 0; y < length; y++)
             {
-                int height = generatedHeights[x, y];
+                int height = currentHeights[x, y];
                 if (height <= 0)
                 {
                     continue;
@@ -109,10 +119,10 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                 // heights therefore merge into one platform with no shadow seam between
                 // tiles, while lower surrounding tiles get a continuous border around the
                 // raised area.
-                int lowerLeftNeighborHeight = GetHeight(generatedHeights, x - 1, y);
-                int lowerRightNeighborHeight = GetHeight(generatedHeights, x, y - 1);
-                int upperLeftNeighborHeight = GetHeight(generatedHeights, x, y + 1);
-                int upperRightNeighborHeight = GetHeight(generatedHeights, x + 1, y);
+                int lowerLeftNeighborHeight = GetHeight(currentHeights, x - 1, y);
+                int lowerRightNeighborHeight = GetHeight(currentHeights, x, y - 1);
+                int upperLeftNeighborHeight = GetHeight(currentHeights, x, y + 1);
+                int upperRightNeighborHeight = GetHeight(currentHeights, x + 1, y);
 
                 CreateTilePart(
                     generatedRoot,
@@ -226,6 +236,8 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         {
             FrameMainCamera();
         }
+
+        MapGenerated?.Invoke();
     }
 
     private void ValidateSettings()
@@ -357,6 +369,54 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         }
 
         return smoothed;
+    }
+
+    public bool IsWithinBounds(int x, int y)
+    {
+        return x >= 0 && x < width && y >= 0 && y < length;
+    }
+
+    public int GetTileElevation(int x, int y)
+    {
+        if (currentHeights == null)
+        {
+            return 0;
+        }
+
+        return GetHeight(currentHeights, x, y);
+    }
+
+    public bool IsTraversable(int x, int y)
+    {
+        return GetTileElevation(x, y) > 0;
+    }
+
+    public bool TryGetTileWorldPosition(int x, int y, out Vector3 worldPosition)
+    {
+        int elevation = GetTileElevation(x, y);
+        if (elevation <= 0)
+        {
+            worldPosition = default;
+            return false;
+        }
+
+        worldPosition = GridToWorld(x, y, elevation);
+        return true;
+    }
+
+    public Vector3 GridToWorldPosition(int x, int y, int elevation)
+    {
+        return GridToWorld(x, y, elevation);
+    }
+
+    public int GetCharacterSortingOrder(int x, int y, int elevation)
+    {
+        return CalculateSortingOrder(x, y, elevation, 90);
+    }
+
+    public Vector2Int GetCenterTile()
+    {
+        return new Vector2Int(width / 2, length / 2);
     }
 
     private int GetHeight(int[,] heights, int x, int y)

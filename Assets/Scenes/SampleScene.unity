@@ -273,7 +273,7 @@ MonoBehaviour:
   zoomSmoothSpeed: 12
   minZoom: 2
   maxZoom: 20
-  panSmoothSpeed: 12
+  panSmoothSpeed: 1
   blockWhenPointerOverUi: 1
 --- !u!1 &619394800
 GameObject:
@@ -458,10 +458,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   generateOnStart: 1
   seed: 1233
-  length: 30
-  width: 10
+  length: 100
+  width: 100
   minElevation: 1
-  maxElevation: 4
+  maxElevation: 6
   noiseScale: 5
   noiseOctaves: 2
   persistence: 0.5
