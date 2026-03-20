@@ -19,8 +19,9 @@ public class TacticsActionMenuView : MonoBehaviour
     private GameObject panelRoot;
     private Text characterNameText;
     private Text statsText;
-    private Text promptText;
     private Button moveButton;
+    private Button endTurnButton;
+    private LayoutElement footerSpacer;
     private Font sharedFont;
 
     public event Action<TacticsHudActionType> ActionSelected;
@@ -31,7 +32,7 @@ public class TacticsActionMenuView : MonoBehaviour
         Hide();
     }
 
-    public void ShowForCharacter(TacticsCharacterController character, bool awaitingMoveTarget)
+    public void ShowForCharacter(TacticsCharacterController character, bool awaitingMoveTarget, int roundNumber, int turnNumber, int participantCount)
     {
         EnsureBuilt();
 
@@ -43,13 +44,8 @@ public class TacticsActionMenuView : MonoBehaviour
 
         panelRoot.SetActive(true);
         characterNameText.text = character.DisplayName.ToUpperInvariant();
-        statsText.text =
-            $"HP {character.CurrentHitPoints}/{character.MaxHitPoints}   ST {character.CurrentStamina}/{character.MaxStamina}   MP {character.CurrentMana}/{character.MaxMana}\n" +
-            $"DMG {character.BaseDamageMin}-{character.BaseDamageMax}   MOVE {character.MoveRange}   JUMP {character.JumpHeight}";
-        promptText.text = awaitingMoveTarget
-            ? "SELECT A DESTINATION TILE"
-            : "CHOOSE AN ACTION";
-        moveButton.interactable = character.CanReceiveCommands && !awaitingMoveTarget;
+        moveButton.interactable = character.CanMoveThisTurn && !awaitingMoveTarget;
+        endTurnButton.interactable = character.CanEndTurn;
     }
 
     public void Hide()
@@ -115,7 +111,7 @@ public class TacticsActionMenuView : MonoBehaviour
         panelLayout.padding = new RectOffset(18, 18, 18, 18);
         panelLayout.spacing = 12f;
         panelLayout.childAlignment = TextAnchor.UpperLeft;
-        panelLayout.childControlHeight = false;
+        panelLayout.childControlHeight = true;
         panelLayout.childControlWidth = true;
         panelLayout.childForceExpandHeight = false;
 
@@ -131,11 +127,12 @@ public class TacticsActionMenuView : MonoBehaviour
         headerLayout.childForceExpandHeight = false;
 
         characterNameText = CreateText("CharacterName", headerRoot.transform, 24, FontStyle.Bold, primaryTextColor);
-        statsText = CreateText("Stats", headerRoot.transform, 14, FontStyle.Normal, secondaryTextColor);
 
         GameObject divider = CreateUiObject("Divider", panelRoot.transform);
         LayoutElement dividerLayout = divider.AddComponent<LayoutElement>();
-        dividerLayout.preferredHeight = 2f;
+        dividerLayout.preferredHeight = 4f;
+        dividerLayout.minHeight = 4f;
+        dividerLayout.flexibleHeight = 0f;
 
         Image dividerImage = divider.AddComponent<Image>();
         dividerImage.color = accentColor;
@@ -149,11 +146,13 @@ public class TacticsActionMenuView : MonoBehaviour
         actionsLayout.childForceExpandHeight = false;
 
         moveButton = CreateButton("MoveButton", "MOVE", actionsRoot.transform, HandleMoveClicked);
+        endTurnButton = CreateButton("EndTurnButton", "END TURN", actionsRoot.transform, HandleEndTurnClicked);
 
-        promptText = CreateText("Prompt", panelRoot.transform, 12, FontStyle.Normal, secondaryTextColor);
-        promptText.alignment = TextAnchor.MiddleLeft;
-        LayoutElement promptLayout = promptText.gameObject.AddComponent<LayoutElement>();
-        promptLayout.preferredHeight = 20f;
+        GameObject footerSpacerObject = CreateUiObject("FooterSpacer", panelRoot.transform);
+        footerSpacer = footerSpacerObject.AddComponent<LayoutElement>();
+        footerSpacer.preferredHeight = 20f;
+        footerSpacer.minHeight = 20f;
+        footerSpacer.flexibleHeight = 0f;
     }
 
     private Button CreateButton(string objectName, string label, Transform parent, UnityAction onClick)
@@ -213,6 +212,11 @@ public class TacticsActionMenuView : MonoBehaviour
     private void HandleMoveClicked()
     {
         ActionSelected?.Invoke(TacticsHudActionType.Move);
+    }
+
+    private void HandleEndTurnClicked()
+    {
+        ActionSelected?.Invoke(TacticsHudActionType.EndTurn);
     }
 
     private static GameObject CreateUiObject(string objectName, Transform parent)

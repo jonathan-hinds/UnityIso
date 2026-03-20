@@ -63,9 +63,12 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         EnsureEventSystem();
         TacticsActionMenuView actionMenuView = EnsureActionMenuView();
         TacticsSelectionPanelView selectionPanelView = EnsureSelectionPanelView();
+        EnsureTurnCameraDirector();
+        TacticsTurnManager turnManager = EnsureTurnManager();
         EnsurePlayerController();
-        BindHud(actionMenuView, selectionPanelView);
         EnsureCharacters();
+        BindHud(actionMenuView, selectionPanelView, turnManager);
+        turnManager?.RefreshParticipantsAndStartBattle();
     }
 
     private void EnsurePlayerController()
@@ -121,13 +124,41 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         return hudObject.AddComponent<TacticsSelectionPanelView>();
     }
 
-    private void BindHud(TacticsActionMenuView actionMenuView, TacticsSelectionPanelView selectionPanelView)
+    private void BindHud(TacticsActionMenuView actionMenuView, TacticsSelectionPanelView selectionPanelView, TacticsTurnManager turnManager)
     {
         TacticsPlayerController playerController = FindFirstObjectByType<TacticsPlayerController>();
         if (playerController != null)
         {
             playerController.AssignHud(actionMenuView);
             playerController.AssignSelectionHud(selectionPanelView);
+            playerController.AssignTurnManager(turnManager);
+        }
+    }
+
+    private TacticsTurnManager EnsureTurnManager()
+    {
+        TacticsTurnManager existingManager = FindFirstObjectByType<TacticsTurnManager>();
+        if (existingManager != null)
+        {
+            return existingManager;
+        }
+
+        GameObject managerObject = new GameObject("Tactics Turn Manager");
+        managerObject.AddComponent<TacticsTurnManager>();
+        return managerObject.GetComponent<TacticsTurnManager>();
+    }
+
+    private void EnsureTurnCameraDirector()
+    {
+        if (FindFirstObjectByType<TacticsTurnCameraDirector>() != null)
+        {
+            return;
+        }
+
+        Camera mainCamera = Camera.main;
+        if (mainCamera != null)
+        {
+            mainCamera.gameObject.AddComponent<TacticsTurnCameraDirector>();
         }
     }
 

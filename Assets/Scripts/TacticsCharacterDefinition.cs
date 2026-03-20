@@ -13,6 +13,7 @@ public sealed class TacticsCharacterDefinition : ScriptableObject
     [Header("Identity")]
     [SerializeField] private string characterId = "character";
     [SerializeField] private string displayName = "Character";
+    [SerializeField] private TacticsUnitTeam team = TacticsUnitTeam.Player;
 
     [Header("Visuals")]
     [SerializeField] private string spriteSheetResourcePath = "Characters/sprite-sheet_export_8x4_48x64";
@@ -36,6 +37,7 @@ public sealed class TacticsCharacterDefinition : ScriptableObject
 
     public string CharacterId => characterId;
     public string DisplayName => string.IsNullOrWhiteSpace(displayName) ? name : displayName;
+    public TacticsUnitTeam Team => team;
     public float WalkFramesPerSecond => walkFramesPerSecond;
     public Color BaseColor => baseColor;
     public Color SelectedColor => selectedColor;

@@ -23,6 +23,9 @@ public class MouseCameraController : MonoBehaviour
     private Vector3 dragStartCameraPosition;
     private float targetZoom;
     private bool isDragging;
+    private bool inputEnabled = true;
+
+    public bool InputEnabled => inputEnabled;
 
     private void Awake()
     {
@@ -46,9 +49,33 @@ public class MouseCameraController : MonoBehaviour
 
     private void Update()
     {
-        HandleZoomInput();
-        HandlePanInput();
+        if (inputEnabled)
+        {
+            HandleZoomInput();
+            HandlePanInput();
+        }
+
         SmoothCameraMotion();
+    }
+
+    public void SetInputEnabled(bool enabled)
+    {
+        inputEnabled = enabled;
+        if (!inputEnabled)
+        {
+            isDragging = false;
+        }
+    }
+
+    public void SetTargetPosition(Vector3 worldPosition, bool snapImmediately = false)
+    {
+        targetPosition = new Vector3(worldPosition.x, worldPosition.y, transform.position.z);
+        ClampTargets();
+
+        if (snapImmediately)
+        {
+            transform.position = targetPosition;
+        }
     }
 
     private void HandleZoomInput()

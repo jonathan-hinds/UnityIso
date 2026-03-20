@@ -16,6 +16,7 @@ public class TacticsPlayerController : MonoBehaviour
     [SerializeField] private bool blockWhenPointerOverUi = true;
     [SerializeField] private TacticsActionMenuView actionMenuView;
     [SerializeField] private TacticsSelectionPanelView selectionPanelView;
+    [SerializeField] private TacticsTurnManager turnManager;
 
     private TacticsCharacterController selectedCharacter;
     private SelectionState selectionState;
@@ -36,6 +37,11 @@ public class TacticsPlayerController : MonoBehaviour
         {
             selectionPanelView = FindFirstObjectByType<TacticsSelectionPanelView>();
         }
+
+        if (turnManager == null)
+        {
+            turnManager = FindFirstObjectByType<TacticsTurnManager>();
+        }
     }
 
     private void OnEnable()
@@ -50,10 +56,24 @@ public class TacticsPlayerController : MonoBehaviour
             selectionPanelView = FindFirstObjectByType<TacticsSelectionPanelView>();
         }
 
+        if (turnManager == null)
+        {
+            turnManager = FindFirstObjectByType<TacticsTurnManager>();
+        }
+
         if (actionMenuView != null)
         {
             actionMenuView.ActionSelected -= HandleActionSelected;
             actionMenuView.ActionSelected += HandleActionSelected;
+        }
+
+        if (turnManager != null)
+        {
+            turnManager.ActiveParticipantChanged -= HandleActiveParticipantChanged;
+            turnManager.ActiveParticipantChanged += HandleActiveParticipantChanged;
+            turnManager.TurnStateChanged -= HandleTurnStateChanged;
+            turnManager.TurnStateChanged += HandleTurnStateChanged;
+            HandleActiveParticipantChanged(turnManager.ActiveParticipant);
         }
     }
 
@@ -63,10 +83,23 @@ public class TacticsPlayerController : MonoBehaviour
         {
             actionMenuView.ActionSelected -= HandleActionSelected;
         }
+
+        if (turnManager != null)
+        {
+            turnManager.ActiveParticipantChanged -= HandleActiveParticipantChanged;
+            turnManager.TurnStateChanged -= HandleTurnStateChanged;
+        }
+
+        SubscribeToSelectedCharacter(null);
     }
 
     private void Update()
     {
+        if (turnManager != null && turnManager.IsTransitioningTurns)
+        {
+            return;
+        }
+
         HandleCancelInput();
 
         Mouse mouse = Mouse.current;
@@ -96,12 +129,16 @@ public class TacticsPlayerController : MonoBehaviour
 
         if (TryGetClickedCharacter(hits, out TacticsCharacterController clickedCharacter))
         {
-            SelectCharacter(clickedCharacter);
+            if (ReferenceEquals(clickedCharacter, GetActivePlayerCharacter()))
+            {
+                SelectCharacter(clickedCharacter, SelectionState.CharacterSelected);
+            }
+
             return;
         }
 
         if (selectionState == SelectionState.AwaitingMoveTarget &&
-            selectedCharacter != null &&
+            ReferenceEquals(selectedCharacter, GetActivePlayerCharacter()) &&
             TryGetClickedTile(hits, out IsometricTileHoverInfo clickedTile))
         {
             if (selectedCharacter.TryMoveTo(new Vector2Int(clickedTile.GridX, clickedTile.GridY)))
@@ -113,19 +150,17 @@ public class TacticsPlayerController : MonoBehaviour
             return;
         }
 
-        if (selectionState == SelectionState.CharacterSelected)
-        {
-            SelectCharacter(null);
-        }
     }
 
-    private void SelectCharacter(TacticsCharacterController character)
+    private void SelectCharacter(TacticsCharacterController character, SelectionState nextState)
     {
-        if (selectedCharacter == character && selectionState == SelectionState.CharacterSelected)
+        if (selectedCharacter == character && selectionState == nextState)
         {
             RefreshHud();
             return;
         }
+
+        SubscribeToSelectedCharacter(null);
 
         if (selectedCharacter != null)
         {
@@ -137,7 +172,8 @@ public class TacticsPlayerController : MonoBehaviour
         if (selectedCharacter != null)
         {
             selectedCharacter.SetSelected(true);
-            selectionState = SelectionState.CharacterSelected;
+            selectionState = nextState;
+            SubscribeToSelectedCharacter(selectedCharacter);
         }
         else
         {
@@ -225,9 +261,34 @@ public class TacticsPlayerController : MonoBehaviour
         RefreshHud();
     }
 
+    public void AssignTurnManager(TacticsTurnManager manager)
+    {
+        if (turnManager != null)
+        {
+            turnManager.ActiveParticipantChanged -= HandleActiveParticipantChanged;
+            turnManager.TurnStateChanged -= HandleTurnStateChanged;
+        }
+
+        turnManager = manager;
+
+        if (turnManager != null)
+        {
+            turnManager.ActiveParticipantChanged -= HandleActiveParticipantChanged;
+            turnManager.ActiveParticipantChanged += HandleActiveParticipantChanged;
+            turnManager.TurnStateChanged -= HandleTurnStateChanged;
+            turnManager.TurnStateChanged += HandleTurnStateChanged;
+            HandleActiveParticipantChanged(turnManager.ActiveParticipant);
+        }
+        else
+        {
+            SelectCharacter(null, SelectionState.None);
+        }
+    }
+
     private void HandleActionSelected(TacticsHudActionType actionType)
     {
-        if (selectedCharacter == null)
+        TacticsCharacterController activePlayerCharacter = GetActivePlayerCharacter();
+        if (!ReferenceEquals(selectedCharacter, activePlayerCharacter))
         {
             return;
         }
@@ -235,12 +296,15 @@ public class TacticsPlayerController : MonoBehaviour
         switch (actionType)
         {
             case TacticsHudActionType.Move:
-                if (selectedCharacter.CanReceiveCommands)
+                if (selectedCharacter.CanMoveThisTurn)
                 {
                     selectionState = SelectionState.AwaitingMoveTarget;
                     RefreshHud();
                 }
 
+                break;
+            case TacticsHudActionType.EndTurn:
+                turnManager?.TryEndActiveTurn();
                 break;
         }
     }
@@ -259,12 +323,6 @@ public class TacticsPlayerController : MonoBehaviour
         {
             selectionState = SelectionState.CharacterSelected;
             RefreshHud();
-            return;
-        }
-
-        if (selectionState == SelectionState.CharacterSelected)
-        {
-            SelectCharacter(null);
         }
     }
 
@@ -277,11 +335,68 @@ public class TacticsPlayerController : MonoBehaviour
             return;
         }
 
+        TacticsCharacterController activeCharacter = turnManager != null ? turnManager.ActiveCharacter : null;
+        bool showActionMenu =
+            ReferenceEquals(selectedCharacter, activeCharacter) &&
+            selectedCharacter.IsPlayerControlled &&
+            selectedCharacter.IsTurnActive;
+
         if (actionMenuView != null)
         {
-            actionMenuView.ShowForCharacter(selectedCharacter, selectionState == SelectionState.AwaitingMoveTarget);
+            if (showActionMenu)
+            {
+                actionMenuView.ShowForCharacter(
+                    selectedCharacter,
+                    selectionState == SelectionState.AwaitingMoveTarget,
+                    turnManager != null ? turnManager.RoundNumber : 1,
+                    turnManager != null ? turnManager.TurnNumber : 1,
+                    turnManager != null ? turnManager.ParticipantCount : 1);
+            }
+            else
+            {
+                actionMenuView.Hide();
+            }
         }
 
         selectionPanelView?.Show(selectedCharacter);
+    }
+
+    private void HandleActiveParticipantChanged(ITacticsTurnParticipant participant)
+    {
+        TacticsCharacterController activeCharacter = participant as TacticsCharacterController;
+        SelectionState nextState = activeCharacter != null && activeCharacter.IsPlayerControlled
+            ? SelectionState.CharacterSelected
+            : SelectionState.None;
+        SelectCharacter(activeCharacter, nextState);
+    }
+
+    private void HandleTurnStateChanged()
+    {
+        RefreshHud();
+    }
+
+    private void HandleSelectedCharacterStateChanged(ITacticsTurnParticipant participant)
+    {
+        RefreshHud();
+    }
+
+    private void SubscribeToSelectedCharacter(TacticsCharacterController character)
+    {
+        if (selectedCharacter != null)
+        {
+            selectedCharacter.TurnStateChanged -= HandleSelectedCharacterStateChanged;
+        }
+
+        if (character != null)
+        {
+            character.TurnStateChanged -= HandleSelectedCharacterStateChanged;
+            character.TurnStateChanged += HandleSelectedCharacterStateChanged;
+        }
+    }
+
+    private TacticsCharacterController GetActivePlayerCharacter()
+    {
+        TacticsCharacterController activeCharacter = turnManager != null ? turnManager.ActiveCharacter : null;
+        return activeCharacter != null && activeCharacter.IsPlayerControlled ? activeCharacter : null;
     }
 }

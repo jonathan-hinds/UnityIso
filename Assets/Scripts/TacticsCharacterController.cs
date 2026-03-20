@@ -1,9 +1,10 @@
 using System.Collections;
 using System.Collections.Generic;
+using System;
 using UnityEngine;
 
 [DisallowMultipleComponent]
-public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTarget
+public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTarget, ITacticsTurnParticipant
 {
     [Header("References")]
     [SerializeField] private ProceduralIsometricMapGenerator mapGenerator;
@@ -28,12 +29,15 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     private Vector2 lastAppliedTileAnchorOffset;
     private TacticsCharacterDerivedStats derivedStats;
     private TacticsCharacterRuntimeResources runtimeResources;
+    private TacticsTurnManager turnManager;
 
     public Vector2Int GridPosition { get; private set; }
     public bool IsSelected { get; private set; }
     public bool IsMoving => movementRoutine != null;
     public TacticsCharacterDefinition CharacterDefinition => characterDefinition;
     public string DisplayName => characterDefinition != null ? characterDefinition.DisplayName : name;
+    public TacticsUnitTeam Team => characterDefinition != null ? characterDefinition.Team : TacticsUnitTeam.Player;
+    public bool IsPlayerControlled => Team == TacticsUnitTeam.Player;
     public TacticsCharacterDerivedStats DerivedStats => derivedStats;
     public TacticsCharacterRuntimeResources RuntimeResources => runtimeResources;
     public int CurrentHitPoints => runtimeResources.hitPoints;
@@ -46,7 +50,16 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     public int BaseDamageMax => derivedStats.baseDamageMax;
     public int MoveRange => characterDefinition != null ? characterDefinition.BaseStats.MoveRange : 0;
     public int JumpHeight => characterDefinition != null ? characterDefinition.BaseStats.JumpHeight : 0;
+    public bool HasMovedThisTurn { get; private set; }
+    public bool IsTurnActive { get; private set; }
     public bool CanReceiveCommands => mapGenerator != null && mapGenerator.HasGeneratedMap && !IsMoving;
+    public bool CanMoveThisTurn => IsTurnActive && !HasMovedThisTurn && CanReceiveCommands;
+    public bool CanEndTurn => IsTurnActive && !IsMoving;
+    public bool IsTurnEligible => isActiveAndEnabled;
+    public Vector3 TurnFocusPoint => transform.position;
+
+    public event Action<ITacticsTurnParticipant> TurnEnded;
+    public event Action<ITacticsTurnParticipant> TurnStateChanged;
 
     public TacticsSelectionHudData BuildSelectionHudData()
     {
@@ -72,6 +85,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     private void OnEnable()
     {
         SubscribeToMap();
+        RegisterWithTurnManager();
     }
 
     private void Start()
@@ -94,6 +108,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         }
 
         SnapToTile(GetBestValidTile(startingGridPosition));
+        RegisterWithTurnManager();
     }
 
     private void Update()
@@ -112,6 +127,10 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     private void OnDisable()
     {
         UnsubscribeFromMap();
+        if (turnManager != null)
+        {
+            turnManager.UnregisterParticipant(this);
+        }
     }
 
     public void SetSelected(bool isSelected)
@@ -122,12 +141,39 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
 
     public bool TryMoveTo(Vector2Int destination)
     {
+        if (!CanMoveThisTurn)
+        {
+            return false;
+        }
+
         if (!TryGetMovementPath(destination, out List<Vector2Int> path))
         {
             return false;
         }
 
+        HasMovedThisTurn = true;
+        NotifyTurnStateChanged();
         movementRoutine = StartCoroutine(FollowPath(path));
+        return true;
+    }
+
+    public void BeginTurn()
+    {
+        IsTurnActive = true;
+        HasMovedThisTurn = false;
+        NotifyTurnStateChanged();
+    }
+
+    public bool TryEndTurn()
+    {
+        if (!CanEndTurn)
+        {
+            return false;
+        }
+
+        IsTurnActive = false;
+        NotifyTurnStateChanged();
+        TurnEnded?.Invoke(this);
         return true;
     }
 
@@ -175,6 +221,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
 
         movementRoutine = null;
         characterAnimator?.SetIdle(currentDirection);
+        NotifyTurnStateChanged();
     }
 
     private IEnumerator MoveBetweenTiles(Vector2Int from, Vector2Int to)
@@ -358,5 +405,20 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         startingGridPosition = definition.PreferredSpawnTile;
         derivedStats = definition.BaseStats.CalculateDerivedStats();
         runtimeResources = definition.BaseStats.CreateRuntimeResources();
+    }
+
+    private void RegisterWithTurnManager()
+    {
+        if (turnManager == null)
+        {
+            turnManager = FindFirstObjectByType<TacticsTurnManager>();
+        }
+
+        turnManager?.RegisterParticipant(this);
+    }
+
+    private void NotifyTurnStateChanged()
+    {
+        TurnStateChanged?.Invoke(this);
     }
 }
