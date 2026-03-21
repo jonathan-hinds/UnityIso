@@ -504,6 +504,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         renderer.sortingOrder = CalculateSortingOrder(gridX, gridY, layer, sortBias);
         TacticsForegroundOccluder occluder = part.AddComponent<TacticsForegroundOccluder>();
         occluder.Initialize(gridX, gridY, layer, sortBias);
+        occluder.SetOcclusionPolygon(BuildOcclusionPolygon(sortBias));
 
         spawnedRenderers.Add(renderer);
         generatedOccluderGroup?.RegisterOccluder(renderer);
@@ -580,6 +581,59 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         int rowTieBreak = (length - gridY) * 10;
         int columnTieBreak = (width - gridX) * 2;
         return backToFrontOrder + rowTieBreak + columnTieBreak + sortBias;
+    }
+
+    private Vector2[] BuildOcclusionPolygon(int sortBias)
+    {
+        Vector2 top = new Vector2(0f, tileHeight * 0.5f);
+        Vector2 right = new Vector2(tileWidth * 0.5f, 0f);
+        Vector2 bottom = new Vector2(0f, -tileHeight * 0.5f);
+        Vector2 left = new Vector2(-tileWidth * 0.5f, 0f);
+        Vector2 center = Vector2.zero;
+
+        switch (sortBias)
+        {
+            case 0:
+                return new[]
+                {
+                    left,
+                    center,
+                    new Vector2(0f, -elevationStep),
+                    new Vector2(-tileWidth * 0.5f, -(elevationStep + (tileHeight * 0.5f)))
+                };
+            case 1:
+                return new[]
+                {
+                    center,
+                    right,
+                    new Vector2(tileWidth * 0.5f, -(elevationStep + (tileHeight * 0.5f))),
+                    new Vector2(0f, -elevationStep)
+                };
+            case 3:
+                return BuildTopEdgeBand(top, left, center);
+            case 4:
+                return BuildTopEdgeBand(right, top, center);
+            case 5:
+                return BuildTopEdgeBand(left, bottom, center);
+            case 6:
+                return BuildTopEdgeBand(bottom, right, center);
+            default:
+                return null;
+        }
+    }
+
+    private Vector2[] BuildTopEdgeBand(Vector2 edgeStart, Vector2 edgeEnd, Vector2 center)
+    {
+        float inset = Mathf.Clamp01(cliffShadowWidth);
+        Vector2 innerEnd = Vector2.Lerp(edgeEnd, center, inset);
+        Vector2 innerStart = Vector2.Lerp(edgeStart, center, inset);
+        return new[]
+        {
+            edgeStart,
+            edgeEnd,
+            innerEnd,
+            innerStart
+        };
     }
 
     private void FrameMainCamera()
