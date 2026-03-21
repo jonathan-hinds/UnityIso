@@ -186,10 +186,17 @@ public class TacticsCharacterOcclusionSilhouette : MonoBehaviour
                     continue;
                 }
 
+                TacticsForegroundOccluder occluderMetadata = occluder.GetComponent<TacticsForegroundOccluder>();
+                if (occluderMetadata == null || (!occluderMetadata.IsSideFace && !occluderMetadata.IsTopEdgeShadow))
+                {
+                    continue;
+                }
+
                 int occludedUpperBodyPoints = 0;
                 for (int pointIndex = 0; pointIndex < samplePoints.Length; pointIndex++)
                 {
-                    if (occluderBounds.Contains(samplePoints[pointIndex]))
+                    if (occluderBounds.Contains(samplePoints[pointIndex]) &&
+                        occluderMetadata.ContainsWorldPoint(samplePoints[pointIndex]))
                     {
                         occludedUpperBodyPoints++;
                     }
