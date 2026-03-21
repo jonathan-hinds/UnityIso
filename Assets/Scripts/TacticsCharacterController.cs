@@ -161,6 +161,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     public void BeginTurn()
     {
         IsTurnActive = true;
+        characterAnimator?.SetTurnHighlight(true);
         HasMovedThisTurn = false;
         NotifyTurnStateChanged();
     }
@@ -173,6 +174,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         }
 
         IsTurnActive = false;
+        characterAnimator?.SetTurnHighlight(false);
         NotifyTurnStateChanged();
         TurnEnded?.Invoke(this);
         return true;
@@ -317,6 +319,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         transform.position = worldPosition + GetTileAnchorOffset();
         lastAppliedTileAnchorOffset = tileAnchorOffset;
         ApplySorting(mapGenerator.GetCharacterSortingOrder(tile.x, tile.y, mapGenerator.GetTileElevation(tile.x, tile.y)));
+        characterAnimator?.SetTurnHighlight(IsTurnActive);
         characterAnimator?.SetIdle(currentDirection);
     }
 

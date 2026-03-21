@@ -10,8 +10,9 @@ public class TacticsCharacterAnimator : MonoBehaviour
 
     [Header("Animation")]
     [SerializeField, Min(0.01f)] private float walkFramesPerSecond = 7f;
-    [SerializeField] private Color baseColor = Color.white;
-    [SerializeField] private Color selectedColor = new Color(1f, 0.95f, 0.65f, 1f);
+    [SerializeField] private Color neutralColor = Color.white;
+    [SerializeField] private Color playerTurnColor = new Color(1f, 0.95f, 0.35f, 1f);
+    [SerializeField] private Color enemyTurnColor = new Color(1f, 0.38f, 0.38f, 1f);
 
     [Header("Occlusion Highlight")]
     [SerializeField] private Color occlusionHighlightColor = new Color(1f, 1f, 1f, 0.18f);
@@ -36,6 +37,7 @@ public class TacticsCharacterAnimator : MonoBehaviour
     private Vector2 sourceFrameSizePixels;
     private TacticsCharacterDefinition characterDefinition;
     private SpriteRenderer occlusionOverlayRenderer;
+    private bool isTurnHighlighted;
 
     public SpriteRenderer TargetRenderer => targetRenderer;
 
@@ -49,8 +51,6 @@ public class TacticsCharacterAnimator : MonoBehaviour
         if (characterDefinition != null)
         {
             walkFramesPerSecond = characterDefinition.WalkFramesPerSecond;
-            baseColor = characterDefinition.BaseColor;
-            selectedColor = characterDefinition.SelectedColor;
         }
 
         if (characterDefinition == null || !characterDefinition.TryGetOrderedSprites(out IReadOnlyList<Sprite> sprites))
@@ -60,7 +60,7 @@ public class TacticsCharacterAnimator : MonoBehaviour
         }
 
         AssignSprites(sprites);
-        SetSelected(false);
+        UpdateRendererColor();
         SetIdle(currentDirection);
         HideOcclusionOverlay();
     }
@@ -138,12 +138,13 @@ public class TacticsCharacterAnimator : MonoBehaviour
 
     public void SetSelected(bool isSelected)
     {
-        if (targetRenderer == null)
-        {
-            return;
-        }
+        UpdateRendererColor();
+    }
 
-        targetRenderer.color = isSelected ? selectedColor : baseColor;
+    public void SetTurnHighlight(bool isActiveTurn)
+    {
+        isTurnHighlighted = isActiveTurn;
+        UpdateRendererColor();
     }
 
     public void SetIdle(TacticsMovementDirection direction)
@@ -243,10 +244,43 @@ public class TacticsCharacterAnimator : MonoBehaviour
 
         Vector2 anchorSize = sourceFrameSizeUnits == Vector2.zero ? sprite.bounds.size : sourceFrameSizeUnits;
         Vector2 trimOffsetUnits = GetTrimOffsetUnits(sprite);
-        targetRenderer.transform.localPosition = new Vector3(
+        Vector3 localPosition = new Vector3(
             -(anchorSize.x * 0.5f) + trimOffsetUnits.x,
             trimOffsetUnits.y,
             0f);
+        targetRenderer.transform.localPosition = SnapToSpritePixelGrid(localPosition, sprite);
+    }
+
+    private void UpdateRendererColor()
+    {
+        if (targetRenderer == null)
+        {
+            return;
+        }
+
+        if (!isTurnHighlighted)
+        {
+            targetRenderer.color = neutralColor;
+            return;
+        }
+
+        bool isEnemy = characterDefinition != null && characterDefinition.Team == TacticsUnitTeam.Enemy;
+        targetRenderer.color = isEnemy ? enemyTurnColor : playerTurnColor;
+    }
+
+    private Vector3 SnapToSpritePixelGrid(Vector3 localPosition, Sprite sprite)
+    {
+        if (sprite == null)
+        {
+            return localPosition;
+        }
+
+        float pixelsPerUnit = Mathf.Max(0.0001f, sprite.pixelsPerUnit);
+        float pixelStep = 1f / pixelsPerUnit;
+
+        localPosition.x = Mathf.Round(localPosition.x / pixelStep) * pixelStep;
+        localPosition.y = Mathf.Round(localPosition.y / pixelStep) * pixelStep;
+        return localPosition;
     }
 
     private void EnsureOcclusionOverlayRenderer()
