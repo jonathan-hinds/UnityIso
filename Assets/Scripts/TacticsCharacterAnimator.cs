@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -10,6 +11,7 @@ public class TacticsCharacterAnimator : MonoBehaviour
 
     [Header("Animation")]
     [SerializeField, Min(0.01f)] private float walkFramesPerSecond = 7f;
+    [SerializeField, Min(0.01f)] private float attackFramesPerSecond = 10f;
     [SerializeField] private Color neutralColor = Color.white;
     [SerializeField] private Color playerTurnColor = new Color(1f, 0.95f, 0.35f, 1f);
     [SerializeField] private Color enemyTurnColor = new Color(1f, 0.38f, 0.38f, 1f);
@@ -33,6 +35,12 @@ public class TacticsCharacterAnimator : MonoBehaviour
     [SerializeField] private Sprite jumpNorthWest;
     [SerializeField] private Sprite idleSouthWest;
     [SerializeField] private Sprite idleNorthWest;
+    [SerializeField] private Sprite attackSouthWestA;
+    [SerializeField] private Sprite attackSouthWestB;
+    [SerializeField] private Sprite attackSouthWestC;
+    [SerializeField] private Sprite attackNorthWestA;
+    [SerializeField] private Sprite attackNorthWestB;
+    [SerializeField] private Sprite attackNorthWestC;
 
     private TacticsMovementDirection currentDirection = TacticsMovementDirection.SouthWest;
     private float walkFrameTime;
@@ -186,11 +194,49 @@ public class TacticsCharacterAnimator : MonoBehaviour
         walkFrameTime = 0f;
     }
 
+    public IEnumerator PlayAttack(TacticsMovementDirection direction)
+    {
+        currentDirection = direction;
+
+        Sprite[] frames = GetAttackFrames(direction);
+        bool hasVisibleFrame = false;
+        for (int i = 0; i < frames.Length; i++)
+        {
+            if (frames[i] != null)
+            {
+                hasVisibleFrame = true;
+                break;
+            }
+        }
+
+        if (!hasVisibleFrame)
+        {
+            SetIdle(direction);
+            yield break;
+        }
+
+        float secondsPerFrame = 1f / Mathf.Max(0.01f, attackFramesPerSecond);
+        bool flipX = IsEastFacing(direction);
+
+        for (int i = 0; i < frames.Length; i++)
+        {
+            Sprite frame = frames[i];
+            if (frame != null)
+            {
+                ApplySprite(frame, flipX);
+            }
+
+            yield return new WaitForSeconds(secondsPerFrame);
+        }
+
+        SetIdle(direction);
+    }
+
     private void AssignSprites(IReadOnlyList<Sprite> sprites)
     {
         if (sprites == null || sprites.Count < 10)
         {
-            Debug.LogWarning("TacticsCharacterAnimator requires 10 sliced sprites.");
+            Debug.LogWarning("TacticsCharacterAnimator requires at least 10 sliced sprites.");
             return;
         }
 
@@ -204,6 +250,17 @@ public class TacticsCharacterAnimator : MonoBehaviour
         jumpNorthWest = sprites[7];
         idleSouthWest = sprites[8];
         idleNorthWest = sprites[9];
+
+        if (sprites.Count >= 16)
+        {
+            attackSouthWestA = sprites[10];
+            attackSouthWestB = sprites[11];
+            attackSouthWestC = sprites[12];
+            attackNorthWestA = sprites[13];
+            attackNorthWestB = sprites[14];
+            attackNorthWestC = sprites[15];
+        }
+
         sourceFrameSizePixels = InferSourceFrameSizePixels(sprites[0]);
         float pixelsPerUnit = Mathf.Max(0.0001f, sprites[0].pixelsPerUnit);
         sourceFrameSizeUnits = sourceFrameSizePixels / pixelsPerUnit;
@@ -237,6 +294,16 @@ public class TacticsCharacterAnimator : MonoBehaviour
         }
 
         return idleSouthWest;
+    }
+
+    private Sprite[] GetAttackFrames(TacticsMovementDirection direction)
+    {
+        if (direction == TacticsMovementDirection.NorthWest || direction == TacticsMovementDirection.NorthEast)
+        {
+            return new[] { attackNorthWestA, attackNorthWestB, attackNorthWestC };
+        }
+
+        return new[] { attackSouthWestA, attackSouthWestB, attackSouthWestC };
     }
 
     private bool IsEastFacing(TacticsMovementDirection direction)

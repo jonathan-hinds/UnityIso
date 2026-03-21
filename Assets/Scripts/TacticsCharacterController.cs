@@ -31,10 +31,12 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     private TacticsCharacterRuntimeResources runtimeResources;
     private TacticsTurnManager turnManager;
     private readonly List<TacticsAbilityDefinition> abilities = new();
+    private bool isPerformingAction;
 
     public Vector2Int GridPosition { get; private set; }
     public bool IsSelected { get; private set; }
     public bool IsMoving => movementRoutine != null;
+    public bool IsPerformingAction => isPerformingAction;
     public TacticsCharacterDefinition CharacterDefinition => characterDefinition;
     public string DisplayName => characterDefinition != null ? characterDefinition.DisplayName : name;
     public TacticsUnitTeam Team => characterDefinition != null ? characterDefinition.Team : TacticsUnitTeam.Player;
@@ -56,10 +58,10 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     public bool HasActedThisTurn { get; private set; }
     public bool IsTurnActive { get; private set; }
     public bool IsAlive => CurrentHitPoints > 0;
-    public bool CanReceiveCommands => mapGenerator != null && mapGenerator.HasGeneratedMap && !IsMoving;
+    public bool CanReceiveCommands => mapGenerator != null && mapGenerator.HasGeneratedMap && !IsMoving && !IsPerformingAction;
     public bool CanMoveThisTurn => IsTurnActive && !HasMovedThisTurn && CanReceiveCommands;
     public bool CanUseAbilitiesThisTurn => IsTurnActive && !HasActedThisTurn && CanReceiveCommands && IsAlive;
-    public bool CanEndTurn => IsTurnActive && !IsMoving;
+    public bool CanEndTurn => IsTurnActive && !IsMoving && !IsPerformingAction;
     public bool IsTurnEligible => isActiveAndEnabled && IsAlive;
     public Vector3 TurnFocusPoint => transform.position;
     public IReadOnlyList<TacticsAbilityDefinition> Abilities => abilities;
@@ -132,6 +134,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
 
     private void OnDisable()
     {
+        isPerformingAction = false;
         StopMovementImmediately();
         UnsubscribeFromMap();
         if (turnManager != null)
@@ -236,6 +239,22 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         }
 
         HasActedThisTurn = true;
+        NotifyTurnStateChanged();
+    }
+
+    public IEnumerator PlayAttackAnimationTowards(Vector2Int targetTile)
+    {
+        currentDirection = GetDirection(GridPosition, targetTile);
+        isPerformingAction = true;
+        NotifyTurnStateChanged();
+
+        if (characterAnimator != null)
+        {
+            yield return characterAnimator.PlayAttack(currentDirection);
+        }
+
+        isPerformingAction = false;
+        characterAnimator?.SetIdle(currentDirection);
         NotifyTurnStateChanged();
     }
 
@@ -519,6 +538,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     private void HandleDefeat()
     {
         StopMovementImmediately();
+        isPerformingAction = false;
 
         IsTurnActive = false;
         HasMovedThisTurn = true;

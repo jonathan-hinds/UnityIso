@@ -127,6 +127,11 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
             }
         }
 
+        while (combatSystem != null && combatSystem.State == TacticsCombatState.ResolvingAbility)
+        {
+            yield return null;
+        }
+
         if (endTurnDelay > 0f)
         {
             yield return new WaitForSecondsRealtime(endTurnDelay);

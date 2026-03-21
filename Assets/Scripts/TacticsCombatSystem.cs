@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -10,6 +11,7 @@ public sealed class TacticsCombatSystem : MonoBehaviour
 
     private readonly Dictionary<TacticsAbilityEffectKind, ITacticsAbilityEffectProcessor> effectProcessors = new();
     private readonly List<Vector2Int> reusableTargetTiles = new();
+    private Coroutine resolveRoutine;
 
     public event Action StateChanged;
 
@@ -99,6 +101,11 @@ public sealed class TacticsCombatSystem : MonoBehaviour
 
     public bool TryUseAbility(TacticsCharacterController source, TacticsAbilityDefinition ability, Vector2Int targetTile)
     {
+        if (State == TacticsCombatState.ResolvingAbility || resolveRoutine != null)
+        {
+            return false;
+        }
+
         if (!CanUseAbility(source, ability))
         {
             return false;
@@ -110,42 +117,20 @@ public sealed class TacticsCombatSystem : MonoBehaviour
             return false;
         }
 
-        SetState(TacticsCombatState.ResolvingAbility);
-
         TacticsAbilityExecutionContext context = new TacticsAbilityExecutionContext(
             source,
             target,
             ability,
             targetTile);
 
-        bool appliedAnyEffect = false;
-        IReadOnlyList<TacticsAbilityEffectDefinitionData> effects = ability.Effects;
-        for (int i = 0; i < effects.Count; i++)
-        {
-            TacticsAbilityEffectDefinitionData effect = effects[i];
-            if (!effectProcessors.TryGetValue(effect.EffectKind, out ITacticsAbilityEffectProcessor processor))
-            {
-                Debug.LogWarning($"No combat effect processor is registered for '{effect.EffectKind}'.");
-                continue;
-            }
-
-            if (!processor.CanApply(context, effect))
-            {
-                continue;
-            }
-
-            processor.Apply(context, effect);
-            appliedAnyEffect = true;
-        }
-
-        if (!appliedAnyEffect)
+        if (!HasApplicableEffect(context))
         {
             RestoreIdleState();
             return false;
         }
 
-        source.CommitAbilityUse();
-        RestoreIdleState();
+        SetState(TacticsCombatState.ResolvingAbility);
+        resolveRoutine = StartCoroutine(ResolveAbilityRoutine(context));
         return true;
     }
 
@@ -204,9 +189,65 @@ public sealed class TacticsCombatSystem : MonoBehaviour
 
     private void RestoreIdleState()
     {
+        resolveRoutine = null;
         TargetingCharacter = null;
         TargetingAbility = null;
         SetState(TacticsCombatState.Idle);
+    }
+
+    private bool HasApplicableEffect(TacticsAbilityExecutionContext context)
+    {
+        IReadOnlyList<TacticsAbilityEffectDefinitionData> effects = context.Ability.Effects;
+        for (int i = 0; i < effects.Count; i++)
+        {
+            TacticsAbilityEffectDefinitionData effect = effects[i];
+            if (!effectProcessors.TryGetValue(effect.EffectKind, out ITacticsAbilityEffectProcessor processor))
+            {
+                continue;
+            }
+
+            if (processor.CanApply(context, effect))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private IEnumerator ResolveAbilityRoutine(TacticsAbilityExecutionContext context)
+    {
+        if (context.Source != null && context.Source.isActiveAndEnabled)
+        {
+            yield return context.Source.PlayAttackAnimationTowards(context.TargetTile);
+        }
+
+        bool appliedAnyEffect = false;
+        IReadOnlyList<TacticsAbilityEffectDefinitionData> effects = context.Ability.Effects;
+        for (int i = 0; i < effects.Count; i++)
+        {
+            TacticsAbilityEffectDefinitionData effect = effects[i];
+            if (!effectProcessors.TryGetValue(effect.EffectKind, out ITacticsAbilityEffectProcessor processor))
+            {
+                Debug.LogWarning($"No combat effect processor is registered for '{effect.EffectKind}'.");
+                continue;
+            }
+
+            if (!processor.CanApply(context, effect))
+            {
+                continue;
+            }
+
+            processor.Apply(context, effect);
+            appliedAnyEffect = true;
+        }
+
+        if (appliedAnyEffect && context.Source != null && context.Source.isActiveAndEnabled)
+        {
+            context.Source.CommitAbilityUse();
+        }
+
+        RestoreIdleState();
     }
 
     private void SetState(TacticsCombatState nextState)
