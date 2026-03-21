@@ -63,14 +63,36 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
     {
         EnsureEventSystem();
         TacticsActionMenuView actionMenuView = EnsureActionMenuView();
-        TacticsSelectionPanelView selectionPanelView = EnsureSelectionPanelView();
+        TacticsSelectionPanelView activeCharacterPanelView = EnsureSelectionPanelView(
+            TacticsSelectionPanelRole.ActiveCharacter,
+            "Active Character",
+            new Vector2(0f, 0f),
+            new Vector2(0f, 0f),
+            new Vector2(0f, 0f),
+            new Vector2(36f, 36f),
+            new Vector2(576f, 268f));
+        TacticsSelectionPanelView selectedCharacterPanelView = EnsureSelectionPanelView(
+            TacticsSelectionPanelRole.SelectedCharacter,
+            "Selected Character",
+            new Vector2(1f, 0f),
+            new Vector2(1f, 0f),
+            new Vector2(1f, 0f),
+            new Vector2(-36f, 36f),
+            new Vector2(576f, 268f));
         TacticsTileTargetOverlay tileTargetOverlay = EnsureTileTargetOverlay();
+        EnsureCombatTextSystem();
         EnsureTurnCameraDirector();
         TacticsTurnManager turnManager = EnsureTurnManager();
         TacticsCombatSystem combatSystem = EnsureCombatSystem();
         EnsurePlayerController();
         EnsureCharacters();
-        BindHud(actionMenuView, selectionPanelView, tileTargetOverlay, turnManager, combatSystem);
+        BindHud(
+            actionMenuView,
+            activeCharacterPanelView,
+            selectedCharacterPanelView,
+            tileTargetOverlay,
+            turnManager,
+            combatSystem);
         turnManager?.RefreshParticipantsAndStartBattle();
     }
 
@@ -115,21 +137,41 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         return hudObject.AddComponent<TacticsActionMenuView>();
     }
 
-    private TacticsSelectionPanelView EnsureSelectionPanelView()
+    private TacticsSelectionPanelView EnsureSelectionPanelView(
+        TacticsSelectionPanelRole role,
+        string title,
+        Vector2 anchorMin,
+        Vector2 anchorMax,
+        Vector2 pivot,
+        Vector2 position,
+        Vector2 size)
     {
-        TacticsSelectionPanelView existingView = FindFirstObjectByType<TacticsSelectionPanelView>();
-        if (existingView != null)
+        TacticsSelectionPanelView[] existingViews = FindObjectsByType<TacticsSelectionPanelView>(FindObjectsSortMode.None);
+        for (int i = 0; i < existingViews.Length; i++)
         {
+            TacticsSelectionPanelView existingView = existingViews[i];
+            if (existingView == null || existingView.PanelRole != role)
+            {
+                continue;
+            }
+
+            existingView.Configure(role, title, anchorMin, anchorMax, pivot, position, size);
             return existingView;
         }
 
-        GameObject hudObject = new GameObject("Tactics Selection Panel HUD");
-        return hudObject.AddComponent<TacticsSelectionPanelView>();
+        string hudName = role == TacticsSelectionPanelRole.ActiveCharacter
+            ? "Tactics Active Character Panel HUD"
+            : "Tactics Selected Character Panel HUD";
+        GameObject hudObject = new GameObject(hudName);
+        TacticsSelectionPanelView view = hudObject.AddComponent<TacticsSelectionPanelView>();
+        view.Configure(role, title, anchorMin, anchorMax, pivot, position, size);
+        return view;
     }
 
     private void BindHud(
         TacticsActionMenuView actionMenuView,
-        TacticsSelectionPanelView selectionPanelView,
+        TacticsSelectionPanelView activeCharacterPanelView,
+        TacticsSelectionPanelView selectedCharacterPanelView,
         TacticsTileTargetOverlay tileTargetOverlay,
         TacticsTurnManager turnManager,
         TacticsCombatSystem combatSystem)
@@ -138,7 +180,8 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         if (playerController != null)
         {
             playerController.AssignHud(actionMenuView);
-            playerController.AssignSelectionHud(selectionPanelView);
+            playerController.AssignActiveCharacterHud(activeCharacterPanelView);
+            playerController.AssignSelectedCharacterHud(selectedCharacterPanelView);
             playerController.AssignTurnManager(turnManager);
             playerController.AssignCombatSystem(combatSystem);
             playerController.AssignTileTargetOverlay(tileTargetOverlay);
@@ -197,6 +240,17 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
         GameObject overlayObject = new GameObject("Tactics Tile Target Overlay");
         return overlayObject.AddComponent<TacticsTileTargetOverlay>();
+    }
+
+    private void EnsureCombatTextSystem()
+    {
+        if (FindFirstObjectByType<TacticsCombatTextSystem>() != null)
+        {
+            return;
+        }
+
+        GameObject combatTextObject = new GameObject("Tactics Combat Text System");
+        combatTextObject.AddComponent<TacticsCombatTextSystem>();
     }
 
     private void EnsureCharacters()

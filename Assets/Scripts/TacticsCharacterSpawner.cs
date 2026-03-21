@@ -25,14 +25,17 @@ public static class TacticsCharacterSpawner
             characterRoot.transform.SetParent(parent, false);
         }
 
+        GameObject impactPivotObject = new GameObject("ImpactPivot");
+        impactPivotObject.transform.SetParent(characterRoot.transform, false);
+
         GameObject visualObject = new GameObject("Visual");
-        visualObject.transform.SetParent(characterRoot.transform, false);
+        visualObject.transform.SetParent(impactPivotObject.transform, false);
 
         SpriteRenderer spriteRenderer = visualObject.AddComponent<SpriteRenderer>();
         spriteRenderer.sortingLayerName = "Default";
 
         TacticsCharacterAnimator animator = characterRoot.AddComponent<TacticsCharacterAnimator>();
-        animator.Initialize(spriteRenderer, definition, mapGenerator);
+        animator.Initialize(spriteRenderer, definition, mapGenerator, impactPivotObject.transform);
 
         BoxCollider2D selectionCollider = visualObject.AddComponent<BoxCollider2D>();
         Vector2 spriteSize = spriteRenderer.sprite != null ? spriteRenderer.sprite.bounds.size : new Vector2(0.2f, 0.3f);

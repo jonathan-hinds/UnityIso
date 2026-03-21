@@ -8,6 +8,7 @@ public class TacticsCharacterAnimator : MonoBehaviour
     [Header("References")]
     [SerializeField] private SpriteRenderer targetRenderer;
     [SerializeField] private ProceduralIsometricMapGenerator mapGenerator;
+    [SerializeField] private Transform impactPivot;
 
     [Header("Animation")]
     [SerializeField, Min(0.01f)] private float walkFramesPerSecond = 7f;
@@ -23,6 +24,12 @@ public class TacticsCharacterAnimator : MonoBehaviour
     [SerializeField, Min(0f)] private float occlusionBoundsPadding = 0.04f;
     [SerializeField, Min(1)] private int occlusionFramesToShow = 2;
     [SerializeField, Min(0f)] private float occlusionHideDelay = 0.08f;
+
+    [Header("Damage Impact")]
+    [SerializeField, Min(0.01f)] private float damageImpactOutDuration = 0.05f;
+    [SerializeField, Min(0.01f)] private float damageImpactReturnDuration = 0.11f;
+    [SerializeField, Min(0f)] private float damageImpactDistance = 0.15f;
+    [SerializeField, Min(0f)] private float damageImpactOvershoot = 0.04f;
 
     [Header("Sprites")]
     [SerializeField] private Sprite walkSouthWestA;
@@ -52,14 +59,21 @@ public class TacticsCharacterAnimator : MonoBehaviour
     private int occlusionDetectedFrameCount;
     private float occlusionHideTimer;
     private int activeOcclusionSortingOrder;
+    private Coroutine damageImpactRoutine;
 
     public SpriteRenderer TargetRenderer => targetRenderer;
 
-    public void Initialize(SpriteRenderer spriteRenderer, TacticsCharacterDefinition definition, ProceduralIsometricMapGenerator generator = null)
+    public void Initialize(
+        SpriteRenderer spriteRenderer,
+        TacticsCharacterDefinition definition,
+        ProceduralIsometricMapGenerator generator = null,
+        Transform impactRoot = null)
     {
         targetRenderer = spriteRenderer;
         characterDefinition = definition;
         mapGenerator = generator;
+        impactPivot = impactRoot;
+        EnsureImpactPivot();
         EnsureOcclusionOverlayRenderer();
 
         if (characterDefinition != null)
@@ -82,6 +96,7 @@ public class TacticsCharacterAnimator : MonoBehaviour
 
     private void Awake()
     {
+        EnsureImpactPivot();
         EnsureOcclusionOverlayRenderer();
         ResetOcclusionState();
         HideOcclusionOverlay();
@@ -230,6 +245,29 @@ public class TacticsCharacterAnimator : MonoBehaviour
         }
 
         SetIdle(direction);
+    }
+
+    public void PlayDamageImpact(Vector3? damageSourceWorldPosition = null)
+    {
+        EnsureImpactPivot();
+        if (impactPivot == null)
+        {
+            return;
+        }
+
+        Vector3 recoilDirection = ResolveDamageImpactDirection(damageSourceWorldPosition);
+        if (recoilDirection.sqrMagnitude <= 0.0001f)
+        {
+            recoilDirection = Vector3.left;
+        }
+
+        if (damageImpactRoutine != null)
+        {
+            StopCoroutine(damageImpactRoutine);
+        }
+
+        impactPivot.localPosition = Vector3.zero;
+        damageImpactRoutine = StartCoroutine(PlayDamageImpactRoutine(recoilDirection.normalized));
     }
 
     private void AssignSprites(IReadOnlyList<Sprite> sprites)
@@ -387,6 +425,22 @@ public class TacticsCharacterAnimator : MonoBehaviour
         occlusionOverlayRenderer.enabled = false;
     }
 
+    private void EnsureImpactPivot()
+    {
+        if (impactPivot != null)
+        {
+            return;
+        }
+
+        if (targetRenderer != null && targetRenderer.transform.parent != null)
+        {
+            impactPivot = targetRenderer.transform.parent;
+            return;
+        }
+
+        impactPivot = transform;
+    }
+
     private void SyncOcclusionOverlayVisual()
     {
         if (occlusionOverlayRenderer == null)
@@ -496,5 +550,74 @@ public class TacticsCharacterAnimator : MonoBehaviour
 
         float result = value % modulus;
         return result < 0f ? result + modulus : result;
+    }
+
+    private IEnumerator PlayDamageImpactRoutine(Vector3 recoilDirection)
+    {
+        Vector3 start = Vector3.zero;
+        Vector3 pushedBack = recoilDirection * damageImpactDistance;
+        Vector3 overshoot = recoilDirection * -damageImpactOvershoot;
+
+        float elapsed = 0f;
+        while (elapsed < damageImpactOutDuration)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.Clamp01(elapsed / damageImpactOutDuration);
+            impactPivot.localPosition = Vector3.LerpUnclamped(start, pushedBack, EaseOutCubic(t));
+            yield return null;
+        }
+
+        elapsed = 0f;
+        while (elapsed < damageImpactReturnDuration)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.Clamp01(elapsed / damageImpactReturnDuration);
+            float springT = EaseOutBack(t);
+            impactPivot.localPosition = Vector3.LerpUnclamped(pushedBack, overshoot, springT);
+            yield return null;
+        }
+
+        impactPivot.localPosition = Vector3.zero;
+        damageImpactRoutine = null;
+    }
+
+    private Vector3 ResolveDamageImpactDirection(Vector3? damageSourceWorldPosition)
+    {
+        if (impactPivot == null)
+        {
+            return Vector3.zero;
+        }
+
+        if (damageSourceWorldPosition.HasValue)
+        {
+            Vector3 direction = impactPivot.position - damageSourceWorldPosition.Value;
+            direction.z = 0f;
+            if (direction.sqrMagnitude > 0.0001f)
+            {
+                return direction.normalized;
+            }
+        }
+
+        return currentDirection switch
+        {
+            TacticsMovementDirection.NorthEast => new Vector3(1f, 0.35f, 0f).normalized,
+            TacticsMovementDirection.NorthWest => new Vector3(-1f, 0.35f, 0f).normalized,
+            TacticsMovementDirection.SouthEast => new Vector3(1f, -0.2f, 0f).normalized,
+            _ => new Vector3(-1f, -0.2f, 0f).normalized
+        };
+    }
+
+    private static float EaseOutCubic(float t)
+    {
+        float inverse = 1f - Mathf.Clamp01(t);
+        return 1f - (inverse * inverse * inverse);
+    }
+
+    private static float EaseOutBack(float t)
+    {
+        float clamped = Mathf.Clamp01(t);
+        const float overshoot = 1.70158f;
+        float adjusted = clamped - 1f;
+        return 1f + ((overshoot + 1f) * adjusted * adjusted * adjusted) + (overshoot * adjusted * adjusted);
     }
 }

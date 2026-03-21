@@ -1,9 +1,24 @@
 using UnityEngine;
 using UnityEngine.UI;
 
+public enum TacticsSelectionPanelRole
+{
+    ActiveCharacter = 0,
+    SelectedCharacter = 1
+}
+
 [DisallowMultipleComponent]
 public sealed class TacticsSelectionPanelView : MonoBehaviour
 {
+    [Header("Panel")]
+    [SerializeField] private TacticsSelectionPanelRole panelRole = TacticsSelectionPanelRole.ActiveCharacter;
+    [SerializeField] private string panelTitle = "ACTIVE";
+    [SerializeField] private Vector2 anchorMin = new Vector2(0f, 0f);
+    [SerializeField] private Vector2 anchorMax = new Vector2(0f, 0f);
+    [SerializeField] private Vector2 pivot = new Vector2(0f, 0f);
+    [SerializeField] private Vector2 anchoredPosition = new Vector2(36f, 36f);
+    [SerializeField] private Vector2 panelSize = new Vector2(576f, 268f);
+
     [Header("Theme")]
     [SerializeField] private Color panelColor = new Color(0.08f, 0.09f, 0.11f, 0.96f);
     [SerializeField] private Color panelEdgeColor = new Color(0.88f, 0.84f, 0.72f, 1f);
@@ -16,6 +31,7 @@ public sealed class TacticsSelectionPanelView : MonoBehaviour
 
     private Canvas rootCanvas;
     private GameObject panelRoot;
+    private Text titleText;
     private Text nameText;
     private SelectionBarWidgets healthBar;
     private SelectionBarWidgets manaBar;
@@ -60,6 +76,32 @@ public sealed class TacticsSelectionPanelView : MonoBehaviour
         panelRoot.SetActive(false);
     }
 
+    public TacticsSelectionPanelRole PanelRole => panelRole;
+
+    public void Configure(
+        TacticsSelectionPanelRole role,
+        string title,
+        Vector2 minAnchor,
+        Vector2 maxAnchor,
+        Vector2 panelPivot,
+        Vector2 position,
+        Vector2 size)
+    {
+        panelRole = role;
+        panelTitle = title;
+        anchorMin = minAnchor;
+        anchorMax = maxAnchor;
+        pivot = panelPivot;
+        anchoredPosition = position;
+        panelSize = size;
+
+        if (panelRoot != null)
+        {
+            ApplyLayout();
+            ApplyHeader();
+        }
+    }
+
     private void EnsureBuilt()
     {
         if (panelRoot != null)
@@ -99,12 +141,7 @@ public sealed class TacticsSelectionPanelView : MonoBehaviour
         }
 
         panelRoot = CreateUiObject("SelectionPanel", transform);
-        RectTransform panelRect = panelRoot.GetComponent<RectTransform>();
-        panelRect.anchorMin = new Vector2(0f, 0f);
-        panelRect.anchorMax = new Vector2(0f, 0f);
-        panelRect.pivot = new Vector2(0f, 0f);
-        panelRect.anchoredPosition = new Vector2(36f, 36f);
-        panelRect.sizeDelta = new Vector2(576f, 232f);
+        ApplyLayout();
 
         Image panelImage = panelRoot.AddComponent<Image>();
         panelImage.color = panelColor;
@@ -128,18 +165,28 @@ public sealed class TacticsSelectionPanelView : MonoBehaviour
         Image dividerImage = divider.AddComponent<Image>();
         dividerImage.color = accentColor;
 
+        titleText = CreateText("Title", panelRoot.transform, 16, FontStyle.Bold, accentColor);
+        RectTransform titleRect = titleText.rectTransform;
+        titleRect.anchorMin = new Vector2(0f, 1f);
+        titleRect.anchorMax = new Vector2(1f, 1f);
+        titleRect.pivot = new Vector2(0.5f, 1f);
+        titleRect.offsetMin = new Vector2(28f, -24f);
+        titleRect.offsetMax = new Vector2(-28f, 0f);
+        titleText.alignment = TextAnchor.UpperLeft;
+
         nameText = CreateText("Name", panelRoot.transform, 40, FontStyle.Bold, primaryTextColor);
         RectTransform nameRect = nameText.rectTransform;
         nameRect.anchorMin = new Vector2(0f, 1f);
         nameRect.anchorMax = new Vector2(1f, 1f);
         nameRect.pivot = new Vector2(0.5f, 1f);
-        nameRect.offsetMin = new Vector2(28f, -24f);
-        nameRect.offsetMax = new Vector2(-28f, 24f);
+        nameRect.offsetMin = new Vector2(28f, -52f);
+        nameRect.offsetMax = new Vector2(-28f, -8f);
         nameText.alignment = TextAnchor.UpperCenter;
 
         healthBar = CreateSelectionBar("HealthBar", panelRoot.transform, 28f, 100f);
         staminaBar = CreateSelectionBar("StaminaBar", panelRoot.transform, 28f, 56f);
         manaBar = CreateSelectionBar("ManaBar", panelRoot.transform, 28f, 12f);
+        ApplyHeader();
     }
 
     private void ApplyBar(SelectionBarWidgets widgets, TacticsSelectionHudResourceData resourceData)
@@ -147,7 +194,29 @@ public sealed class TacticsSelectionPanelView : MonoBehaviour
         widgets.Label.text = resourceData.Label.ToUpperInvariant();
         widgets.Value.text = $"{resourceData.CurrentValue}/{resourceData.MaxValue}";
         widgets.Fill.color = resourceData.FillColor;
-        widgets.Fill.fillAmount = resourceData.FillNormalized;
+        RectTransform fillRect = widgets.Fill.rectTransform;
+        fillRect.anchorMax = new Vector2(resourceData.FillNormalized, 1f);
+        widgets.Fill.enabled = resourceData.FillNormalized > 0f;
+    }
+
+    private void ApplyLayout()
+    {
+        RectTransform panelRect = panelRoot.GetComponent<RectTransform>();
+        panelRect.anchorMin = anchorMin;
+        panelRect.anchorMax = anchorMax;
+        panelRect.pivot = pivot;
+        panelRect.anchoredPosition = anchoredPosition;
+        panelRect.sizeDelta = panelSize;
+    }
+
+    private void ApplyHeader()
+    {
+        if (titleText != null)
+        {
+            titleText.text = string.IsNullOrWhiteSpace(panelTitle)
+                ? panelRole.ToString().ToUpperInvariant()
+                : panelTitle.ToUpperInvariant();
+        }
     }
 
     private SelectionBarWidgets CreateSelectionBar(string objectName, Transform parent, float leftInset, float bottomInset)
@@ -186,15 +255,13 @@ public sealed class TacticsSelectionPanelView : MonoBehaviour
         GameObject fillObject = CreateUiObject("Fill", meterRoot.transform);
         RectTransform fillRect = fillObject.GetComponent<RectTransform>();
         fillRect.anchorMin = Vector2.zero;
-        fillRect.anchorMax = Vector2.one;
+        fillRect.anchorMax = new Vector2(1f, 1f);
+        fillRect.pivot = new Vector2(0f, 0.5f);
         fillRect.offsetMin = new Vector2(2f, 2f);
         fillRect.offsetMax = new Vector2(-2f, -2f);
 
         Image fillImage = fillObject.AddComponent<Image>();
-        fillImage.type = Image.Type.Filled;
-        fillImage.fillMethod = Image.FillMethod.Horizontal;
-        fillImage.fillOrigin = (int)Image.OriginHorizontal.Left;
-        fillImage.fillAmount = 1f;
+        fillImage.type = Image.Type.Simple;
 
         Text valueText = CreateText("Value", rowRoot.transform, 20, FontStyle.Normal, primaryTextColor);
         RectTransform valueRect = valueText.rectTransform;

@@ -213,7 +213,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         return UnityEngine.Random.Range(minimumDamage, maximumDamage + 1);
     }
 
-    public bool ApplyDamage(int damageAmount)
+    public bool ApplyDamage(int damageAmount, Vector3? damageSourceWorldPosition = null)
     {
         if (!IsAlive || damageAmount <= 0)
         {
@@ -221,6 +221,8 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         }
 
         runtimeResources.hitPoints = Mathf.Max(0, runtimeResources.hitPoints - damageAmount);
+        characterAnimator?.PlayDamageImpact(damageSourceWorldPosition);
+        TacticsCombatTextSystem.ShowDamage(this, damageAmount);
         NotifyTurnStateChanged();
 
         if (runtimeResources.hitPoints == 0)
@@ -469,6 +471,33 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     private Vector3 GetTileAnchorOffset()
     {
         return new Vector3(tileAnchorOffset.x, tileAnchorOffset.y, 0f);
+    }
+
+    public Vector3 GetCombatTextSpawnPosition(float verticalPadding = 0.18f)
+    {
+        SpriteRenderer targetRenderer = characterAnimator != null ? characterAnimator.TargetRenderer : null;
+        if (targetRenderer != null)
+        {
+            Bounds bounds = targetRenderer.bounds;
+            return new Vector3(
+                bounds.center.x,
+                bounds.max.y + Mathf.Max(verticalPadding, bounds.size.y * 0.12f),
+                transform.position.z);
+        }
+
+        return transform.position + new Vector3(0f, 0.75f + verticalPadding, 0f);
+    }
+
+    public int GetCombatTextSortingLayerId()
+    {
+        SpriteRenderer targetRenderer = characterAnimator != null ? characterAnimator.TargetRenderer : null;
+        return targetRenderer != null ? targetRenderer.sortingLayerID : SortingLayer.NameToID("Default");
+    }
+
+    public int GetCombatTextSortingOrder()
+    {
+        SpriteRenderer targetRenderer = characterAnimator != null ? characterAnimator.TargetRenderer : null;
+        return targetRenderer != null ? targetRenderer.sortingOrder : 0;
     }
 
     private void ApplyDefinition(TacticsCharacterDefinition definition)

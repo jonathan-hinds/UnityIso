@@ -312,6 +312,7 @@ public sealed class TacticsDealDamageEffectProcessor : ITacticsAbilityEffectProc
             return;
         }
 
-        context.Target.ApplyDamage(amount);
+        Vector3? damageSourcePosition = context.Source != null ? context.Source.TurnFocusPoint : null;
+        context.Target.ApplyDamage(amount, damageSourcePosition);
     }
 }
