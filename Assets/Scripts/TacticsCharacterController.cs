@@ -50,6 +50,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     public int BaseDamageMax => derivedStats.baseDamageMax;
     public int MoveRange => characterDefinition != null ? characterDefinition.BaseStats.MoveRange : 0;
     public int JumpHeight => characterDefinition != null ? characterDefinition.BaseStats.JumpHeight : 0;
+    public int CurrentElevation => mapGenerator != null ? mapGenerator.GetTileElevation(GridPosition.x, GridPosition.y) : 0;
     public bool HasMovedThisTurn { get; private set; }
     public bool IsTurnActive { get; private set; }
     public bool CanReceiveCommands => mapGenerator != null && mapGenerator.HasGeneratedMap && !IsMoving;

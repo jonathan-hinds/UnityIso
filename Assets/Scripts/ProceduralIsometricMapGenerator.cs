@@ -64,6 +64,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
     private readonly List<SpriteRenderer> spawnedRenderers = new List<SpriteRenderer>();
     private int[,] currentHeights;
     private System.Random spawnPlacementRandom;
+    private TacticsForegroundOccluderGroup generatedOccluderGroup;
 
     public int Length => length;
     public int Width => width;
@@ -90,6 +91,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         EnsureDefaultSprites();
         ClearGeneratedMap();
         spawnedRenderers.Clear();
+        generatedOccluderGroup = null;
 
         currentHeights = GenerateHeights();
         spawnPlacementRandom = CreateSpawnPlacementRandom();
@@ -259,12 +261,15 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         GameObject root = new GameObject(GeneratedRootName);
         root.transform.SetParent(transform, false);
         root.transform.localPosition = Vector3.zero;
+        generatedOccluderGroup = root.AddComponent<TacticsForegroundOccluderGroup>();
         return root.transform;
     }
 
     private void ClearGeneratedMap()
     {
         Transform existingRoot = transform.Find(GeneratedRootName);
+        generatedOccluderGroup = null;
+
         if (existingRoot == null)
         {
             return;
@@ -497,7 +502,11 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         SpriteRenderer renderer = part.AddComponent<SpriteRenderer>();
         renderer.sprite = sprite;
         renderer.sortingOrder = CalculateSortingOrder(gridX, gridY, layer, sortBias);
+        TacticsForegroundOccluder occluder = part.AddComponent<TacticsForegroundOccluder>();
+        occluder.Initialize(gridX, gridY, layer, sortBias);
+
         spawnedRenderers.Add(renderer);
+        generatedOccluderGroup?.RegisterOccluder(renderer);
     }
 
     private Vector3 GetSpriteOffset(Sprite sprite, int sortBias)
