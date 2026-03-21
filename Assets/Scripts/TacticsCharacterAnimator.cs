@@ -18,6 +18,9 @@ public class TacticsCharacterAnimator : MonoBehaviour
     [SerializeField] private Color occlusionHighlightColor = new Color(1f, 1f, 1f, 0.18f);
     [SerializeField, Min(1)] private int occlusionSortingOrderOffset = 1;
     [SerializeField, Min(0f)] private float occlusionOverlapPadding = 0.01f;
+    [SerializeField, Min(0f)] private float occlusionBoundsPadding = 0.04f;
+    [SerializeField, Min(1)] private int occlusionFramesToShow = 2;
+    [SerializeField, Min(0f)] private float occlusionHideDelay = 0.08f;
 
     [Header("Sprites")]
     [SerializeField] private Sprite walkSouthWestA;
@@ -38,6 +41,9 @@ public class TacticsCharacterAnimator : MonoBehaviour
     private TacticsCharacterDefinition characterDefinition;
     private SpriteRenderer occlusionOverlayRenderer;
     private bool isTurnHighlighted;
+    private int occlusionDetectedFrameCount;
+    private float occlusionHideTimer;
+    private int activeOcclusionSortingOrder;
 
     public SpriteRenderer TargetRenderer => targetRenderer;
 
@@ -62,12 +68,14 @@ public class TacticsCharacterAnimator : MonoBehaviour
         AssignSprites(sprites);
         UpdateRendererColor();
         SetIdle(currentDirection);
+        ResetOcclusionState();
         HideOcclusionOverlay();
     }
 
     private void Awake()
     {
         EnsureOcclusionOverlayRenderer();
+        ResetOcclusionState();
         HideOcclusionOverlay();
     }
 
@@ -75,6 +83,7 @@ public class TacticsCharacterAnimator : MonoBehaviour
     {
         if (targetRenderer == null)
         {
+            ResetOcclusionState();
             HideOcclusionOverlay();
             return;
         }
@@ -86,53 +95,56 @@ public class TacticsCharacterAnimator : MonoBehaviour
 
         if (mapGenerator == null || !mapGenerator.HasGeneratedMap)
         {
+            ResetOcclusionState();
             HideOcclusionOverlay();
             return;
         }
 
         SyncOcclusionOverlayVisual();
 
-        IReadOnlyList<SpriteRenderer> occluders = mapGenerator.OcclusionObstacleRenderers;
+        IReadOnlyList<ProceduralIsometricMapGenerator.OcclusionVolume> occluders = mapGenerator.OcclusionVolumes;
         if (occluders == null || occluders.Count == 0)
         {
+            ResetOcclusionState();
             HideOcclusionOverlay();
             return;
         }
 
         Bounds characterBounds = targetRenderer.bounds;
-        characterBounds.Expand(new Vector3(occlusionOverlapPadding, occlusionOverlapPadding, 0f));
+        characterBounds.Expand(new Vector3(
+            occlusionOverlapPadding + occlusionBoundsPadding,
+            occlusionOverlapPadding + occlusionBoundsPadding,
+            0f));
 
         bool isOccluded = false;
         int highestOccluderSortingOrder = targetRenderer.sortingOrder;
         for (int i = 0; i < occluders.Count; i++)
         {
-            SpriteRenderer occluder = occluders[i];
-            if (occluder == null ||
-                !occluder.enabled ||
-                occluder.sprite == null ||
-                occluder.sortingLayerID != targetRenderer.sortingLayerID ||
-                occluder.sortingOrder <= targetRenderer.sortingOrder)
+            ProceduralIsometricMapGenerator.OcclusionVolume occluder = occluders[i];
+            if (occluder.SortingLayerId != targetRenderer.sortingLayerID ||
+                occluder.SortingOrder <= targetRenderer.sortingOrder)
             {
                 continue;
             }
 
-            if (!occluder.bounds.Intersects(characterBounds))
+            if (!occluder.Bounds.Intersects(characterBounds))
             {
                 continue;
             }
 
             isOccluded = true;
-            highestOccluderSortingOrder = Mathf.Max(highestOccluderSortingOrder, occluder.sortingOrder);
+            highestOccluderSortingOrder = Mathf.Max(highestOccluderSortingOrder, occluder.SortingOrder);
         }
 
-        if (!isOccluded)
+        bool shouldDisplayOverlay = UpdateOcclusionState(isOccluded, highestOccluderSortingOrder);
+        if (!shouldDisplayOverlay)
         {
             HideOcclusionOverlay();
             return;
         }
 
         occlusionOverlayRenderer.sortingLayerID = targetRenderer.sortingLayerID;
-        occlusionOverlayRenderer.sortingOrder = highestOccluderSortingOrder + occlusionSortingOrderOffset;
+        occlusionOverlayRenderer.sortingOrder = activeOcclusionSortingOrder + occlusionSortingOrderOffset;
         occlusionOverlayRenderer.enabled = true;
     }
 
@@ -332,6 +344,34 @@ public class TacticsCharacterAnimator : MonoBehaviour
         {
             occlusionOverlayRenderer.enabled = false;
         }
+    }
+
+    private bool UpdateOcclusionState(bool isCurrentlyOccluded, int highestOccluderSortingOrder)
+    {
+        if (isCurrentlyOccluded)
+        {
+            occlusionDetectedFrameCount++;
+            occlusionHideTimer = occlusionHideDelay;
+            activeOcclusionSortingOrder = Mathf.Max(activeOcclusionSortingOrder, highestOccluderSortingOrder);
+            return occlusionDetectedFrameCount >= occlusionFramesToShow;
+        }
+
+        occlusionDetectedFrameCount = 0;
+        if (occlusionHideTimer > 0f)
+        {
+            occlusionHideTimer = Mathf.Max(0f, occlusionHideTimer - Time.deltaTime);
+            return true;
+        }
+
+        activeOcclusionSortingOrder = targetRenderer != null ? targetRenderer.sortingOrder : 0;
+        return false;
+    }
+
+    private void ResetOcclusionState()
+    {
+        occlusionDetectedFrameCount = 0;
+        occlusionHideTimer = 0f;
+        activeOcclusionSortingOrder = targetRenderer != null ? targetRenderer.sortingOrder : 0;
     }
 
     private Vector2 InferSourceFrameSizePixels(Sprite referenceSprite)
