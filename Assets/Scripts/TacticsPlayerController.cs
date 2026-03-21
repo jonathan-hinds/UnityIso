@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
@@ -24,6 +25,7 @@ public class TacticsPlayerController : MonoBehaviour
 
     private TacticsCharacterController selectedCharacter;
     private SelectionState selectionState;
+    private readonly List<TacticsActionMenuAbilityOption> reusableAbilityOptions = new();
 
     private void Awake()
     {
@@ -83,6 +85,8 @@ public class TacticsPlayerController : MonoBehaviour
         {
             actionMenuView.ActionSelected -= HandleActionSelected;
             actionMenuView.ActionSelected += HandleActionSelected;
+            actionMenuView.AbilitySelected -= HandleAbilitySelected;
+            actionMenuView.AbilitySelected += HandleAbilitySelected;
         }
 
         if (turnManager != null)
@@ -106,6 +110,7 @@ public class TacticsPlayerController : MonoBehaviour
         if (actionMenuView != null)
         {
             actionMenuView.ActionSelected -= HandleActionSelected;
+            actionMenuView.AbilitySelected -= HandleAbilitySelected;
         }
 
         if (turnManager != null)
@@ -287,6 +292,7 @@ public class TacticsPlayerController : MonoBehaviour
         if (actionMenuView != null)
         {
             actionMenuView.ActionSelected -= HandleActionSelected;
+            actionMenuView.AbilitySelected -= HandleAbilitySelected;
         }
 
         actionMenuView = view;
@@ -295,6 +301,8 @@ public class TacticsPlayerController : MonoBehaviour
         {
             actionMenuView.ActionSelected -= HandleActionSelected;
             actionMenuView.ActionSelected += HandleActionSelected;
+            actionMenuView.AbilitySelected -= HandleAbilitySelected;
+            actionMenuView.AbilitySelected += HandleAbilitySelected;
         }
 
         RefreshHud();
@@ -385,26 +393,33 @@ public class TacticsPlayerController : MonoBehaviour
 
                 break;
             case TacticsHudActionType.Attack:
-                if (!ReferenceEquals(selectedCharacter, activePlayerCharacter))
-                {
-                    SelectCharacter(activePlayerCharacter, SelectionState.CharacterSelected);
-                }
-
-                TacticsAbilityDefinition primaryAbility = activePlayerCharacter.GetPrimaryActionAbility();
-                if (combatSystem != null &&
-                    primaryAbility != null &&
-                    combatSystem.BeginTargeting(activePlayerCharacter, primaryAbility))
-                {
-                    selectionState = SelectionState.AwaitingAbilityTarget;
-                    RefreshHud();
-                }
-
                 break;
             case TacticsHudActionType.EndTurn:
                 combatSystem?.CancelTargeting();
                 turnManager?.TryEndActiveTurn();
                 break;
         }
+    }
+
+    private void HandleAbilitySelected(TacticsAbilityDefinition ability)
+    {
+        TacticsCharacterController activePlayerCharacter = GetActivePlayerCharacter();
+        if (activePlayerCharacter == null || ability == null || combatSystem == null)
+        {
+            return;
+        }
+
+        if (!ReferenceEquals(selectedCharacter, activePlayerCharacter))
+        {
+            SelectCharacter(activePlayerCharacter, SelectionState.CharacterSelected);
+        }
+
+        if (combatSystem.BeginTargeting(activePlayerCharacter, ability))
+        {
+            selectionState = SelectionState.AwaitingAbilityTarget;
+        }
+
+        RefreshHud();
     }
 
     private void HandleCancelInput()
@@ -460,15 +475,11 @@ public class TacticsPlayerController : MonoBehaviour
         {
             if (showActionMenu)
             {
-                TacticsAbilityDefinition primaryAbility = activePlayerCharacter.GetPrimaryActionAbility();
-                bool canUsePrimaryAbility = primaryAbility != null &&
-                                            combatSystem != null &&
-                                            combatSystem.GetValidTargetTiles(activePlayerCharacter, primaryAbility).Count > 0;
+                BuildAbilityOptions(activePlayerCharacter, reusableAbilityOptions);
 
                 actionMenuView.ShowForCharacter(
                     activePlayerCharacter,
-                    primaryAbility,
-                    canUsePrimaryAbility,
+                    reusableAbilityOptions,
                     selectionState == SelectionState.AwaitingMoveTarget,
                     selectionState == SelectionState.AwaitingAbilityTarget,
                     turnManager != null ? turnManager.RoundNumber : 1,
@@ -601,5 +612,38 @@ public class TacticsPlayerController : MonoBehaviour
         }
 
         tileTargetOverlay.Hide();
+    }
+
+    private void BuildAbilityOptions(
+        TacticsCharacterController character,
+        List<TacticsActionMenuAbilityOption> abilityOptions)
+    {
+        abilityOptions.Clear();
+
+        if (character == null)
+        {
+            return;
+        }
+
+        bool isTargetingWithCharacter = combatSystem != null &&
+                                        ReferenceEquals(combatSystem.TargetingCharacter, character);
+
+        IReadOnlyList<TacticsAbilityDefinition> abilities = character.Abilities;
+        for (int i = 0; i < abilities.Count; i++)
+        {
+            TacticsAbilityDefinition ability = abilities[i];
+            if (ability == null)
+            {
+                continue;
+            }
+
+            bool isInteractable = combatSystem != null &&
+                                  character.CanUseAbilitiesThisTurn &&
+                                  combatSystem.GetValidTargetTiles(character, ability).Count > 0;
+            bool isSelected = isTargetingWithCharacter &&
+                              ReferenceEquals(combatSystem.TargetingAbility, ability);
+
+            abilityOptions.Add(new TacticsActionMenuAbilityOption(ability, isInteractable, isSelected));
+        }
     }
 }
