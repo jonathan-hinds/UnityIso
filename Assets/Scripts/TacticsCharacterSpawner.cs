@@ -32,7 +32,7 @@ public static class TacticsCharacterSpawner
         spriteRenderer.sortingLayerName = "Default";
 
         TacticsCharacterAnimator animator = characterRoot.AddComponent<TacticsCharacterAnimator>();
-        animator.Initialize(spriteRenderer, definition);
+        animator.Initialize(spriteRenderer, definition, mapGenerator);
 
         BoxCollider2D selectionCollider = visualObject.AddComponent<BoxCollider2D>();
         Vector2 spriteSize = spriteRenderer.sprite != null ? spriteRenderer.sprite.bounds.size : new Vector2(0.2f, 0.3f);
@@ -41,7 +41,6 @@ public static class TacticsCharacterSpawner
 
         TacticsCharacterController characterController = characterRoot.AddComponent<TacticsCharacterController>();
         characterController.Initialize(mapGenerator, animator, definition, spawnTile);
-        characterRoot.AddComponent<TacticsCharacterOcclusionSilhouette>();
 
         if (definition.Team == TacticsUnitTeam.Enemy)
         {

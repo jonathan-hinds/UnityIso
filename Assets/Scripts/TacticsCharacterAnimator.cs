@@ -6,11 +6,17 @@ public class TacticsCharacterAnimator : MonoBehaviour
 {
     [Header("References")]
     [SerializeField] private SpriteRenderer targetRenderer;
+    [SerializeField] private ProceduralIsometricMapGenerator mapGenerator;
 
     [Header("Animation")]
     [SerializeField, Min(0.01f)] private float walkFramesPerSecond = 7f;
     [SerializeField] private Color baseColor = Color.white;
     [SerializeField] private Color selectedColor = new Color(1f, 0.95f, 0.65f, 1f);
+
+    [Header("Occlusion Highlight")]
+    [SerializeField] private Color occlusionHighlightColor = new Color(1f, 1f, 1f, 0.18f);
+    [SerializeField, Min(1)] private int occlusionSortingOrderOffset = 1;
+    [SerializeField, Min(0f)] private float occlusionOverlapPadding = 0.01f;
 
     [Header("Sprites")]
     [SerializeField] private Sprite walkSouthWestA;
@@ -29,13 +35,16 @@ public class TacticsCharacterAnimator : MonoBehaviour
     private Vector2 sourceFrameSizeUnits;
     private Vector2 sourceFrameSizePixels;
     private TacticsCharacterDefinition characterDefinition;
+    private SpriteRenderer occlusionOverlayRenderer;
 
     public SpriteRenderer TargetRenderer => targetRenderer;
 
-    public void Initialize(SpriteRenderer spriteRenderer, TacticsCharacterDefinition definition)
+    public void Initialize(SpriteRenderer spriteRenderer, TacticsCharacterDefinition definition, ProceduralIsometricMapGenerator generator = null)
     {
         targetRenderer = spriteRenderer;
         characterDefinition = definition;
+        mapGenerator = generator;
+        EnsureOcclusionOverlayRenderer();
 
         if (characterDefinition != null)
         {
@@ -53,6 +62,78 @@ public class TacticsCharacterAnimator : MonoBehaviour
         AssignSprites(sprites);
         SetSelected(false);
         SetIdle(currentDirection);
+        HideOcclusionOverlay();
+    }
+
+    private void Awake()
+    {
+        EnsureOcclusionOverlayRenderer();
+        HideOcclusionOverlay();
+    }
+
+    private void LateUpdate()
+    {
+        if (targetRenderer == null)
+        {
+            HideOcclusionOverlay();
+            return;
+        }
+
+        if (mapGenerator == null)
+        {
+            mapGenerator = FindFirstObjectByType<ProceduralIsometricMapGenerator>();
+        }
+
+        if (mapGenerator == null || !mapGenerator.HasGeneratedMap)
+        {
+            HideOcclusionOverlay();
+            return;
+        }
+
+        SyncOcclusionOverlayVisual();
+
+        IReadOnlyList<SpriteRenderer> occluders = mapGenerator.OcclusionObstacleRenderers;
+        if (occluders == null || occluders.Count == 0)
+        {
+            HideOcclusionOverlay();
+            return;
+        }
+
+        Bounds characterBounds = targetRenderer.bounds;
+        characterBounds.Expand(new Vector3(occlusionOverlapPadding, occlusionOverlapPadding, 0f));
+
+        bool isOccluded = false;
+        int highestOccluderSortingOrder = targetRenderer.sortingOrder;
+        for (int i = 0; i < occluders.Count; i++)
+        {
+            SpriteRenderer occluder = occluders[i];
+            if (occluder == null ||
+                !occluder.enabled ||
+                occluder.sprite == null ||
+                occluder.sortingLayerID != targetRenderer.sortingLayerID ||
+                occluder.sortingOrder <= targetRenderer.sortingOrder)
+            {
+                continue;
+            }
+
+            if (!occluder.bounds.Intersects(characterBounds))
+            {
+                continue;
+            }
+
+            isOccluded = true;
+            highestOccluderSortingOrder = Mathf.Max(highestOccluderSortingOrder, occluder.sortingOrder);
+        }
+
+        if (!isOccluded)
+        {
+            HideOcclusionOverlay();
+            return;
+        }
+
+        occlusionOverlayRenderer.sortingLayerID = targetRenderer.sortingLayerID;
+        occlusionOverlayRenderer.sortingOrder = highestOccluderSortingOrder + occlusionSortingOrderOffset;
+        occlusionOverlayRenderer.enabled = true;
     }
 
     public void SetSelected(bool isSelected)
@@ -166,6 +247,57 @@ public class TacticsCharacterAnimator : MonoBehaviour
             -(anchorSize.x * 0.5f) + trimOffsetUnits.x,
             trimOffsetUnits.y,
             0f);
+    }
+
+    private void EnsureOcclusionOverlayRenderer()
+    {
+        if (occlusionOverlayRenderer != null)
+        {
+            return;
+        }
+
+        Transform existingOverlay = transform.Find("OcclusionHighlight");
+        if (existingOverlay != null)
+        {
+            occlusionOverlayRenderer = existingOverlay.GetComponent<SpriteRenderer>();
+        }
+
+        if (occlusionOverlayRenderer != null)
+        {
+            return;
+        }
+
+        GameObject overlayObject = new GameObject("OcclusionHighlight");
+        overlayObject.transform.SetParent(transform, false);
+        occlusionOverlayRenderer = overlayObject.AddComponent<SpriteRenderer>();
+        occlusionOverlayRenderer.color = occlusionHighlightColor;
+        occlusionOverlayRenderer.enabled = false;
+    }
+
+    private void SyncOcclusionOverlayVisual()
+    {
+        if (occlusionOverlayRenderer == null)
+        {
+            return;
+        }
+
+        occlusionOverlayRenderer.sprite = targetRenderer.sprite;
+        occlusionOverlayRenderer.flipX = targetRenderer.flipX;
+        occlusionOverlayRenderer.drawMode = targetRenderer.drawMode;
+        occlusionOverlayRenderer.size = targetRenderer.size;
+        occlusionOverlayRenderer.color = occlusionHighlightColor;
+        occlusionOverlayRenderer.maskInteraction = targetRenderer.maskInteraction;
+        occlusionOverlayRenderer.transform.localPosition = targetRenderer.transform.localPosition;
+        occlusionOverlayRenderer.transform.localRotation = targetRenderer.transform.localRotation;
+        occlusionOverlayRenderer.transform.localScale = targetRenderer.transform.localScale;
+    }
+
+    private void HideOcclusionOverlay()
+    {
+        if (occlusionOverlayRenderer != null)
+        {
+            occlusionOverlayRenderer.enabled = false;
+        }
     }
 
     private Vector2 InferSourceFrameSizePixels(Sprite referenceSprite)

@@ -178,8 +178,6 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
                 continue;
             }
 
-            EnsureForegroundSilhouette(existingCharacter);
-
             occupiedTiles.Add(existingCharacter.GridPosition);
 
             if (existingCharacter.Team == TacticsUnitTeam.Player)
@@ -213,7 +211,6 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
                 TacticsCharacterController character = TacticsCharacterSpawner.SpawnCharacter(mapGenerator, definition, spawnTile);
                 if (character != null)
                 {
-                    EnsureForegroundSilhouette(character);
                     occupiedTiles.Add(character.GridPosition);
                 }
             }
@@ -250,21 +247,10 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
                 if (enemy != null)
                 {
-                    EnsureForegroundSilhouette(enemy);
                     occupiedTiles.Add(enemy.GridPosition);
                 }
             }
         }
-    }
-
-    private void EnsureForegroundSilhouette(TacticsCharacterController character)
-    {
-        if (character == null || character.GetComponent<TacticsCharacterOcclusionSilhouette>() != null)
-        {
-            return;
-        }
-
-        character.gameObject.AddComponent<TacticsCharacterOcclusionSilhouette>();
     }
 
     private Vector2Int FindSpawnTile(Vector2Int requestedTile, HashSet<Vector2Int> occupiedTiles)

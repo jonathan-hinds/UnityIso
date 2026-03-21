@@ -62,9 +62,9 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
     private Sprite cachedBottomRightEdgeShadowSprite;
 
     private readonly List<SpriteRenderer> spawnedRenderers = new List<SpriteRenderer>();
+    private readonly List<SpriteRenderer> occlusionObstacleRenderers = new List<SpriteRenderer>();
     private int[,] currentHeights;
     private System.Random spawnPlacementRandom;
-    private TacticsForegroundOccluderGroup generatedOccluderGroup;
 
     public int Length => length;
     public int Width => width;
@@ -73,6 +73,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
     public float ElevationStep => elevationStep;
     public bool HasGeneratedMap => currentHeights != null;
     public IReadOnlyList<TacticsEnemySpawnEntry> EnemySpawnEntries => enemySpawnEntries;
+    public IReadOnlyList<SpriteRenderer> OcclusionObstacleRenderers => occlusionObstacleRenderers;
 
     private void Start()
     {
@@ -91,7 +92,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         EnsureDefaultSprites();
         ClearGeneratedMap();
         spawnedRenderers.Clear();
-        generatedOccluderGroup = null;
+        occlusionObstacleRenderers.Clear();
 
         currentHeights = GenerateHeights();
         spawnPlacementRandom = CreateSpawnPlacementRandom();
@@ -116,7 +117,8 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                     x,
                     y,
                     height,
-                    2);
+                    2,
+                    registerAsOccluder: true);
                 ConfigureTopTile(partName: $"Top_{x}_{y}_{height}", generatedRoot: generatedRoot, gridX: x, gridY: y, height: height);
 
                 // Treat the terrain as stacked isometric columns. The vertical side faces
@@ -140,7 +142,8 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                     x,
                     y,
                     height,
-                    0);
+                    0,
+                    registerAsOccluder: true);
 
                 CreateTilePart(
                     generatedRoot,
@@ -150,7 +153,8 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                     x,
                     y,
                     height,
-                    1);
+                    1,
+                    registerAsOccluder: true);
 
                 if (addCliffEdgeShadows)
                 {
@@ -221,7 +225,8 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                             x,
                             y,
                             layer,
-                            0);
+                            0,
+                            registerAsOccluder: true);
                     }
 
                     if (lowerRightNeighborHeight < layer)
@@ -234,7 +239,8 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                             x,
                             y,
                             layer,
-                            1);
+                            1,
+                            registerAsOccluder: true);
                     }
                 }
             }
@@ -261,15 +267,12 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         GameObject root = new GameObject(GeneratedRootName);
         root.transform.SetParent(transform, false);
         root.transform.localPosition = Vector3.zero;
-        generatedOccluderGroup = root.AddComponent<TacticsForegroundOccluderGroup>();
         return root.transform;
     }
 
     private void ClearGeneratedMap()
     {
         Transform existingRoot = transform.Find(GeneratedRootName);
-        generatedOccluderGroup = null;
-
         if (existingRoot == null)
         {
             return;
@@ -493,7 +496,8 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         int gridX,
         int gridY,
         int layer,
-        int sortBias)
+        int sortBias,
+        bool registerAsOccluder = false)
     {
         GameObject part = new GameObject(objectName);
         part.transform.SetParent(parent, false);
@@ -502,12 +506,12 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         SpriteRenderer renderer = part.AddComponent<SpriteRenderer>();
         renderer.sprite = sprite;
         renderer.sortingOrder = CalculateSortingOrder(gridX, gridY, layer, sortBias);
-        TacticsForegroundOccluder occluder = part.AddComponent<TacticsForegroundOccluder>();
-        occluder.Initialize(gridX, gridY, layer, sortBias);
-        occluder.SetOcclusionPolygon(BuildOcclusionPolygon(sortBias));
 
         spawnedRenderers.Add(renderer);
-        generatedOccluderGroup?.RegisterOccluder(renderer);
+        if (registerAsOccluder)
+        {
+            occlusionObstacleRenderers.Add(renderer);
+        }
     }
 
     private Vector3 GetSpriteOffset(Sprite sprite, int sortBias)
@@ -581,59 +585,6 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         int rowTieBreak = (length - gridY) * 10;
         int columnTieBreak = (width - gridX) * 2;
         return backToFrontOrder + rowTieBreak + columnTieBreak + sortBias;
-    }
-
-    private Vector2[] BuildOcclusionPolygon(int sortBias)
-    {
-        Vector2 top = new Vector2(0f, tileHeight * 0.5f);
-        Vector2 right = new Vector2(tileWidth * 0.5f, 0f);
-        Vector2 bottom = new Vector2(0f, -tileHeight * 0.5f);
-        Vector2 left = new Vector2(-tileWidth * 0.5f, 0f);
-        Vector2 center = Vector2.zero;
-
-        switch (sortBias)
-        {
-            case 0:
-                return new[]
-                {
-                    left,
-                    center,
-                    new Vector2(0f, -elevationStep),
-                    new Vector2(-tileWidth * 0.5f, -(elevationStep + (tileHeight * 0.5f)))
-                };
-            case 1:
-                return new[]
-                {
-                    center,
-                    right,
-                    new Vector2(tileWidth * 0.5f, -(elevationStep + (tileHeight * 0.5f))),
-                    new Vector2(0f, -elevationStep)
-                };
-            case 3:
-                return BuildTopEdgeBand(top, left, center);
-            case 4:
-                return BuildTopEdgeBand(right, top, center);
-            case 5:
-                return BuildTopEdgeBand(left, bottom, center);
-            case 6:
-                return BuildTopEdgeBand(bottom, right, center);
-            default:
-                return null;
-        }
-    }
-
-    private Vector2[] BuildTopEdgeBand(Vector2 edgeStart, Vector2 edgeEnd, Vector2 center)
-    {
-        float inset = Mathf.Clamp01(cliffShadowWidth);
-        Vector2 innerEnd = Vector2.Lerp(edgeEnd, center, inset);
-        Vector2 innerStart = Vector2.Lerp(edgeStart, center, inset);
-        return new[]
-        {
-            edgeStart,
-            edgeEnd,
-            innerEnd,
-            innerStart
-        };
     }
 
     private void FrameMainCamera()
