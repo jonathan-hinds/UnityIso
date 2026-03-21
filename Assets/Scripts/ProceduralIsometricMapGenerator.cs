@@ -5,6 +5,20 @@ using UnityEngine;
 [DisallowMultipleComponent]
 public class ProceduralIsometricMapGenerator : MonoBehaviour
 {
+    public readonly struct OcclusionVolume
+    {
+        public OcclusionVolume(Bounds bounds, int sortingOrder, int sortingLayerId)
+        {
+            Bounds = bounds;
+            SortingOrder = sortingOrder;
+            SortingLayerId = sortingLayerId;
+        }
+
+        public Bounds Bounds { get; }
+        public int SortingOrder { get; }
+        public int SortingLayerId { get; }
+    }
+
     public event Action MapGenerated;
 
     [Header("Generation")]
@@ -62,7 +76,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
     private Sprite cachedBottomRightEdgeShadowSprite;
 
     private readonly List<SpriteRenderer> spawnedRenderers = new List<SpriteRenderer>();
-    private readonly List<SpriteRenderer> occlusionObstacleRenderers = new List<SpriteRenderer>();
+    private readonly List<OcclusionVolume> occlusionVolumes = new List<OcclusionVolume>();
     private int[,] currentHeights;
     private System.Random spawnPlacementRandom;
 
@@ -73,7 +87,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
     public float ElevationStep => elevationStep;
     public bool HasGeneratedMap => currentHeights != null;
     public IReadOnlyList<TacticsEnemySpawnEntry> EnemySpawnEntries => enemySpawnEntries;
-    public IReadOnlyList<SpriteRenderer> OcclusionObstacleRenderers => occlusionObstacleRenderers;
+    public IReadOnlyList<OcclusionVolume> OcclusionVolumes => occlusionVolumes;
 
     private void Start()
     {
@@ -92,7 +106,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         EnsureDefaultSprites();
         ClearGeneratedMap();
         spawnedRenderers.Clear();
-        occlusionObstacleRenderers.Clear();
+        occlusionVolumes.Clear();
 
         currentHeights = GenerateHeights();
         spawnPlacementRandom = CreateSpawnPlacementRandom();
@@ -108,6 +122,10 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                     continue;
                 }
 
+                Bounds? tileOcclusionBounds = null;
+                int tileOcclusionSortingOrder = int.MinValue;
+                int tileOcclusionSortingLayerId = 0;
+
                 Vector3 topPosition = GridToWorld(x, y, height);
                 CreateTilePart(
                     generatedRoot,
@@ -118,7 +136,9 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                     y,
                     height,
                     2,
-                    registerAsOccluder: true);
+                    ref tileOcclusionBounds,
+                    ref tileOcclusionSortingOrder,
+                    ref tileOcclusionSortingLayerId);
                 ConfigureTopTile(partName: $"Top_{x}_{y}_{height}", generatedRoot: generatedRoot, gridX: x, gridY: y, height: height);
 
                 // Treat the terrain as stacked isometric columns. The vertical side faces
@@ -143,7 +163,9 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                     y,
                     height,
                     0,
-                    registerAsOccluder: true);
+                    ref tileOcclusionBounds,
+                    ref tileOcclusionSortingOrder,
+                    ref tileOcclusionSortingLayerId);
 
                 CreateTilePart(
                     generatedRoot,
@@ -154,7 +176,9 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                     y,
                     height,
                     1,
-                    registerAsOccluder: true);
+                    ref tileOcclusionBounds,
+                    ref tileOcclusionSortingOrder,
+                    ref tileOcclusionSortingLayerId);
 
                 if (addCliffEdgeShadows)
                 {
@@ -226,7 +250,9 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                             y,
                             layer,
                             0,
-                            registerAsOccluder: true);
+                            ref tileOcclusionBounds,
+                            ref tileOcclusionSortingOrder,
+                            ref tileOcclusionSortingLayerId);
                     }
 
                     if (lowerRightNeighborHeight < layer)
@@ -240,8 +266,18 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                             y,
                             layer,
                             1,
-                            registerAsOccluder: true);
+                            ref tileOcclusionBounds,
+                            ref tileOcclusionSortingOrder,
+                            ref tileOcclusionSortingLayerId);
                     }
+                }
+
+                if (tileOcclusionBounds.HasValue)
+                {
+                    occlusionVolumes.Add(new OcclusionVolume(
+                        tileOcclusionBounds.Value,
+                        tileOcclusionSortingOrder,
+                        tileOcclusionSortingLayerId));
                 }
             }
         }
@@ -497,7 +533,9 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         int gridY,
         int layer,
         int sortBias,
-        bool registerAsOccluder = false)
+        ref Bounds? occlusionBounds,
+        ref int occlusionSortingOrder,
+        ref int occlusionSortingLayerId)
     {
         GameObject part = new GameObject(objectName);
         part.transform.SetParent(parent, false);
@@ -508,10 +546,46 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         renderer.sortingOrder = CalculateSortingOrder(gridX, gridY, layer, sortBias);
 
         spawnedRenderers.Add(renderer);
-        if (registerAsOccluder)
+        if (occlusionBounds.HasValue)
         {
-            occlusionObstacleRenderers.Add(renderer);
+            Bounds bounds = occlusionBounds.Value;
+            bounds.Encapsulate(renderer.bounds);
+            occlusionBounds = bounds;
         }
+        else
+        {
+            occlusionBounds = renderer.bounds;
+        }
+
+        occlusionSortingOrder = Mathf.Max(occlusionSortingOrder, renderer.sortingOrder);
+        occlusionSortingLayerId = renderer.sortingLayerID;
+    }
+
+    private void CreateTilePart(
+        Transform parent,
+        Sprite sprite,
+        Vector3 position,
+        string objectName,
+        int gridX,
+        int gridY,
+        int layer,
+        int sortBias)
+    {
+        Bounds? ignoredBounds = null;
+        int ignoredSortingOrder = int.MinValue;
+        int ignoredSortingLayerId = 0;
+        CreateTilePart(
+            parent,
+            sprite,
+            position,
+            objectName,
+            gridX,
+            gridY,
+            layer,
+            sortBias,
+            ref ignoredBounds,
+            ref ignoredSortingOrder,
+            ref ignoredSortingLayerId);
     }
 
     private Vector3 GetSpriteOffset(Sprite sprite, int sortBias)
