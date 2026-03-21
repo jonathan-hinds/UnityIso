@@ -10,12 +10,12 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e7b9484a5008cb04fb02b3a3ce7d7f91, type: 3}
-  m_Name: Attack
+  m_Name: Blast
   m_EditorClassIdentifier: 
-  abilityId: attack
-  displayName: Attack
-  description: A basic melee strike.
-  range: 1
+  abilityId: blast
+  displayName: Blast
+  description: A magical blast.
+  range: 4
   targetRule: 0
   effects:
   - effectKind: 0
@@ -24,5 +24,5 @@ MonoBehaviour:
       flatAmount: 0
       bonusAmount: 0
       scaling:
-      - stat: 0
+      - stat: 4
         rank: 4

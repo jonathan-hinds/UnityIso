@@ -38,7 +38,12 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
         ability.targetRule = TacticsAbilityTargetRule.HostileUnit;
         ability.effects = new List<TacticsAbilityEffectDefinitionData>
         {
-            TacticsAbilityEffectDefinitionData.CreateDealDamage()
+            TacticsAbilityEffectDefinitionData.CreateDealDamage(
+                TacticsDealDamageEffectData.CreateScaledDamage(
+                    TacticsDamageFormula.AttackerBaseDamage,
+                    TacticsAbilityScalingDefinitionData.Create(
+                        TacticsAbilityScalingStat.Strength,
+                        TacticsAbilityScalingRank.A)))
         };
         return ability;
     }
@@ -52,6 +57,13 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
         displayName = string.IsNullOrWhiteSpace(displayName) ? name : displayName.Trim();
         range = Mathf.Max(1, range);
         effects ??= new List<TacticsAbilityEffectDefinitionData>();
+
+        for (int i = 0; i < effects.Count; i++)
+        {
+            TacticsAbilityEffectDefinitionData effect = effects[i];
+            effect.Sanitize();
+            effects[i] = effect;
+        }
     }
 }
 
@@ -99,6 +111,25 @@ public enum TacticsDamageFormula
     FlatValue = 1
 }
 
+public enum TacticsAbilityScalingStat
+{
+    Strength = 0,
+    Agility = 1,
+    Stamina = 2,
+    Wisdom = 3,
+    Intelligence = 4
+}
+
+public enum TacticsAbilityScalingRank
+{
+    E = 0,
+    D = 1,
+    C = 2,
+    B = 3,
+    A = 4,
+    S = 5
+}
+
 [Serializable]
 public struct TacticsAbilityEffectDefinitionData
 {
@@ -116,6 +147,20 @@ public struct TacticsAbilityEffectDefinitionData
             dealDamage = TacticsDealDamageEffectData.Default()
         };
     }
+
+    public static TacticsAbilityEffectDefinitionData CreateDealDamage(TacticsDealDamageEffectData damageEffect)
+    {
+        return new TacticsAbilityEffectDefinitionData
+        {
+            effectKind = TacticsAbilityEffectKind.DealDamage,
+            dealDamage = damageEffect
+        };
+    }
+
+    public void Sanitize()
+    {
+        dealDamage.Sanitize();
+    }
 }
 
 [Serializable]
@@ -124,10 +169,12 @@ public struct TacticsDealDamageEffectData
     [SerializeField] private TacticsDamageFormula damageFormula;
     [SerializeField, Min(0)] private int flatAmount;
     [SerializeField] private int bonusAmount;
+    [SerializeField] private List<TacticsAbilityScalingDefinitionData> scaling;
 
     public TacticsDamageFormula DamageFormula => damageFormula;
     public int FlatAmount => Mathf.Max(0, flatAmount);
     public int BonusAmount => bonusAmount;
+    public IReadOnlyList<TacticsAbilityScalingDefinitionData> Scaling => scaling;
 
     public static TacticsDealDamageEffectData Default()
     {
@@ -135,7 +182,87 @@ public struct TacticsDealDamageEffectData
         {
             damageFormula = TacticsDamageFormula.AttackerBaseDamage,
             flatAmount = 0,
-            bonusAmount = 0
+            bonusAmount = 0,
+            scaling = new List<TacticsAbilityScalingDefinitionData>()
+        };
+    }
+
+    public void Sanitize()
+    {
+        flatAmount = Mathf.Max(0, flatAmount);
+        scaling ??= new List<TacticsAbilityScalingDefinitionData>();
+    }
+
+    public static TacticsDealDamageEffectData CreateScaledDamage(
+        TacticsDamageFormula formula,
+        params TacticsAbilityScalingDefinitionData[] scalingDefinitions)
+    {
+        return new TacticsDealDamageEffectData
+        {
+            damageFormula = formula,
+            flatAmount = 0,
+            bonusAmount = 0,
+            scaling = scalingDefinitions != null
+                ? new List<TacticsAbilityScalingDefinitionData>(scalingDefinitions)
+                : new List<TacticsAbilityScalingDefinitionData>()
+        };
+    }
+}
+
+[Serializable]
+public struct TacticsAbilityScalingDefinitionData
+{
+    [SerializeField] private TacticsAbilityScalingStat stat;
+    [SerializeField] private TacticsAbilityScalingRank rank;
+
+    public TacticsAbilityScalingStat Stat => stat;
+    public TacticsAbilityScalingRank Rank => rank;
+
+    public static TacticsAbilityScalingDefinitionData Create(
+        TacticsAbilityScalingStat stat,
+        TacticsAbilityScalingRank rank)
+    {
+        return new TacticsAbilityScalingDefinitionData
+        {
+            stat = stat,
+            rank = rank
+        };
+    }
+}
+
+public static class TacticsAbilityScalingCalculator
+{
+    public static int EvaluateDamageBonus(
+        TacticsCharacterController source,
+        IReadOnlyList<TacticsAbilityScalingDefinitionData> scalingDefinitions)
+    {
+        if (source == null || scalingDefinitions == null || scalingDefinitions.Count == 0)
+        {
+            return 0;
+        }
+
+        float totalBonus = 0f;
+        for (int i = 0; i < scalingDefinitions.Count; i++)
+        {
+            TacticsAbilityScalingDefinitionData scaling = scalingDefinitions[i];
+            int statValue = source.GetPrimaryStat(scaling.Stat);
+            totalBonus += statValue * GetRankMultiplier(scaling.Rank);
+        }
+
+        return Mathf.Max(0, Mathf.RoundToInt(totalBonus));
+    }
+
+    private static float GetRankMultiplier(TacticsAbilityScalingRank rank)
+    {
+        return rank switch
+        {
+            TacticsAbilityScalingRank.S => 1.4f,
+            TacticsAbilityScalingRank.A => 1.1f,
+            TacticsAbilityScalingRank.B => 0.85f,
+            TacticsAbilityScalingRank.C => 0.6f,
+            TacticsAbilityScalingRank.D => 0.35f,
+            TacticsAbilityScalingRank.E => 0.15f,
+            _ => 0f
         };
     }
 }

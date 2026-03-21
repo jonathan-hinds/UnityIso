@@ -145,6 +145,7 @@ public struct TacticsCharacterStats
 
     public int MoveRange => Mathf.Max(0, mobilityStats.moveRange);
     public int JumpHeight => Mathf.Max(0, mobilityStats.jumpHeight);
+    public int GetPrimaryStat(TacticsAbilityScalingStat stat) => primaryStats.GetValue(stat);
 
     public TacticsCharacterDerivedStats CalculateDerivedStats()
     {
@@ -191,6 +192,19 @@ public struct TacticsPrimaryStats
     [Min(1)] public int wisdom;
     [FormerlySerializedAs("magicAttack")]
     [Min(1)] public int intelligence;
+
+    public int GetValue(TacticsAbilityScalingStat stat)
+    {
+        return stat switch
+        {
+            TacticsAbilityScalingStat.Stamina => Mathf.Max(0, stamina),
+            TacticsAbilityScalingStat.Strength => Mathf.Max(0, strength),
+            TacticsAbilityScalingStat.Agility => Mathf.Max(0, agility),
+            TacticsAbilityScalingStat.Wisdom => Mathf.Max(0, wisdom),
+            TacticsAbilityScalingStat.Intelligence => Mathf.Max(0, intelligence),
+            _ => 0
+        };
+    }
 
     public static TacticsPrimaryStats Default()
     {

@@ -306,6 +306,7 @@ public sealed class TacticsDealDamageEffectProcessor : ITacticsAbilityEffectProc
             _ => context.Source.RollBaseDamage()
         };
 
+        amount += TacticsAbilityScalingCalculator.EvaluateDamageBonus(context.Source, damage.Scaling);
         amount = Mathf.Max(0, amount + damage.BonusAmount);
         if (amount <= 0)
         {

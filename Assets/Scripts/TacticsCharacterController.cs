@@ -51,6 +51,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     public int MaxMana => derivedStats.maxMana;
     public int BaseDamageMin => derivedStats.baseDamageMin;
     public int BaseDamageMax => derivedStats.baseDamageMax;
+    public TacticsCharacterStats BaseStats => characterDefinition != null ? characterDefinition.BaseStats : TacticsCharacterStats.Default();
     public int MoveRange => characterDefinition != null ? characterDefinition.BaseStats.MoveRange : 0;
     public int JumpHeight => characterDefinition != null ? characterDefinition.BaseStats.JumpHeight : 0;
     public int CurrentElevation => mapGenerator != null ? mapGenerator.GetTileElevation(GridPosition.x, GridPosition.y) : 0;
@@ -211,6 +212,11 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         int minimumDamage = Mathf.Max(0, BaseDamageMin);
         int maximumDamage = Mathf.Max(minimumDamage, BaseDamageMax);
         return UnityEngine.Random.Range(minimumDamage, maximumDamage + 1);
+    }
+
+    public int GetPrimaryStat(TacticsAbilityScalingStat stat)
+    {
+        return BaseStats.GetPrimaryStat(stat);
     }
 
     public bool ApplyDamage(int damageAmount, Vector3? damageSourceWorldPosition = null)

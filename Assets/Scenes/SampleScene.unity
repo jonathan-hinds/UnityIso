@@ -457,13 +457,13 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   generateOnStart: 1
-  seed: 1233
-  length: 15
-  width: 15
+  seed: 1443
+  length: 10
+  width: 10
   minElevation: 1
-  maxElevation: 6
-  noiseScale: 5
-  noiseOctaves: 2
+  maxElevation: 8
+  noiseScale: 7
+  noiseOctaves: 3
   persistence: 0.5
   lacunarity: 2
   smoothingPasses: 1
@@ -485,7 +485,7 @@ MonoBehaviour:
   cameraPadding: 1
   enemySpawnEntries:
   - characterDefinition: {fileID: 11400000, guid: c1fa1a9f62e740d7b31d67ad0043cbe8, type: 2}
-    count: 1
+    count: 10
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
