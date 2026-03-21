@@ -146,39 +146,48 @@ public sealed class TacticsTurnManager : MonoBehaviour
 
     private IEnumerator AdvanceTurnRoutine()
     {
-        CleanupParticipants();
+        ITacticsTurnParticipant activatedParticipant = null;
 
-        if (participants.Count == 0)
+        try
         {
-            ActiveParticipant = null;
-            activeTurnIndex = -1;
+            CleanupParticipants();
+
+            if (participants.Count == 0)
+            {
+                ActiveParticipant = null;
+                activeTurnIndex = -1;
+                yield break;
+            }
+
+            ITacticsTurnParticipant nextParticipant = GetNextEligibleParticipant();
+            if (nextParticipant == null)
+            {
+                ActiveParticipant = null;
+                activeTurnIndex = -1;
+                yield break;
+            }
+
+            ActiveParticipant = nextParticipant;
+            ActiveParticipant.BeginTurn();
+            activatedParticipant = ActiveParticipant;
+            ActiveParticipantChanged?.Invoke(ActiveParticipant);
+            NotifyTurnStateChanged();
+
+            if (cameraDirector != null)
+            {
+                yield return cameraDirector.FocusOnWorldPoint(ActiveParticipant.TurnFocusPoint);
+            }
+        }
+        finally
+        {
             turnTransitionRoutine = null;
             NotifyTurnStateChanged();
-            yield break;
         }
 
-        ITacticsTurnParticipant nextParticipant = GetNextEligibleParticipant();
-        if (nextParticipant == null)
+        if (ReferenceEquals(ActiveParticipant, activatedParticipant))
         {
-            ActiveParticipant = null;
-            activeTurnIndex = -1;
-            turnTransitionRoutine = null;
-            NotifyTurnStateChanged();
-            yield break;
+            StartAutomatedTurnIfNeeded(activatedParticipant);
         }
-
-        ActiveParticipant = nextParticipant;
-        ActiveParticipant.BeginTurn();
-        ActiveParticipantChanged?.Invoke(ActiveParticipant);
-        NotifyTurnStateChanged();
-
-        if (cameraDirector != null)
-        {
-            yield return cameraDirector.FocusOnWorldPoint(ActiveParticipant.TurnFocusPoint);
-        }
-
-        turnTransitionRoutine = null;
-        NotifyTurnStateChanged();
     }
 
     private ITacticsTurnParticipant GetNextEligibleParticipant()
@@ -232,6 +241,17 @@ public sealed class TacticsTurnManager : MonoBehaviour
     private void NotifyTurnStateChanged()
     {
         TurnStateChanged?.Invoke();
+    }
+
+    private static void StartAutomatedTurnIfNeeded(ITacticsTurnParticipant participant)
+    {
+        if (participant is not MonoBehaviour behaviour)
+        {
+            return;
+        }
+
+        ITacticsAutomatedTurnController automatedTurnController = behaviour.GetComponent<ITacticsAutomatedTurnController>();
+        automatedTurnController?.BeginAutomatedTurn();
     }
 
     private static int CompareParticipants(ITacticsTurnParticipant left, ITacticsTurnParticipant right)

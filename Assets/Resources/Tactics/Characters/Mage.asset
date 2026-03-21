@@ -14,6 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   characterId: mage
   displayName: Mage
+  team: 0
   spriteSheetResourcePath: Assets/sprite-sheet_export_8x4_48x64mage.png
   walkFramesPerSecond: 7
   baseColor: {r: 1, g: 1, b: 1, a: 1}
@@ -41,3 +42,5 @@ MonoBehaviour:
     mobilityStats:
       moveRange: 4
       jumpHeight: 2
+  startingAbilities:
+  - {fileID: 11400000, guid: 3001edcb51eaa3147bde39d09a4a27fd, type: 2}

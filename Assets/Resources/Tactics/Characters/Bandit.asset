@@ -42,3 +42,5 @@ MonoBehaviour:
     mobilityStats:
       moveRange: 4
       jumpHeight: 2
+  startingAbilities:
+  - {fileID: 11400000, guid: 3001edcb51eaa3147bde39d09a4a27fd, type: 2}

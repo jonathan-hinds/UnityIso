@@ -9,7 +9,8 @@ public class TacticsPlayerController : MonoBehaviour
     {
         None = 0,
         CharacterSelected = 1,
-        AwaitingMoveTarget = 2
+        AwaitingMoveTarget = 2,
+        AwaitingAbilityTarget = 3
     }
 
     [SerializeField] private Camera targetCamera;
@@ -17,6 +18,8 @@ public class TacticsPlayerController : MonoBehaviour
     [SerializeField] private TacticsActionMenuView actionMenuView;
     [SerializeField] private TacticsSelectionPanelView selectionPanelView;
     [SerializeField] private TacticsTurnManager turnManager;
+    [SerializeField] private TacticsCombatSystem combatSystem;
+    [SerializeField] private TacticsTileTargetOverlay tileTargetOverlay;
 
     private TacticsCharacterController selectedCharacter;
     private SelectionState selectionState;
@@ -42,6 +45,16 @@ public class TacticsPlayerController : MonoBehaviour
         {
             turnManager = FindFirstObjectByType<TacticsTurnManager>();
         }
+
+        if (combatSystem == null)
+        {
+            combatSystem = FindFirstObjectByType<TacticsCombatSystem>();
+        }
+
+        if (tileTargetOverlay == null)
+        {
+            tileTargetOverlay = FindFirstObjectByType<TacticsTileTargetOverlay>();
+        }
     }
 
     private void OnEnable()
@@ -61,6 +74,16 @@ public class TacticsPlayerController : MonoBehaviour
             turnManager = FindFirstObjectByType<TacticsTurnManager>();
         }
 
+        if (combatSystem == null)
+        {
+            combatSystem = FindFirstObjectByType<TacticsCombatSystem>();
+        }
+
+        if (tileTargetOverlay == null)
+        {
+            tileTargetOverlay = FindFirstObjectByType<TacticsTileTargetOverlay>();
+        }
+
         if (actionMenuView != null)
         {
             actionMenuView.ActionSelected -= HandleActionSelected;
@@ -75,6 +98,12 @@ public class TacticsPlayerController : MonoBehaviour
             turnManager.TurnStateChanged += HandleTurnStateChanged;
             HandleActiveParticipantChanged(turnManager.ActiveParticipant);
         }
+
+        if (combatSystem != null)
+        {
+            combatSystem.StateChanged -= HandleCombatStateChanged;
+            combatSystem.StateChanged += HandleCombatStateChanged;
+        }
     }
 
     private void OnDisable()
@@ -88,6 +117,11 @@ public class TacticsPlayerController : MonoBehaviour
         {
             turnManager.ActiveParticipantChanged -= HandleActiveParticipantChanged;
             turnManager.TurnStateChanged -= HandleTurnStateChanged;
+        }
+
+        if (combatSystem != null)
+        {
+            combatSystem.StateChanged -= HandleCombatStateChanged;
         }
 
         SubscribeToSelectedCharacter(null);
@@ -127,6 +161,19 @@ public class TacticsPlayerController : MonoBehaviour
         Vector2 point = new Vector2(worldPosition.x, worldPosition.y);
         Collider2D[] hits = Physics2D.OverlapPointAll(point);
 
+        if (selectionState == SelectionState.AwaitingAbilityTarget &&
+            ReferenceEquals(selectedCharacter, GetActivePlayerCharacter()) &&
+            TryGetClickedTile(hits, out IsometricTileHoverInfo targetedTile))
+        {
+            if (combatSystem != null && combatSystem.TryExecuteTargetAt(new Vector2Int(targetedTile.GridX, targetedTile.GridY)))
+            {
+                selectionState = SelectionState.CharacterSelected;
+                RefreshHud();
+            }
+
+            return;
+        }
+
         if (TryGetClickedCharacter(hits, out TacticsCharacterController clickedCharacter))
         {
             if (ReferenceEquals(clickedCharacter, GetActivePlayerCharacter()))
@@ -158,6 +205,11 @@ public class TacticsPlayerController : MonoBehaviour
         {
             RefreshHud();
             return;
+        }
+
+        if (selectionState == SelectionState.AwaitingAbilityTarget)
+        {
+            combatSystem?.CancelTargeting();
         }
 
         SubscribeToSelectedCharacter(null);
@@ -285,6 +337,30 @@ public class TacticsPlayerController : MonoBehaviour
         }
     }
 
+    public void AssignCombatSystem(TacticsCombatSystem system)
+    {
+        if (combatSystem != null)
+        {
+            combatSystem.StateChanged -= HandleCombatStateChanged;
+        }
+
+        combatSystem = system;
+
+        if (combatSystem != null)
+        {
+            combatSystem.StateChanged -= HandleCombatStateChanged;
+            combatSystem.StateChanged += HandleCombatStateChanged;
+        }
+
+        RefreshHud();
+    }
+
+    public void AssignTileTargetOverlay(TacticsTileTargetOverlay overlay)
+    {
+        tileTargetOverlay = overlay;
+        RefreshHud();
+    }
+
     private void HandleActionSelected(TacticsHudActionType actionType)
     {
         TacticsCharacterController activePlayerCharacter = GetActivePlayerCharacter();
@@ -298,12 +374,25 @@ public class TacticsPlayerController : MonoBehaviour
             case TacticsHudActionType.Move:
                 if (selectedCharacter.CanMoveThisTurn)
                 {
+                    combatSystem?.CancelTargeting();
                     selectionState = SelectionState.AwaitingMoveTarget;
                     RefreshHud();
                 }
 
                 break;
+            case TacticsHudActionType.Attack:
+                TacticsAbilityDefinition primaryAbility = selectedCharacter.GetPrimaryActionAbility();
+                if (combatSystem != null &&
+                    primaryAbility != null &&
+                    combatSystem.BeginTargeting(selectedCharacter, primaryAbility))
+                {
+                    selectionState = SelectionState.AwaitingAbilityTarget;
+                    RefreshHud();
+                }
+
+                break;
             case TacticsHudActionType.EndTurn:
+                combatSystem?.CancelTargeting();
                 turnManager?.TryEndActiveTurn();
                 break;
         }
@@ -324,6 +413,12 @@ public class TacticsPlayerController : MonoBehaviour
             selectionState = SelectionState.CharacterSelected;
             RefreshHud();
         }
+        else if (selectionState == SelectionState.AwaitingAbilityTarget)
+        {
+            combatSystem?.CancelTargeting();
+            selectionState = SelectionState.CharacterSelected;
+            RefreshHud();
+        }
     }
 
     private void RefreshHud()
@@ -332,6 +427,7 @@ public class TacticsPlayerController : MonoBehaviour
         {
             actionMenuView?.Hide();
             selectionPanelView?.Hide();
+            tileTargetOverlay?.Hide();
             return;
         }
 
@@ -345,9 +441,17 @@ public class TacticsPlayerController : MonoBehaviour
         {
             if (showActionMenu)
             {
+                TacticsAbilityDefinition primaryAbility = selectedCharacter.GetPrimaryActionAbility();
+                bool canUsePrimaryAbility = primaryAbility != null &&
+                                            combatSystem != null &&
+                                            combatSystem.GetValidTargetTiles(selectedCharacter, primaryAbility).Count > 0;
+
                 actionMenuView.ShowForCharacter(
                     selectedCharacter,
+                    primaryAbility,
+                    canUsePrimaryAbility,
                     selectionState == SelectionState.AwaitingMoveTarget,
+                    selectionState == SelectionState.AwaitingAbilityTarget,
                     turnManager != null ? turnManager.RoundNumber : 1,
                     turnManager != null ? turnManager.TurnNumber : 1,
                     turnManager != null ? turnManager.ParticipantCount : 1);
@@ -359,6 +463,7 @@ public class TacticsPlayerController : MonoBehaviour
         }
 
         selectionPanelView?.Show(selectedCharacter);
+        RefreshTargetOverlay();
     }
 
     private void HandleActiveParticipantChanged(ITacticsTurnParticipant participant)
@@ -372,6 +477,19 @@ public class TacticsPlayerController : MonoBehaviour
 
     private void HandleTurnStateChanged()
     {
+        RefreshHud();
+    }
+
+    private void HandleCombatStateChanged()
+    {
+        if (combatSystem == null || combatSystem.State != TacticsCombatState.TargetingAbility)
+        {
+            if (selectionState == SelectionState.AwaitingAbilityTarget)
+            {
+                selectionState = SelectionState.CharacterSelected;
+            }
+        }
+
         RefreshHud();
     }
 
@@ -398,5 +516,24 @@ public class TacticsPlayerController : MonoBehaviour
     {
         TacticsCharacterController activeCharacter = turnManager != null ? turnManager.ActiveCharacter : null;
         return activeCharacter != null && activeCharacter.IsPlayerControlled ? activeCharacter : null;
+    }
+
+    private void RefreshTargetOverlay()
+    {
+        if (tileTargetOverlay == null)
+        {
+            return;
+        }
+
+        if (selectionState == SelectionState.AwaitingAbilityTarget &&
+            selectedCharacter != null &&
+            combatSystem != null &&
+            combatSystem.TargetingAbility != null)
+        {
+            tileTargetOverlay.ShowTiles(combatSystem.GetValidTargetTiles(selectedCharacter, combatSystem.TargetingAbility));
+            return;
+        }
+
+        tileTargetOverlay.Hide();
     }
 }

@@ -20,6 +20,7 @@ public class TacticsActionMenuView : MonoBehaviour
     private Text characterNameText;
     private Text statsText;
     private Button moveButton;
+    private Button attackButton;
     private Button endTurnButton;
     private LayoutElement footerSpacer;
     private Font sharedFont;
@@ -32,7 +33,15 @@ public class TacticsActionMenuView : MonoBehaviour
         Hide();
     }
 
-    public void ShowForCharacter(TacticsCharacterController character, bool awaitingMoveTarget, int roundNumber, int turnNumber, int participantCount)
+    public void ShowForCharacter(
+        TacticsCharacterController character,
+        TacticsAbilityDefinition primaryAbility,
+        bool canUsePrimaryAbility,
+        bool awaitingMoveTarget,
+        bool awaitingAbilityTarget,
+        int roundNumber,
+        int turnNumber,
+        int participantCount)
     {
         EnsureBuilt();
 
@@ -44,7 +53,18 @@ public class TacticsActionMenuView : MonoBehaviour
 
         panelRoot.SetActive(true);
         characterNameText.text = character.DisplayName.ToUpperInvariant();
-        moveButton.interactable = character.CanMoveThisTurn && !awaitingMoveTarget;
+        moveButton.interactable = character.CanMoveThisTurn && !awaitingMoveTarget && !awaitingAbilityTarget;
+        attackButton.gameObject.SetActive(primaryAbility != null);
+        if (primaryAbility != null)
+        {
+            Text attackButtonText = attackButton.GetComponentInChildren<Text>();
+            if (attackButtonText != null)
+            {
+                attackButtonText.text = primaryAbility.DisplayName.ToUpperInvariant();
+            }
+        }
+
+        attackButton.interactable = primaryAbility != null && canUsePrimaryAbility && !awaitingMoveTarget && !awaitingAbilityTarget;
         endTurnButton.interactable = character.CanEndTurn;
     }
 
@@ -98,7 +118,7 @@ public class TacticsActionMenuView : MonoBehaviour
         panelRect.anchorMax = new Vector2(0f, 1f);
         panelRect.pivot = new Vector2(0f, 1f);
         panelRect.anchoredPosition = new Vector2(36f, -36f);
-        panelRect.sizeDelta = new Vector2(288f, 228f);
+        panelRect.sizeDelta = new Vector2(288f, 276f);
 
         Image panelImage = panelRoot.AddComponent<Image>();
         panelImage.color = panelColor;
@@ -146,6 +166,7 @@ public class TacticsActionMenuView : MonoBehaviour
         actionsLayout.childForceExpandHeight = false;
 
         moveButton = CreateButton("MoveButton", "MOVE", actionsRoot.transform, HandleMoveClicked);
+        attackButton = CreateButton("AttackButton", "ATTACK", actionsRoot.transform, HandleAttackClicked);
         endTurnButton = CreateButton("EndTurnButton", "END TURN", actionsRoot.transform, HandleEndTurnClicked);
 
         GameObject footerSpacerObject = CreateUiObject("FooterSpacer", panelRoot.transform);
@@ -212,6 +233,11 @@ public class TacticsActionMenuView : MonoBehaviour
     private void HandleMoveClicked()
     {
         ActionSelected?.Invoke(TacticsHudActionType.Move);
+    }
+
+    private void HandleAttackClicked()
+    {
+        ActionSelected?.Invoke(TacticsHudActionType.Attack);
     }
 
     private void HandleEndTurnClicked()

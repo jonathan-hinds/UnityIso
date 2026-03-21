@@ -30,6 +30,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     private TacticsCharacterDerivedStats derivedStats;
     private TacticsCharacterRuntimeResources runtimeResources;
     private TacticsTurnManager turnManager;
+    private readonly List<TacticsAbilityDefinition> abilities = new();
 
     public Vector2Int GridPosition { get; private set; }
     public bool IsSelected { get; private set; }
@@ -52,12 +53,16 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     public int JumpHeight => characterDefinition != null ? characterDefinition.BaseStats.JumpHeight : 0;
     public int CurrentElevation => mapGenerator != null ? mapGenerator.GetTileElevation(GridPosition.x, GridPosition.y) : 0;
     public bool HasMovedThisTurn { get; private set; }
+    public bool HasActedThisTurn { get; private set; }
     public bool IsTurnActive { get; private set; }
+    public bool IsAlive => CurrentHitPoints > 0;
     public bool CanReceiveCommands => mapGenerator != null && mapGenerator.HasGeneratedMap && !IsMoving;
     public bool CanMoveThisTurn => IsTurnActive && !HasMovedThisTurn && CanReceiveCommands;
+    public bool CanUseAbilitiesThisTurn => IsTurnActive && !HasActedThisTurn && CanReceiveCommands && IsAlive;
     public bool CanEndTurn => IsTurnActive && !IsMoving;
-    public bool IsTurnEligible => isActiveAndEnabled;
+    public bool IsTurnEligible => isActiveAndEnabled && IsAlive;
     public Vector3 TurnFocusPoint => transform.position;
+    public IReadOnlyList<TacticsAbilityDefinition> Abilities => abilities;
 
     public event Action<ITacticsTurnParticipant> TurnEnded;
     public event Action<ITacticsTurnParticipant> TurnStateChanged;
@@ -127,6 +132,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
 
     private void OnDisable()
     {
+        StopMovementImmediately();
         UnsubscribeFromMap();
         if (turnManager != null)
         {
@@ -142,7 +148,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
 
     public bool TryMoveTo(Vector2Int destination)
     {
-        if (!CanMoveThisTurn)
+        if (!CanMoveThisTurn || !IsAlive)
         {
             return false;
         }
@@ -160,9 +166,16 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
 
     public void BeginTurn()
     {
+        if (!IsAlive)
+        {
+            return;
+        }
+
+        StopMovementImmediately();
         IsTurnActive = true;
         characterAnimator?.SetTurnHighlight(true);
         HasMovedThisTurn = false;
+        HasActedThisTurn = false;
         NotifyTurnStateChanged();
     }
 
@@ -183,6 +196,47 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     public bool TryGetMovementPath(Vector2Int destination, out List<Vector2Int> path)
     {
         return TryGetPathTo(destination, out path, enforceMoveRange: true);
+    }
+
+    public TacticsAbilityDefinition GetPrimaryActionAbility()
+    {
+        return abilities.Count > 0 ? abilities[0] : null;
+    }
+
+    public int RollBaseDamage()
+    {
+        int minimumDamage = Mathf.Max(0, BaseDamageMin);
+        int maximumDamage = Mathf.Max(minimumDamage, BaseDamageMax);
+        return UnityEngine.Random.Range(minimumDamage, maximumDamage + 1);
+    }
+
+    public bool ApplyDamage(int damageAmount)
+    {
+        if (!IsAlive || damageAmount <= 0)
+        {
+            return false;
+        }
+
+        runtimeResources.hitPoints = Mathf.Max(0, runtimeResources.hitPoints - damageAmount);
+        NotifyTurnStateChanged();
+
+        if (runtimeResources.hitPoints == 0)
+        {
+            HandleDefeat();
+        }
+
+        return true;
+    }
+
+    public void CommitAbilityUse()
+    {
+        if (HasActedThisTurn)
+        {
+            return;
+        }
+
+        HasActedThisTurn = true;
+        NotifyTurnStateChanged();
     }
 
     public bool TryGetPathTo(Vector2Int destination, out List<Vector2Int> path, bool enforceMoveRange = true)
@@ -414,6 +468,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         startingGridPosition = definition.PreferredSpawnTile;
         derivedStats = definition.BaseStats.CalculateDerivedStats();
         runtimeResources = definition.BaseStats.CreateRuntimeResources();
+        RebuildAbilities(definition);
     }
 
     private void RegisterWithTurnManager()
@@ -429,5 +484,61 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     private void NotifyTurnStateChanged()
     {
         TurnStateChanged?.Invoke(this);
+    }
+
+    private void RebuildAbilities(TacticsCharacterDefinition definition)
+    {
+        abilities.Clear();
+
+        if (definition != null)
+        {
+            IReadOnlyList<TacticsAbilityDefinition> configuredAbilities = definition.StartingAbilities;
+            for (int i = 0; i < configuredAbilities.Count; i++)
+            {
+                AddAbilityIfMissing(configuredAbilities[i]);
+            }
+        }
+
+        TacticsAbilityCatalog catalog = TacticsAbilityCatalogResources.LoadCatalog();
+        if (catalog != null)
+        {
+            AddAbilityIfMissing(catalog.DefaultAttackAbility);
+        }
+    }
+
+    private void AddAbilityIfMissing(TacticsAbilityDefinition ability)
+    {
+        if (ability == null || abilities.Contains(ability))
+        {
+            return;
+        }
+
+        abilities.Add(ability);
+    }
+
+    private void HandleDefeat()
+    {
+        StopMovementImmediately();
+
+        IsTurnActive = false;
+        HasMovedThisTurn = true;
+        HasActedThisTurn = true;
+        SetSelected(false);
+        characterAnimator?.SetTurnHighlight(false);
+        NotifyTurnStateChanged();
+        gameObject.SetActive(false);
+    }
+
+    private void StopMovementImmediately()
+    {
+        if (movementRoutine == null)
+        {
+            return;
+        }
+
+        StopCoroutine(movementRoutine);
+        movementRoutine = null;
+        SnapToTile(GridPosition);
+        characterAnimator?.SetIdle(currentDirection);
     }
 }

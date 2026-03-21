@@ -64,11 +64,13 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         EnsureEventSystem();
         TacticsActionMenuView actionMenuView = EnsureActionMenuView();
         TacticsSelectionPanelView selectionPanelView = EnsureSelectionPanelView();
+        TacticsTileTargetOverlay tileTargetOverlay = EnsureTileTargetOverlay();
         EnsureTurnCameraDirector();
         TacticsTurnManager turnManager = EnsureTurnManager();
+        TacticsCombatSystem combatSystem = EnsureCombatSystem();
         EnsurePlayerController();
         EnsureCharacters();
-        BindHud(actionMenuView, selectionPanelView, turnManager);
+        BindHud(actionMenuView, selectionPanelView, tileTargetOverlay, turnManager, combatSystem);
         turnManager?.RefreshParticipantsAndStartBattle();
     }
 
@@ -125,7 +127,12 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         return hudObject.AddComponent<TacticsSelectionPanelView>();
     }
 
-    private void BindHud(TacticsActionMenuView actionMenuView, TacticsSelectionPanelView selectionPanelView, TacticsTurnManager turnManager)
+    private void BindHud(
+        TacticsActionMenuView actionMenuView,
+        TacticsSelectionPanelView selectionPanelView,
+        TacticsTileTargetOverlay tileTargetOverlay,
+        TacticsTurnManager turnManager,
+        TacticsCombatSystem combatSystem)
     {
         TacticsPlayerController playerController = FindFirstObjectByType<TacticsPlayerController>();
         if (playerController != null)
@@ -133,6 +140,8 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             playerController.AssignHud(actionMenuView);
             playerController.AssignSelectionHud(selectionPanelView);
             playerController.AssignTurnManager(turnManager);
+            playerController.AssignCombatSystem(combatSystem);
+            playerController.AssignTileTargetOverlay(tileTargetOverlay);
         }
     }
 
@@ -161,6 +170,33 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         {
             mainCamera.gameObject.AddComponent<TacticsTurnCameraDirector>();
         }
+    }
+
+    private TacticsCombatSystem EnsureCombatSystem()
+    {
+        TacticsCombatSystem existingSystem = FindFirstObjectByType<TacticsCombatSystem>();
+        if (existingSystem != null)
+        {
+            existingSystem.AssignMapGenerator(mapGenerator);
+            return existingSystem;
+        }
+
+        GameObject combatSystemObject = new GameObject("Tactics Combat System");
+        TacticsCombatSystem combatSystem = combatSystemObject.AddComponent<TacticsCombatSystem>();
+        combatSystem.AssignMapGenerator(mapGenerator);
+        return combatSystem;
+    }
+
+    private TacticsTileTargetOverlay EnsureTileTargetOverlay()
+    {
+        TacticsTileTargetOverlay existingOverlay = FindFirstObjectByType<TacticsTileTargetOverlay>();
+        if (existingOverlay != null)
+        {
+            return existingOverlay;
+        }
+
+        GameObject overlayObject = new GameObject("Tactics Tile Target Overlay");
+        return overlayObject.AddComponent<TacticsTileTargetOverlay>();
     }
 
     private void EnsureCharacters()

@@ -35,6 +35,9 @@ public sealed class TacticsCharacterDefinition : ScriptableObject
     [Header("Base Stats")]
     [SerializeField] private TacticsCharacterStats baseStats = TacticsCharacterStats.Default();
 
+    [Header("Abilities")]
+    [SerializeField] private List<TacticsAbilityDefinition> startingAbilities = new();
+
     public string CharacterId => characterId;
     public string DisplayName => string.IsNullOrWhiteSpace(displayName) ? name : displayName;
     public TacticsUnitTeam Team => team;
@@ -50,6 +53,7 @@ public sealed class TacticsCharacterDefinition : ScriptableObject
     public Vector2Int PreferredSpawnTile => preferredSpawnTile;
     public TacticsCharacterStats BaseStats => baseStats;
     public TacticsCharacterDerivedStats DerivedStats => baseStats.CalculateDerivedStats();
+    public IReadOnlyList<TacticsAbilityDefinition> StartingAbilities => startingAbilities;
 
     public bool TryGetOrderedSprites(out IReadOnlyList<Sprite> sprites)
     {
@@ -81,6 +85,7 @@ public sealed class TacticsCharacterDefinition : ScriptableObject
         walkFramesPerSecond = Mathf.Max(0.01f, walkFramesPerSecond);
         characterId = string.IsNullOrWhiteSpace(characterId) ? name.ToLowerInvariant().Replace(' ', '_') : characterId.Trim();
         displayName = string.IsNullOrWhiteSpace(displayName) ? name : displayName.Trim();
+        startingAbilities ??= new List<TacticsAbilityDefinition>();
     }
 
     private static Sprite[] LoadSprites(string path)
