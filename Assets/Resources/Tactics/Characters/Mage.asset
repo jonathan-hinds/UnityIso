@@ -15,7 +15,7 @@ MonoBehaviour:
   characterId: mage
   displayName: Mage
   team: 0
-  spriteSheetResourcePath: Assets/sprite-sheet_export_8x4_48x64mage.png
+  spriteSheetResourcePath: Characters/guy2
   walkFramesPerSecond: 7
   baseColor: {r: 1, g: 1, b: 1, a: 1}
   selectedColor: {r: 0.78, g: 0.93, b: 1, a: 1}

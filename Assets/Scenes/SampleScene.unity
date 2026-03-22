@@ -485,7 +485,7 @@ MonoBehaviour:
   cameraPadding: 1
   enemySpawnEntries:
   - characterDefinition: {fileID: 11400000, guid: c1fa1a9f62e740d7b31d67ad0043cbe8, type: 2}
-    count: 10
+    count: 4
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

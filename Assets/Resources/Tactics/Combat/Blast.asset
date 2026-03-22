@@ -25,4 +25,4 @@ MonoBehaviour:
       bonusAmount: 0
       scaling:
       - stat: 4
-        rank: 4
+        rank: 5

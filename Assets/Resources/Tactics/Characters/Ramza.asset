@@ -15,7 +15,7 @@ MonoBehaviour:
   characterId: ramza
   displayName: Ramza
   team: 0
-  spriteSheetResourcePath: Characters/sprite-sheet_export_8x4_48x64
+  spriteSheetResourcePath: Characters/guy1
   walkFramesPerSecond: 7
   baseColor: {r: 1, g: 1, b: 1, a: 1}
   selectedColor: {r: 1, g: 0.95, b: 0.65, a: 1}
