@@ -24,7 +24,7 @@ MonoBehaviour:
   jumpArcHeight: 0.5
   maxStepUp: 1
   maxStepDown: 1
-  tileAnchorOffset: {x: 0.18, y: 0.125}
+  tileAnchorOffset: {x: 0.18, y: 0.17}
   preferredSpawnTile: {x: 0, y: 0}
   baseStats:
     primaryStats:

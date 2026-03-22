@@ -11,7 +11,7 @@ public sealed class IsometricMapLayerVisibilityController : MonoBehaviour
 
     private readonly List<IsometricMapElevationElement> elevationElements = new();
     private int maximumElevation = 1;
-    private int visibleElevation = 1;
+    private int visibleElevation = 0;
 
     public event Action<int, int> VisibilityChanged;
 

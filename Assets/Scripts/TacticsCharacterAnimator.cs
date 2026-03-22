@@ -3,9 +3,13 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
 
+[ExecuteAlways]
 [DisallowMultipleComponent]
 public class TacticsCharacterAnimator : MonoBehaviour
 {
+    private const string SelectionRingObjectName = "SelectionRing";
+    private const string SelectionCarrotObjectName = "SelectionCarrot";
+
     [Header("References")]
     [SerializeField] private SpriteRenderer targetRenderer;
     [SerializeField] private ProceduralIsometricMapGenerator mapGenerator;
@@ -32,6 +36,22 @@ public class TacticsCharacterAnimator : MonoBehaviour
     [SerializeField, Min(0f)] private float damageImpactDistance = 0.15f;
     [SerializeField, Min(0f)] private float damageImpactOvershoot = 0.04f;
 
+    [Header("Selection Indicator")]
+    [SerializeField] private Color friendlySelectionColor = new Color(0.35f, 0.9f, 0.45f, 1f);
+    [SerializeField] private Color enemySelectionColor = new Color(1f, 0.32f, 0.32f, 1f);
+    [SerializeField, Min(0.01f)] private float selectionRingWidth = 0.6f;
+    [SerializeField, Min(0.01f)] private float selectionRingIsoHeightMultiplier = 2f;
+    [SerializeField, Min(0.01f)] private float selectionRingVerticalSquish = 0.9f;
+    [SerializeField, Min(0.001f)] private float selectionRingThickness = 0.05f;
+    [SerializeField] private float selectionRingVerticalOffset = 0.09f;
+    [SerializeField, Min(0.01f)] private float selectionCarrotWidth = 0.2f;
+    [SerializeField, Min(0.01f)] private float selectionCarrotHeight = 0.1f;
+    [SerializeField] private float selectionCarrotVerticalOffset = 0.25f;
+    [SerializeField, Min(0f)] private float selectionCarrotBobAmplitude = 0.05f;
+    [SerializeField, Min(0f)] private float selectionCarrotBobFrequency = 1.5f;
+    [SerializeField] private int selectionRingSortingOrder = -10;
+    [SerializeField] private int selectionCarrotSortingOrder = 10;
+
     [Header("Sprites")]
     [SerializeField] private Sprite walkSouthWestA;
     [SerializeField] private Sprite walkSouthWestB;
@@ -56,12 +76,19 @@ public class TacticsCharacterAnimator : MonoBehaviour
     private Vector2 sourceFrameSizePixels;
     private TacticsCharacterDefinition characterDefinition;
     private SpriteRenderer occlusionOverlayRenderer;
+    private SpriteRenderer selectionRingRenderer;
+    private SpriteRenderer selectionCarrotRenderer;
     private SortingGroup sortingGroup;
     private bool isTurnHighlighted;
+    private bool isSelected;
     private int occlusionDetectedFrameCount;
     private float occlusionHideTimer;
     private int activeOcclusionSortingOrder;
     private Coroutine damageImpactRoutine;
+    private Sprite selectionRingSprite;
+    private Texture2D selectionRingTexture;
+    private float cachedSelectionRingThickness = -1f;
+    private static Sprite selectionCarrotSprite;
 
     public SpriteRenderer TargetRenderer => targetRenderer;
     public int CurrentSortingLayerId => sortingGroup != null ? sortingGroup.sortingLayerID : (targetRenderer != null ? targetRenderer.sortingLayerID : 0);
@@ -80,6 +107,7 @@ public class TacticsCharacterAnimator : MonoBehaviour
         ResolveSortingGroup();
         EnsureImpactPivot();
         EnsureOcclusionOverlayRenderer();
+        EnsureSelectionIndicatorObjects();
 
         if (characterDefinition != null)
         {
@@ -97,6 +125,7 @@ public class TacticsCharacterAnimator : MonoBehaviour
         SetIdle(currentDirection);
         ResetOcclusionState();
         HideOcclusionOverlay();
+        UpdateSelectionIndicatorVisuals();
     }
 
     private void Awake()
@@ -104,8 +133,36 @@ public class TacticsCharacterAnimator : MonoBehaviour
         ResolveSortingGroup();
         EnsureImpactPivot();
         EnsureOcclusionOverlayRenderer();
+        EnsureSelectionIndicatorObjects();
         ResetOcclusionState();
         HideOcclusionOverlay();
+        UpdateSelectionIndicatorVisuals();
+    }
+
+    private void OnEnable()
+    {
+        EnsureSelectionIndicatorObjects();
+        UpdateSelectionIndicatorVisuals();
+    }
+
+    private void OnDisable()
+    {
+        HideSelectionIndicator();
+    }
+
+    private void OnDestroy()
+    {
+        DestroyGeneratedSelectionRingAssets();
+    }
+
+    private void OnValidate()
+    {
+        ResolveSortingGroup();
+        EnsureImpactPivot();
+        EnsureOcclusionOverlayRenderer();
+        EnsureSelectionIndicatorObjects();
+        UpdateRendererColor();
+        UpdateSelectionIndicatorVisuals();
     }
 
     private void LateUpdate()
@@ -114,8 +171,11 @@ public class TacticsCharacterAnimator : MonoBehaviour
         {
             ResetOcclusionState();
             HideOcclusionOverlay();
+            HideSelectionIndicator();
             return;
         }
+
+        UpdateSelectionIndicatorVisuals();
 
         if (mapGenerator == null)
         {
@@ -195,7 +255,9 @@ public class TacticsCharacterAnimator : MonoBehaviour
 
     public void SetSelected(bool isSelected)
     {
+        this.isSelected = isSelected;
         UpdateRendererColor();
+        UpdateSelectionIndicatorVisuals();
     }
 
     public void SetTurnHighlight(bool isActiveTurn)
@@ -407,6 +469,78 @@ public class TacticsCharacterAnimator : MonoBehaviour
         targetRenderer.color = isEnemy ? enemyTurnColor : playerTurnColor;
     }
 
+    private void UpdateSelectionIndicatorVisuals()
+    {
+        EnsureSelectionIndicatorObjects();
+        if (!isSelected || targetRenderer == null || selectionRingRenderer == null || selectionCarrotRenderer == null)
+        {
+            HideSelectionIndicator();
+            return;
+        }
+
+        Color selectionColor = GetSelectionIndicatorColor();
+        int sortingLayerId = CurrentSortingLayerId;
+        int localBaseSortingOrder = targetRenderer != null ? targetRenderer.sortingOrder : 0;
+
+        float xRadius = Mathf.Max(0.01f, selectionRingWidth * 0.5f);
+        float yRadius = xRadius / Mathf.Max(0.01f, selectionRingIsoHeightMultiplier);
+        yRadius *= Mathf.Max(0.01f, selectionRingVerticalSquish);
+
+        selectionRingRenderer.sprite = GetSelectionRingSprite();
+        selectionRingRenderer.color = selectionColor;
+        selectionRingRenderer.sortingLayerID = sortingLayerId;
+        selectionRingRenderer.sortingOrder = localBaseSortingOrder + selectionRingSortingOrder;
+        selectionRingRenderer.enabled = true;
+
+        selectionCarrotRenderer.sprite = GetSelectionCarrotSprite();
+        selectionCarrotRenderer.color = selectionColor;
+        selectionCarrotRenderer.sortingLayerID = sortingLayerId;
+        selectionCarrotRenderer.sortingOrder = localBaseSortingOrder + selectionCarrotSortingOrder;
+        selectionCarrotRenderer.enabled = true;
+
+        float bobTime = Application.isPlaying ? Time.time : Time.realtimeSinceStartup;
+        float bobOffset = Mathf.Sin(bobTime * Mathf.PI * 2f * selectionCarrotBobFrequency) * selectionCarrotBobAmplitude;
+        Bounds spriteBounds = targetRenderer.bounds;
+        Vector3 footWorldPosition = new Vector3(spriteBounds.center.x, spriteBounds.min.y, transform.position.z);
+        Vector3 topWorldPosition = new Vector3(spriteBounds.center.x, spriteBounds.max.y, transform.position.z);
+        Transform indicatorParent = GetSelectionIndicatorParent();
+        Vector3 localFootPosition = indicatorParent.InverseTransformPoint(footWorldPosition);
+        Vector3 localTopPosition = indicatorParent.InverseTransformPoint(topWorldPosition);
+
+        selectionRingRenderer.transform.localPosition = new Vector3(
+            localFootPosition.x,
+            localFootPosition.y + selectionRingVerticalOffset,
+            0f);
+        selectionRingRenderer.transform.localScale = new Vector3(xRadius * 2f, yRadius * 2f, 1f);
+        selectionCarrotRenderer.transform.localPosition = new Vector3(
+            localTopPosition.x,
+            localTopPosition.y + selectionCarrotVerticalOffset + bobOffset,
+            0f);
+        selectionCarrotRenderer.transform.localScale = new Vector3(
+            selectionCarrotWidth,
+            -selectionCarrotHeight,
+            1f);
+    }
+
+    private Color GetSelectionIndicatorColor()
+    {
+        bool isEnemy = characterDefinition != null && characterDefinition.Team == TacticsUnitTeam.Enemy;
+        return isEnemy ? enemySelectionColor : friendlySelectionColor;
+    }
+
+    private void HideSelectionIndicator()
+    {
+        if (selectionRingRenderer != null)
+        {
+            selectionRingRenderer.enabled = false;
+        }
+
+        if (selectionCarrotRenderer != null)
+        {
+            selectionCarrotRenderer.enabled = false;
+        }
+    }
+
     private Vector3 SnapToSpritePixelGrid(Vector3 localPosition, Sprite sprite)
     {
         if (sprite == null)
@@ -445,6 +579,134 @@ public class TacticsCharacterAnimator : MonoBehaviour
         occlusionOverlayRenderer = overlayObject.AddComponent<SpriteRenderer>();
         occlusionOverlayRenderer.color = occlusionHighlightColor;
         occlusionOverlayRenderer.enabled = false;
+    }
+
+    private void EnsureSelectionIndicatorObjects()
+    {
+        Transform indicatorParent = GetSelectionIndicatorParent();
+
+        if (selectionRingRenderer == null)
+        {
+            Transform existingRing = transform.Find(SelectionRingObjectName);
+            if (existingRing == null && indicatorParent != null)
+            {
+                existingRing = indicatorParent.Find(SelectionRingObjectName);
+            }
+
+            if (existingRing != null)
+            {
+                selectionRingRenderer = existingRing.GetComponent<SpriteRenderer>();
+            }
+
+            if (selectionRingRenderer == null)
+            {
+                GameObject ringObject = new GameObject(SelectionRingObjectName);
+                ringObject.transform.SetParent(indicatorParent, false);
+                selectionRingRenderer = ringObject.AddComponent<SpriteRenderer>();
+            }
+
+            selectionRingRenderer.sprite = GetSelectionRingSprite();
+            selectionRingRenderer.enabled = false;
+        }
+        else if (selectionRingRenderer.transform.parent != indicatorParent)
+        {
+            selectionRingRenderer.transform.SetParent(indicatorParent, true);
+        }
+
+        if (selectionCarrotRenderer != null)
+        {
+            if (selectionCarrotRenderer.transform.parent != indicatorParent)
+            {
+                selectionCarrotRenderer.transform.SetParent(indicatorParent, true);
+            }
+
+            return;
+        }
+
+        Transform existingCarrot = transform.Find(SelectionCarrotObjectName);
+        if (existingCarrot == null && indicatorParent != null)
+        {
+            existingCarrot = indicatorParent.Find(SelectionCarrotObjectName);
+        }
+
+        if (existingCarrot != null)
+        {
+            selectionCarrotRenderer = existingCarrot.GetComponent<SpriteRenderer>();
+        }
+
+        if (selectionCarrotRenderer == null)
+        {
+            GameObject carrotObject = new GameObject(SelectionCarrotObjectName);
+            carrotObject.transform.SetParent(indicatorParent, false);
+            selectionCarrotRenderer = carrotObject.AddComponent<SpriteRenderer>();
+        }
+
+        selectionCarrotRenderer.sprite = GetSelectionCarrotSprite();
+        selectionCarrotRenderer.enabled = false;
+    }
+
+    private Transform GetSelectionIndicatorParent()
+    {
+        if (sortingGroup != null)
+        {
+            return sortingGroup.transform;
+        }
+
+        if (targetRenderer != null)
+        {
+            return targetRenderer.transform;
+        }
+
+        return transform;
+    }
+
+    private static Sprite GetSelectionCarrotSprite()
+    {
+        if (selectionCarrotSprite != null)
+        {
+            return selectionCarrotSprite;
+        }
+
+        const int size = 32;
+        Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+        {
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Clamp,
+            name = "SelectionCarrotTexture"
+        };
+
+        Color clear = new Color(1f, 1f, 1f, 0f);
+        Color fill = Color.white;
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                texture.SetPixel(x, y, clear);
+            }
+        }
+
+        for (int y = 0; y < size; y++)
+        {
+            float normalizedY = y / (float)(size - 1);
+            int halfWidth = Mathf.Max(0, Mathf.RoundToInt((1f - normalizedY) * (size * 0.35f)));
+            int center = size / 2;
+            for (int x = center - halfWidth; x <= center + halfWidth; x++)
+            {
+                if (x >= 0 && x < size)
+                {
+                    texture.SetPixel(x, y, fill);
+                }
+            }
+        }
+
+        texture.Apply();
+        selectionCarrotSprite = Sprite.Create(
+            texture,
+            new Rect(0f, 0f, size, size),
+            new Vector2(0.5f, 0f),
+            size);
+        selectionCarrotSprite.name = "SelectionCarrotSprite";
+        return selectionCarrotSprite;
     }
 
     private void ResolveSortingGroup()
@@ -659,5 +921,82 @@ public class TacticsCharacterAnimator : MonoBehaviour
         const float overshoot = 1.70158f;
         float adjusted = clamped - 1f;
         return 1f + ((overshoot + 1f) * adjusted * adjusted * adjusted) + (overshoot * adjusted * adjusted);
+    }
+
+    private Sprite GetSelectionRingSprite()
+    {
+        if (selectionRingSprite != null && Mathf.Approximately(cachedSelectionRingThickness, selectionRingThickness))
+        {
+            return selectionRingSprite;
+        }
+
+        DestroyGeneratedSelectionRingAssets();
+
+        const int size = 128;
+        selectionRingTexture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+        {
+            filterMode = FilterMode.Bilinear,
+            wrapMode = TextureWrapMode.Clamp,
+            name = "SelectionRingTexture"
+        };
+
+        Color clear = new Color(1f, 1f, 1f, 0f);
+        Color fill = Color.white;
+        float center = (size - 1) * 0.5f;
+        float outerRadius = center - 1f;
+        float normalizedThickness = Mathf.Clamp(selectionRingThickness / Mathf.Max(0.01f, selectionRingWidth), 0.01f, 0.95f);
+        float innerRadius = outerRadius * Mathf.Clamp01(1f - normalizedThickness);
+
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float dx = x - center;
+                float dy = y - center;
+                float distance = Mathf.Sqrt((dx * dx) + (dy * dy));
+                selectionRingTexture.SetPixel(x, y, distance <= outerRadius && distance >= innerRadius ? fill : clear);
+            }
+        }
+
+        selectionRingTexture.Apply();
+        selectionRingSprite = Sprite.Create(
+            selectionRingTexture,
+            new Rect(0f, 0f, size, size),
+            new Vector2(0.5f, 0.5f),
+            size);
+        selectionRingSprite.name = "SelectionRingSprite";
+        cachedSelectionRingThickness = selectionRingThickness;
+        return selectionRingSprite;
+    }
+
+    private void DestroyGeneratedSelectionRingAssets()
+    {
+        if (selectionRingSprite != null)
+        {
+            if (Application.isPlaying)
+            {
+                Destroy(selectionRingSprite);
+            }
+            else
+            {
+                DestroyImmediate(selectionRingSprite);
+            }
+
+            selectionRingSprite = null;
+        }
+
+        if (selectionRingTexture != null)
+        {
+            if (Application.isPlaying)
+            {
+                Destroy(selectionRingTexture);
+            }
+            else
+            {
+                DestroyImmediate(selectionRingTexture);
+            }
+
+            selectionRingTexture = null;
+        }
     }
 }
