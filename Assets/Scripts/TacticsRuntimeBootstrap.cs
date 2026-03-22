@@ -2,12 +2,14 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
+using UnityEngine.Rendering;
 
 [DefaultExecutionOrder(1000)]
 public class TacticsRuntimeBootstrap : MonoBehaviour
 {
     private const string BootstrapName = "Tactics Runtime Bootstrap";
     private const string CharacterRosterResourcePath = "Tactics/CharacterRoster";
+    private static readonly Vector3 IsometricTransparencySortAxis = new Vector3(0f, 1f, 0f);
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void CreateBootstrap()
@@ -25,6 +27,8 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
     private void Start()
     {
+        ConfigureTransparencySorting();
+
         mapGenerator = FindFirstObjectByType<ProceduralIsometricMapGenerator>();
         if (mapGenerator == null)
         {
@@ -61,6 +65,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
     private void SetupScene()
     {
+        ConfigureTransparencySorting();
         EnsureEventSystem();
         TacticsActionMenuView actionMenuView = EnsureActionMenuView();
         TacticsSelectionPanelView activeCharacterPanelView = EnsureSelectionPanelView(
@@ -94,6 +99,25 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             turnManager,
             combatSystem);
         turnManager?.RefreshParticipantsAndStartBattle();
+    }
+
+    private static void ConfigureTransparencySorting()
+    {
+        GraphicsSettings.transparencySortMode = TransparencySortMode.CustomAxis;
+        GraphicsSettings.transparencySortAxis = IsometricTransparencySortAxis;
+
+        Camera[] cameras = FindObjectsByType<Camera>(FindObjectsSortMode.None);
+        for (int i = 0; i < cameras.Length; i++)
+        {
+            Camera camera = cameras[i];
+            if (camera == null)
+            {
+                continue;
+            }
+
+            camera.transparencySortMode = TransparencySortMode.CustomAxis;
+            camera.transparencySortAxis = IsometricTransparencySortAxis;
+        }
     }
 
     private void EnsurePlayerController()

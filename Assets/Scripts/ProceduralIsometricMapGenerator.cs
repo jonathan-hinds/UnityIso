@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 [DisallowMultipleComponent]
 public class ProceduralIsometricMapGenerator : MonoBehaviour
@@ -461,7 +462,9 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
 
     public int GetCharacterSortingOrder(int x, int y, int elevation)
     {
-        return CalculateSortingOrder(x, y, elevation, 90);
+        // Keep characters just above the top face of their current tile while still
+        // allowing nearer columns to occlude them.
+        return CalculateSortingOrder(x, y, elevation, 3);
     }
 
     public Vector2Int GetCenterTile()
@@ -543,6 +546,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
 
         SpriteRenderer renderer = part.AddComponent<SpriteRenderer>();
         renderer.sprite = sprite;
+        renderer.spriteSortPoint = SpriteSortPoint.Pivot;
         renderer.sortingOrder = CalculateSortingOrder(gridX, gridY, layer, sortBias);
 
         spawnedRenderers.Add(renderer);
@@ -651,11 +655,12 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
 
     private int CalculateSortingOrder(int gridX, int gridY, int layer, int sortBias)
     {
-        // Sort by screen depth first (back to front), then stabilize ties so a full
-        // column behaves like stacked blocks instead of interleaved paper cutouts.
+        // Keep the depth bucket stride much larger than any tie-break contribution so
+        // objects on a nearer screen-depth bucket always render in front.
         int maxDepth = width + length + maxElevation + 2;
         int tileDepth = gridX + gridY + layer;
-        int backToFrontOrder = (maxDepth - tileDepth) * 100;
+        int depthStride = Mathf.Max(256, ((length + 1) * 10) + ((width + 1) * 2) + 16);
+        int backToFrontOrder = (maxDepth - tileDepth) * depthStride;
         int rowTieBreak = (length - gridY) * 10;
         int columnTieBreak = (width - gridX) * 2;
         return backToFrontOrder + rowTieBreak + columnTieBreak + sortBias;

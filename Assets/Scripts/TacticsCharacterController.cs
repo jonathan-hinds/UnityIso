@@ -23,6 +23,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
 
     [Header("Alignment")]
     [SerializeField] private Vector2 tileAnchorOffset = new Vector2(0.18f, 0.125f);
+    [SerializeField, Range(0.5f, 0.95f)] private float movementSortHandoffNormalizedTime = 0.72f;
 
     private Coroutine movementRoutine;
     private TacticsMovementDirection currentDirection = TacticsMovementDirection.SouthWest;
@@ -325,6 +326,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         float duration = changesElevation ? jumpDuration : Vector3.Distance(startPosition, endPosition) / moveSpeed;
         duration = Mathf.Max(0.01f, duration);
 
+        int sortingLayerId = characterAnimator != null ? characterAnimator.CurrentSortingLayerId : SortingLayer.NameToID("Default");
         int startSortingOrder = mapGenerator.GetCharacterSortingOrder(from.x, from.y, startElevation);
         int endSortingOrder = mapGenerator.GetCharacterSortingOrder(to.x, to.y, endElevation);
 
@@ -346,22 +348,39 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
             }
 
             transform.position = position;
-            ApplySorting(Mathf.RoundToInt(Mathf.Lerp(startSortingOrder, endSortingOrder, t)));
+            ApplySorting(sortingLayerId, ResolveMovementSortingOrder(startSortingOrder, endSortingOrder, t, movementSortHandoffNormalizedTime));
             yield return null;
         }
 
         transform.position = endPosition;
-        ApplySorting(endSortingOrder);
+        ApplySorting(sortingLayerId, endSortingOrder);
     }
 
-    private void ApplySorting(int sortingOrder)
+    private static int ResolveMovementSortingOrder(
+        int startSortingOrder,
+        int endSortingOrder,
+        float normalizedProgress,
+        float handoffNormalizedTime)
     {
-        if (characterAnimator == null || characterAnimator.TargetRenderer == null)
+        if (startSortingOrder == endSortingOrder)
+        {
+            return startSortingOrder;
+        }
+
+        // Use the front-most of the two valid standing buckets during the transition so
+        // neither the tile we're leaving nor the tile we're entering briefly renders on top.
+        int transitionSortingOrder = Mathf.Max(startSortingOrder, endSortingOrder);
+        return normalizedProgress < handoffNormalizedTime ? transitionSortingOrder : endSortingOrder;
+    }
+
+    private void ApplySorting(int sortingLayerId, int sortingOrder)
+    {
+        if (characterAnimator == null)
         {
             return;
         }
 
-        characterAnimator.TargetRenderer.sortingOrder = sortingOrder;
+        characterAnimator.SetSorting(sortingLayerId, sortingOrder);
     }
 
     private bool IsTileOccupiedByAnotherCharacter(Vector2Int tile)
@@ -399,7 +418,9 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         GridPosition = tile;
         transform.position = worldPosition + GetTileAnchorOffset();
         lastAppliedTileAnchorOffset = tileAnchorOffset;
-        ApplySorting(mapGenerator.GetCharacterSortingOrder(tile.x, tile.y, mapGenerator.GetTileElevation(tile.x, tile.y)));
+        ApplySorting(
+            characterAnimator != null ? characterAnimator.CurrentSortingLayerId : SortingLayer.NameToID("Default"),
+            mapGenerator.GetCharacterSortingOrder(tile.x, tile.y, mapGenerator.GetTileElevation(tile.x, tile.y)));
         characterAnimator?.SetTurnHighlight(IsTurnActive);
         characterAnimator?.SetIdle(currentDirection);
     }
@@ -496,14 +517,12 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
 
     public int GetCombatTextSortingLayerId()
     {
-        SpriteRenderer targetRenderer = characterAnimator != null ? characterAnimator.TargetRenderer : null;
-        return targetRenderer != null ? targetRenderer.sortingLayerID : SortingLayer.NameToID("Default");
+        return characterAnimator != null ? characterAnimator.CurrentSortingLayerId : SortingLayer.NameToID("Default");
     }
 
     public int GetCombatTextSortingOrder()
     {
-        SpriteRenderer targetRenderer = characterAnimator != null ? characterAnimator.TargetRenderer : null;
-        return targetRenderer != null ? targetRenderer.sortingOrder : 0;
+        return characterAnimator != null ? characterAnimator.CurrentSortingOrder : 0;
     }
 
     private void ApplyDefinition(TacticsCharacterDefinition definition)

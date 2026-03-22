@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 [DisallowMultipleComponent]
 public class TacticsCharacterAnimator : MonoBehaviour
@@ -55,6 +56,7 @@ public class TacticsCharacterAnimator : MonoBehaviour
     private Vector2 sourceFrameSizePixels;
     private TacticsCharacterDefinition characterDefinition;
     private SpriteRenderer occlusionOverlayRenderer;
+    private SortingGroup sortingGroup;
     private bool isTurnHighlighted;
     private int occlusionDetectedFrameCount;
     private float occlusionHideTimer;
@@ -62,6 +64,8 @@ public class TacticsCharacterAnimator : MonoBehaviour
     private Coroutine damageImpactRoutine;
 
     public SpriteRenderer TargetRenderer => targetRenderer;
+    public int CurrentSortingLayerId => sortingGroup != null ? sortingGroup.sortingLayerID : (targetRenderer != null ? targetRenderer.sortingLayerID : 0);
+    public int CurrentSortingOrder => sortingGroup != null ? sortingGroup.sortingOrder : (targetRenderer != null ? targetRenderer.sortingOrder : 0);
 
     public void Initialize(
         SpriteRenderer spriteRenderer,
@@ -73,6 +77,7 @@ public class TacticsCharacterAnimator : MonoBehaviour
         characterDefinition = definition;
         mapGenerator = generator;
         impactPivot = impactRoot;
+        ResolveSortingGroup();
         EnsureImpactPivot();
         EnsureOcclusionOverlayRenderer();
 
@@ -96,6 +101,7 @@ public class TacticsCharacterAnimator : MonoBehaviour
 
     private void Awake()
     {
+        ResolveSortingGroup();
         EnsureImpactPivot();
         EnsureOcclusionOverlayRenderer();
         ResetOcclusionState();
@@ -140,12 +146,14 @@ public class TacticsCharacterAnimator : MonoBehaviour
             0f));
 
         bool isOccluded = false;
-        int highestOccluderSortingOrder = targetRenderer.sortingOrder;
+        int currentSortingOrder = CurrentSortingOrder;
+        int currentSortingLayerId = CurrentSortingLayerId;
+        int highestOccluderSortingOrder = currentSortingOrder;
         for (int i = 0; i < occluders.Count; i++)
         {
             ProceduralIsometricMapGenerator.OcclusionVolume occluder = occluders[i];
-            if (occluder.SortingLayerId != targetRenderer.sortingLayerID ||
-                occluder.SortingOrder <= targetRenderer.sortingOrder)
+            if (occluder.SortingLayerId != currentSortingLayerId ||
+                occluder.SortingOrder <= currentSortingOrder)
             {
                 continue;
             }
@@ -166,9 +174,23 @@ public class TacticsCharacterAnimator : MonoBehaviour
             return;
         }
 
-        occlusionOverlayRenderer.sortingLayerID = targetRenderer.sortingLayerID;
+        occlusionOverlayRenderer.sortingLayerID = currentSortingLayerId;
         occlusionOverlayRenderer.sortingOrder = activeOcclusionSortingOrder + occlusionSortingOrderOffset;
         occlusionOverlayRenderer.enabled = true;
+    }
+
+    public void SetSorting(int sortingLayerId, int sortingOrder)
+    {
+        if (sortingGroup != null)
+        {
+            sortingGroup.sortingLayerID = sortingLayerId;
+            sortingGroup.sortingOrder = sortingOrder;
+        }
+        else if (targetRenderer != null)
+        {
+            targetRenderer.sortingLayerID = sortingLayerId;
+            targetRenderer.sortingOrder = sortingOrder;
+        }
     }
 
     public void SetSelected(bool isSelected)
@@ -425,6 +447,24 @@ public class TacticsCharacterAnimator : MonoBehaviour
         occlusionOverlayRenderer.enabled = false;
     }
 
+    private void ResolveSortingGroup()
+    {
+        if (sortingGroup != null)
+        {
+            return;
+        }
+
+        if (targetRenderer != null)
+        {
+            sortingGroup = targetRenderer.GetComponent<SortingGroup>();
+        }
+
+        if (sortingGroup == null)
+        {
+            sortingGroup = GetComponentInChildren<SortingGroup>();
+        }
+    }
+
     private void EnsureImpactPivot()
     {
         if (impactPivot != null)
@@ -484,7 +524,7 @@ public class TacticsCharacterAnimator : MonoBehaviour
             return true;
         }
 
-        activeOcclusionSortingOrder = targetRenderer != null ? targetRenderer.sortingOrder : 0;
+        activeOcclusionSortingOrder = CurrentSortingOrder;
         return false;
     }
 
@@ -492,7 +532,7 @@ public class TacticsCharacterAnimator : MonoBehaviour
     {
         occlusionDetectedFrameCount = 0;
         occlusionHideTimer = 0f;
-        activeOcclusionSortingOrder = targetRenderer != null ? targetRenderer.sortingOrder : 0;
+        activeOcclusionSortingOrder = CurrentSortingOrder;
     }
 
     private Vector2 InferSourceFrameSizePixels(Sprite referenceSprite)

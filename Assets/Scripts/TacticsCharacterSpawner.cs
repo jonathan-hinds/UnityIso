@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Rendering;
 
 public static class TacticsCharacterSpawner
 {
@@ -33,6 +34,12 @@ public static class TacticsCharacterSpawner
 
         SpriteRenderer spriteRenderer = visualObject.AddComponent<SpriteRenderer>();
         spriteRenderer.sortingLayerName = "Default";
+        spriteRenderer.sortingOrder = 0;
+        spriteRenderer.spriteSortPoint = SpriteSortPoint.Pivot;
+
+        SortingGroup sortingGroup = visualObject.AddComponent<SortingGroup>();
+        sortingGroup.sortingLayerName = spriteRenderer.sortingLayerName;
+        sortingGroup.sortingOrder = 0;
 
         TacticsCharacterAnimator animator = characterRoot.AddComponent<TacticsCharacterAnimator>();
         animator.Initialize(spriteRenderer, definition, mapGenerator, impactPivotObject.transform);
