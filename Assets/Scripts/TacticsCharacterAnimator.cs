@@ -20,8 +20,11 @@ public class TacticsCharacterAnimator : MonoBehaviour
     [Header("Occlusion Highlight")]
     [SerializeField] private Color occlusionHighlightColor = new Color(1f, 1f, 1f, 0.18f);
     [SerializeField, Min(1)] private int occlusionSortingOrderOffset = 1;
-    [SerializeField, Min(0f)] private float occlusionOverlapPadding = 0.01f;
-    [SerializeField, Min(0f)] private float occlusionBoundsPadding = 0.04f;
+    [SerializeField, Min(1)] private int occlusionVerticalSamples = 6;
+    [SerializeField, Min(1)] private int occlusionHorizontalSamples = 3;
+    [SerializeField, Min(0f)] private float occlusionFootWidth = 0.18f;
+    [SerializeField, Min(0f)] private float occlusionFootVerticalOffset = 0.02f;
+    [SerializeField, Range(0.1f, 1f)] private float occlusionRevealHeightFactor = 0.72f;
     [SerializeField, Min(1)] private int occlusionFramesToShow = 2;
     [SerializeField, Min(0f)] private float occlusionHideDelay = 0.08f;
 
@@ -49,6 +52,7 @@ public class TacticsCharacterAnimator : MonoBehaviour
     [SerializeField] private Sprite attackNorthWestB;
     [SerializeField] private Sprite attackNorthWestC;
 
+    private static readonly List<Vector2> OcclusionSampleBuffer = new List<Vector2>(32);
     private TacticsMovementDirection currentDirection = TacticsMovementDirection.SouthWest;
     private float walkFrameTime;
     private Vector2 sourceFrameSizeUnits;
@@ -134,10 +138,7 @@ public class TacticsCharacterAnimator : MonoBehaviour
         }
 
         Bounds characterBounds = targetRenderer.bounds;
-        characterBounds.Expand(new Vector3(
-            occlusionOverlapPadding + occlusionBoundsPadding,
-            occlusionOverlapPadding + occlusionBoundsPadding,
-            0f));
+        IReadOnlyList<Vector2> occlusionSamples = BuildOcclusionSamples(characterBounds);
 
         bool isOccluded = false;
         int highestOccluderSortingOrder = targetRenderer.sortingOrder;
@@ -151,6 +152,11 @@ public class TacticsCharacterAnimator : MonoBehaviour
             }
 
             if (!occluder.Bounds.Intersects(characterBounds))
+            {
+                continue;
+            }
+
+            if (!OccludesCharacter(occluder, occlusionSamples))
             {
                 continue;
             }
@@ -457,6 +463,87 @@ public class TacticsCharacterAnimator : MonoBehaviour
         occlusionOverlayRenderer.transform.localPosition = targetRenderer.transform.localPosition;
         occlusionOverlayRenderer.transform.localRotation = targetRenderer.transform.localRotation;
         occlusionOverlayRenderer.transform.localScale = targetRenderer.transform.localScale;
+    }
+
+    private IReadOnlyList<Vector2> BuildOcclusionSamples(Bounds characterBounds)
+    {
+        OcclusionSampleBuffer.Clear();
+
+        Vector3 footWorld = transform.position;
+        float minX = footWorld.x - (occlusionFootWidth * 0.5f);
+        float maxX = footWorld.x + (occlusionFootWidth * 0.5f);
+        float topY = Mathf.Lerp(
+            footWorld.y,
+            characterBounds.max.y,
+            Mathf.Clamp01(occlusionRevealHeightFactor));
+        topY = Mathf.Max(footWorld.y + occlusionFootVerticalOffset, topY);
+
+        int horizontalSampleCount = Mathf.Max(1, occlusionHorizontalSamples);
+        int verticalSampleCount = Mathf.Max(1, occlusionVerticalSamples);
+
+        for (int verticalIndex = 0; verticalIndex < verticalSampleCount; verticalIndex++)
+        {
+            float verticalT = verticalSampleCount == 1
+                ? 0f
+                : verticalIndex / (float)(verticalSampleCount - 1);
+            float sampleY = Mathf.Lerp(footWorld.y + occlusionFootVerticalOffset, topY, verticalT);
+
+            for (int horizontalIndex = 0; horizontalIndex < horizontalSampleCount; horizontalIndex++)
+            {
+                float horizontalT = horizontalSampleCount == 1
+                    ? 0.5f
+                    : horizontalIndex / (float)(horizontalSampleCount - 1);
+                float sampleX = Mathf.Lerp(minX, maxX, horizontalT);
+                OcclusionSampleBuffer.Add(new Vector2(sampleX, sampleY));
+            }
+        }
+
+        return OcclusionSampleBuffer;
+    }
+
+    private bool OccludesCharacter(
+        ProceduralIsometricMapGenerator.OcclusionVolume occluder,
+        IReadOnlyList<Vector2> samples)
+    {
+        if (samples == null || samples.Count == 0)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < samples.Count; i++)
+        {
+            Vector2 sample = samples[i];
+            if ((occluder.HasLeftFace && IsPointInsidePolygon(sample, occluder.LeftFacePoints)) ||
+                (occluder.HasRightFace && IsPointInsidePolygon(sample, occluder.RightFacePoints)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool IsPointInsidePolygon(Vector2 point, IReadOnlyList<Vector2> polygon)
+    {
+        if (polygon == null || polygon.Count < 3)
+        {
+            return false;
+        }
+
+        bool isInside = false;
+        for (int i = 0, j = polygon.Count - 1; i < polygon.Count; j = i++)
+        {
+            Vector2 a = polygon[i];
+            Vector2 b = polygon[j];
+            bool intersects = ((a.y > point.y) != (b.y > point.y)) &&
+                              (point.x < ((b.x - a.x) * (point.y - a.y) / Mathf.Max(0.0001f, b.y - a.y)) + a.x);
+            if (intersects)
+            {
+                isInside = !isInside;
+            }
+        }
+
+        return isInside;
     }
 
     private void HideOcclusionOverlay()
