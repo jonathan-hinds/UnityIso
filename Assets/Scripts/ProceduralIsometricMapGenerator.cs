@@ -79,6 +79,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
     private readonly List<SpriteRenderer> spawnedRenderers = new List<SpriteRenderer>();
     private readonly List<OcclusionVolume> occlusionVolumes = new List<OcclusionVolume>();
     private int[,] currentHeights;
+    private int maximumGeneratedElevation;
     private System.Random spawnPlacementRandom;
 
     public int Length => length;
@@ -87,6 +88,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
     public float TileHeight => tileHeight;
     public float ElevationStep => elevationStep;
     public bool HasGeneratedMap => currentHeights != null;
+    public int MaximumElevation => maximumGeneratedElevation;
     public IReadOnlyList<TacticsEnemySpawnEntry> EnemySpawnEntries => enemySpawnEntries;
     public IReadOnlyList<OcclusionVolume> OcclusionVolumes => occlusionVolumes;
 
@@ -110,6 +112,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         occlusionVolumes.Clear();
 
         currentHeights = GenerateHeights();
+        maximumGeneratedElevation = GetMaximumHeight(currentHeights);
         spawnPlacementRandom = CreateSpawnPlacementRandom();
         Transform generatedRoot = CreateGeneratedRoot();
 
@@ -137,6 +140,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                     y,
                     height,
                     2,
+                    IsometricMapElevationElementType.TopFace,
                     ref tileOcclusionBounds,
                     ref tileOcclusionSortingOrder,
                     ref tileOcclusionSortingLayerId);
@@ -164,6 +168,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                     y,
                     height,
                     0,
+                    IsometricMapElevationElementType.SideFace,
                     ref tileOcclusionBounds,
                     ref tileOcclusionSortingOrder,
                     ref tileOcclusionSortingLayerId);
@@ -177,6 +182,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                     y,
                     height,
                     1,
+                    IsometricMapElevationElementType.SideFace,
                     ref tileOcclusionBounds,
                     ref tileOcclusionSortingOrder,
                     ref tileOcclusionSortingLayerId);
@@ -193,7 +199,8 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                             x,
                             y,
                             height,
-                            3);
+                            3,
+                            IsometricMapElevationElementType.Shadow);
                     }
 
                     if (upperRightNeighborHeight < height)
@@ -206,7 +213,8 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                             x,
                             y,
                             height,
-                            4);
+                            4,
+                            IsometricMapElevationElementType.Shadow);
                     }
 
                     if (lowerLeftNeighborHeight < height)
@@ -219,7 +227,8 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                             x,
                             y,
                             height,
-                            5);
+                            5,
+                            IsometricMapElevationElementType.Shadow);
                     }
 
                     if (lowerRightNeighborHeight < height)
@@ -232,13 +241,24 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                             x,
                             y,
                             height,
-                            6);
+                            6,
+                            IsometricMapElevationElementType.Shadow);
                     }
                 }
 
                 for (int layer = 1; layer < height; layer++)
                 {
                     Vector3 sidePosition = GridToWorld(x, y, layer);
+                    CreateTilePart(
+                        generatedRoot,
+                        topSprite != null ? topSprite : cachedDefaultTopSprite,
+                        sidePosition,
+                        $"SliceCap_{x}_{y}_{layer}",
+                        x,
+                        y,
+                        layer,
+                        2,
+                        IsometricMapElevationElementType.SliceCap);
 
                     if (lowerLeftNeighborHeight < layer)
                     {
@@ -251,6 +271,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                             y,
                             layer,
                             0,
+                            IsometricMapElevationElementType.SideFace,
                             ref tileOcclusionBounds,
                             ref tileOcclusionSortingOrder,
                             ref tileOcclusionSortingLayerId);
@@ -267,6 +288,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                             y,
                             layer,
                             1,
+                            IsometricMapElevationElementType.SideFace,
                             ref tileOcclusionBounds,
                             ref tileOcclusionSortingOrder,
                             ref tileOcclusionSortingLayerId);
@@ -520,6 +542,25 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         return heights[x, y];
     }
 
+    private int GetMaximumHeight(int[,] heights)
+    {
+        if (heights == null)
+        {
+            return 0;
+        }
+
+        int maximumHeight = 0;
+        for (int x = 0; x < width; x++)
+        {
+            for (int y = 0; y < length; y++)
+            {
+                maximumHeight = Mathf.Max(maximumHeight, heights[x, y]);
+            }
+        }
+
+        return maximumHeight;
+    }
+
     private Vector3 GridToWorld(int x, int y, int elevation)
     {
         float worldX = (x - y) * (tileWidth * 0.5f);
@@ -536,6 +577,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         int gridY,
         int layer,
         int sortBias,
+        IsometricMapElevationElementType elementType,
         ref Bounds? occlusionBounds,
         ref int occlusionSortingOrder,
         ref int occlusionSortingLayerId)
@@ -548,6 +590,9 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         renderer.sprite = sprite;
         renderer.spriteSortPoint = SpriteSortPoint.Pivot;
         renderer.sortingOrder = CalculateSortingOrder(gridX, gridY, layer, sortBias);
+
+        IsometricMapElevationElement elevationElement = part.AddComponent<IsometricMapElevationElement>();
+        elevationElement.Initialize(layer, elementType, renderer);
 
         spawnedRenderers.Add(renderer);
         if (occlusionBounds.HasValue)
@@ -573,7 +618,8 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         int gridX,
         int gridY,
         int layer,
-        int sortBias)
+        int sortBias,
+        IsometricMapElevationElementType elementType)
     {
         Bounds? ignoredBounds = null;
         int ignoredSortingOrder = int.MinValue;
@@ -587,6 +633,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
             gridY,
             layer,
             sortBias,
+            elementType,
             ref ignoredBounds,
             ref ignoredSortingOrder,
             ref ignoredSortingLayerId);
@@ -651,6 +698,12 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
 
         IsometricTileHoverInfo hoverInfo = topTransform.gameObject.AddComponent<IsometricTileHoverInfo>();
         hoverInfo.Initialize(gridX, gridY, height, tileWidth, tileHeight);
+
+        IsometricMapElevationElement elevationElement = topTransform.GetComponent<IsometricMapElevationElement>();
+        if (elevationElement != null)
+        {
+            elevationElement.AttachInteraction(collider, hoverInfo);
+        }
     }
 
     private int CalculateSortingOrder(int gridX, int gridY, int layer, int sortBias)

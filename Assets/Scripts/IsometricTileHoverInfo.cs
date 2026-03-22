@@ -8,6 +8,7 @@ public class IsometricTileHoverInfo : MonoBehaviour
     public int Elevation { get; private set; }
     public float TileWidth { get; private set; }
     public float TileHeight { get; private set; }
+    public bool IsInteractable { get; private set; } = true;
 
     public void Initialize(int gridX, int gridY, int elevation, float tileWidth, float tileHeight)
     {
@@ -16,6 +17,12 @@ public class IsometricTileHoverInfo : MonoBehaviour
         Elevation = elevation;
         TileWidth = tileWidth;
         TileHeight = tileHeight;
+        IsInteractable = true;
+    }
+
+    public void SetInteractable(bool isInteractable)
+    {
+        IsInteractable = isInteractable;
     }
 
     public Vector3[] GetWorldCorners(float padding = 0f)

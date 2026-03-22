@@ -108,7 +108,7 @@ public sealed class TacticsTileTargetOverlay : MonoBehaviour
         for (int i = 0; i < tiles.Length; i++)
         {
             IsometricTileHoverInfo tile = tiles[i];
-            if (tile == null)
+            if (tile == null || !tile.IsInteractable)
             {
                 continue;
             }

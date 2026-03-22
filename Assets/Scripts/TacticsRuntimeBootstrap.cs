@@ -84,6 +84,8 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             new Vector2(1f, 0f),
             new Vector2(-36f, 36f),
             new Vector2(576f, 268f));
+        IsometricMapLayerVisibilityController layerVisibilityController = EnsureLayerVisibilityController();
+        TacticsElevationSliderView elevationSliderView = EnsureElevationSliderView();
         TacticsTileTargetOverlay tileTargetOverlay = EnsureTileTargetOverlay();
         EnsureCombatTextSystem();
         EnsureTurnCameraDirector();
@@ -95,6 +97,8 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             actionMenuView,
             activeCharacterPanelView,
             selectedCharacterPanelView,
+            layerVisibilityController,
+            elevationSliderView,
             tileTargetOverlay,
             turnManager,
             combatSystem);
@@ -196,10 +200,22 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         TacticsActionMenuView actionMenuView,
         TacticsSelectionPanelView activeCharacterPanelView,
         TacticsSelectionPanelView selectedCharacterPanelView,
+        IsometricMapLayerVisibilityController layerVisibilityController,
+        TacticsElevationSliderView elevationSliderView,
         TacticsTileTargetOverlay tileTargetOverlay,
         TacticsTurnManager turnManager,
         TacticsCombatSystem combatSystem)
     {
+        if (layerVisibilityController != null)
+        {
+            layerVisibilityController.AssignMapGenerator(mapGenerator);
+        }
+
+        if (elevationSliderView != null)
+        {
+            elevationSliderView.AssignVisibilityController(layerVisibilityController);
+        }
+
         TacticsPlayerController playerController = FindFirstObjectByType<TacticsPlayerController>();
         if (playerController != null)
         {
@@ -210,6 +226,33 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             playerController.AssignCombatSystem(combatSystem);
             playerController.AssignTileTargetOverlay(tileTargetOverlay);
         }
+    }
+
+    private IsometricMapLayerVisibilityController EnsureLayerVisibilityController()
+    {
+        IsometricMapLayerVisibilityController existingController = FindFirstObjectByType<IsometricMapLayerVisibilityController>();
+        if (existingController != null)
+        {
+            existingController.AssignMapGenerator(mapGenerator);
+            return existingController;
+        }
+
+        GameObject controllerObject = new GameObject("Isometric Map Layer Visibility Controller");
+        IsometricMapLayerVisibilityController controller = controllerObject.AddComponent<IsometricMapLayerVisibilityController>();
+        controller.AssignMapGenerator(mapGenerator);
+        return controller;
+    }
+
+    private TacticsElevationSliderView EnsureElevationSliderView()
+    {
+        TacticsElevationSliderView existingView = FindFirstObjectByType<TacticsElevationSliderView>();
+        if (existingView != null)
+        {
+            return existingView;
+        }
+
+        GameObject hudObject = new GameObject("Tactics Elevation Slider HUD");
+        return hudObject.AddComponent<TacticsElevationSliderView>();
     }
 
     private TacticsTurnManager EnsureTurnManager()
