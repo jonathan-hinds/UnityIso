@@ -15,11 +15,11 @@ MonoBehaviour:
   characterId: bandit
   displayName: Bandit
   team: 1
-  spriteSheetResourcePath: Characters/sprite-sheet_export_8x4_48x64
-  walkFramesPerSecond: 7
+  spriteSheetResourcePath: Characters/guy3
+  walkFramesPerSecond: 5
   baseColor: {r: 1, g: 0.82, b: 0.82, a: 1}
   selectedColor: {r: 1, g: 0.58, b: 0.58, a: 1}
-  moveSpeed: 1
+  moveSpeed: 1.2
   jumpDuration: 0.5
   jumpArcHeight: 0.5
   maxStepUp: 1

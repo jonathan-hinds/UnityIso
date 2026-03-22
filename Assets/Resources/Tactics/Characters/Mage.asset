@@ -16,10 +16,10 @@ MonoBehaviour:
   displayName: Mage
   team: 0
   spriteSheetResourcePath: Characters/guy2
-  walkFramesPerSecond: 7
+  walkFramesPerSecond: 5
   baseColor: {r: 1, g: 1, b: 1, a: 1}
   selectedColor: {r: 0.78, g: 0.93, b: 1, a: 1}
-  moveSpeed: 1
+  moveSpeed: 1.2
   jumpDuration: 0.5
   jumpArcHeight: 0.5
   maxStepUp: 1
