@@ -7,16 +7,33 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
 {
     public readonly struct OcclusionVolume
     {
-        public OcclusionVolume(Bounds bounds, int sortingOrder, int sortingLayerId)
+        public OcclusionVolume(
+            Vector2Int gridPosition,
+            int elevation,
+            int sortingOrder,
+            int sortingLayerId,
+            Bounds bounds,
+            Vector2[] leftFacePoints,
+            Vector2[] rightFacePoints)
         {
-            Bounds = bounds;
+            GridPosition = gridPosition;
+            Elevation = elevation;
             SortingOrder = sortingOrder;
             SortingLayerId = sortingLayerId;
+            Bounds = bounds;
+            LeftFacePoints = leftFacePoints ?? Array.Empty<Vector2>();
+            RightFacePoints = rightFacePoints ?? Array.Empty<Vector2>();
         }
 
-        public Bounds Bounds { get; }
+        public Vector2Int GridPosition { get; }
+        public int Elevation { get; }
         public int SortingOrder { get; }
         public int SortingLayerId { get; }
+        public Bounds Bounds { get; }
+        public IReadOnlyList<Vector2> LeftFacePoints { get; }
+        public IReadOnlyList<Vector2> RightFacePoints { get; }
+        public bool HasLeftFace => LeftFacePoints.Count >= 3;
+        public bool HasRightFace => RightFacePoints.Count >= 3;
     }
 
     public event Action MapGenerated;
@@ -122,7 +139,6 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                     continue;
                 }
 
-                Bounds? tileOcclusionBounds = null;
                 int tileOcclusionSortingOrder = int.MinValue;
                 int tileOcclusionSortingLayerId = 0;
 
@@ -136,7 +152,6 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                     y,
                     height,
                     2,
-                    ref tileOcclusionBounds,
                     ref tileOcclusionSortingOrder,
                     ref tileOcclusionSortingLayerId);
                 ConfigureTopTile(partName: $"Top_{x}_{y}_{height}", generatedRoot: generatedRoot, gridX: x, gridY: y, height: height);
@@ -163,7 +178,6 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                     y,
                     height,
                     0,
-                    ref tileOcclusionBounds,
                     ref tileOcclusionSortingOrder,
                     ref tileOcclusionSortingLayerId);
 
@@ -176,7 +190,6 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                     y,
                     height,
                     1,
-                    ref tileOcclusionBounds,
                     ref tileOcclusionSortingOrder,
                     ref tileOcclusionSortingLayerId);
 
@@ -250,7 +263,6 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                             y,
                             layer,
                             0,
-                            ref tileOcclusionBounds,
                             ref tileOcclusionSortingOrder,
                             ref tileOcclusionSortingLayerId);
                     }
@@ -266,18 +278,28 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                             y,
                             layer,
                             1,
-                            ref tileOcclusionBounds,
                             ref tileOcclusionSortingOrder,
                             ref tileOcclusionSortingLayerId);
                     }
                 }
 
+                Vector2[] leftFacePoints = lowerLeftNeighborHeight < height
+                    ? BuildLeftFacePolygon(x, y, lowerLeftNeighborHeight, height)
+                    : Array.Empty<Vector2>();
+                Vector2[] rightFacePoints = lowerRightNeighborHeight < height
+                    ? BuildRightFacePolygon(x, y, lowerRightNeighborHeight, height)
+                    : Array.Empty<Vector2>();
+                Bounds? tileOcclusionBounds = BuildOcclusionBounds(leftFacePoints, rightFacePoints);
                 if (tileOcclusionBounds.HasValue)
                 {
                     occlusionVolumes.Add(new OcclusionVolume(
-                        tileOcclusionBounds.Value,
+                        new Vector2Int(x, y),
+                        height,
                         tileOcclusionSortingOrder,
-                        tileOcclusionSortingLayerId));
+                        tileOcclusionSortingLayerId,
+                        tileOcclusionBounds.Value,
+                        leftFacePoints,
+                        rightFacePoints));
                 }
             }
         }
@@ -533,7 +555,6 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         int gridY,
         int layer,
         int sortBias,
-        ref Bounds? occlusionBounds,
         ref int occlusionSortingOrder,
         ref int occlusionSortingLayerId)
     {
@@ -546,17 +567,6 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         renderer.sortingOrder = CalculateSortingOrder(gridX, gridY, layer, sortBias);
 
         spawnedRenderers.Add(renderer);
-        if (occlusionBounds.HasValue)
-        {
-            Bounds bounds = occlusionBounds.Value;
-            bounds.Encapsulate(renderer.bounds);
-            occlusionBounds = bounds;
-        }
-        else
-        {
-            occlusionBounds = renderer.bounds;
-        }
-
         occlusionSortingOrder = Mathf.Max(occlusionSortingOrder, renderer.sortingOrder);
         occlusionSortingLayerId = renderer.sortingLayerID;
     }
@@ -571,7 +581,6 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         int layer,
         int sortBias)
     {
-        Bounds? ignoredBounds = null;
         int ignoredSortingOrder = int.MinValue;
         int ignoredSortingLayerId = 0;
         CreateTilePart(
@@ -583,9 +592,74 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
             gridY,
             layer,
             sortBias,
-            ref ignoredBounds,
             ref ignoredSortingOrder,
             ref ignoredSortingLayerId);
+    }
+
+    private Vector2[] BuildLeftFacePolygon(int gridX, int gridY, int baseElevation, int topElevation)
+    {
+        Vector3 topCenter = GridToWorld(gridX, gridY, topElevation);
+        Vector3 baseCenter = GridToWorld(gridX, gridY, baseElevation);
+
+        return new[]
+        {
+            new Vector2(topCenter.x - (tileWidth * 0.5f), topCenter.y),
+            new Vector2(topCenter.x, topCenter.y - (tileHeight * 0.5f)),
+            new Vector2(baseCenter.x, baseCenter.y - (tileHeight * 0.5f)),
+            new Vector2(baseCenter.x - (tileWidth * 0.5f), baseCenter.y)
+        };
+    }
+
+    private Vector2[] BuildRightFacePolygon(int gridX, int gridY, int baseElevation, int topElevation)
+    {
+        Vector3 topCenter = GridToWorld(gridX, gridY, topElevation);
+        Vector3 baseCenter = GridToWorld(gridX, gridY, baseElevation);
+
+        return new[]
+        {
+            new Vector2(topCenter.x, topCenter.y - (tileHeight * 0.5f)),
+            new Vector2(topCenter.x + (tileWidth * 0.5f), topCenter.y),
+            new Vector2(baseCenter.x + (tileWidth * 0.5f), baseCenter.y),
+            new Vector2(baseCenter.x, baseCenter.y - (tileHeight * 0.5f))
+        };
+    }
+
+    private Bounds? BuildOcclusionBounds(IReadOnlyList<Vector2> leftFacePoints, IReadOnlyList<Vector2> rightFacePoints)
+    {
+        bool hasAnyPoints = false;
+        Vector2 min = Vector2.zero;
+        Vector2 max = Vector2.zero;
+
+        void Encapsulate(IReadOnlyList<Vector2> polygon)
+        {
+            for (int i = 0; i < polygon.Count; i++)
+            {
+                Vector2 point = polygon[i];
+                if (!hasAnyPoints)
+                {
+                    min = point;
+                    max = point;
+                    hasAnyPoints = true;
+                    continue;
+                }
+
+                min = Vector2.Min(min, point);
+                max = Vector2.Max(max, point);
+            }
+        }
+
+        Encapsulate(leftFacePoints);
+        Encapsulate(rightFacePoints);
+
+        if (!hasAnyPoints)
+        {
+            return null;
+        }
+
+        Vector3 boundsMin = new Vector3(min.x, min.y, -0.05f);
+        Vector3 boundsMax = new Vector3(max.x, max.y, 0.05f);
+        Bounds bounds = new Bounds((boundsMin + boundsMax) * 0.5f, boundsMax - boundsMin);
+        return bounds;
     }
 
     private Vector3 GetSpriteOffset(Sprite sprite, int sortBias)
