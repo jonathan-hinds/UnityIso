@@ -24,9 +24,9 @@ public class TacticsPlayerController : MonoBehaviour
     [SerializeField] private TacticsTileTargetOverlay tileTargetOverlay;
 
     private TacticsCharacterController selectedCharacter;
-    private TacticsCharacterController hoveredAbilityTarget;
     private SelectionState selectionState;
     private readonly List<TacticsActionMenuAbilityOption> reusableAbilityOptions = new();
+    private readonly List<TacticsCharacterController> hoveredAbilityPreviewTargets = new();
 
     private void Awake()
     {
@@ -126,7 +126,7 @@ public class TacticsPlayerController : MonoBehaviour
         }
 
         SubscribeToSelectedCharacter(null);
-        SetHoveredAbilityTarget(null);
+        SetHoveredAbilityTargets(null);
         RefreshTargetIndicators();
     }
 
@@ -134,7 +134,7 @@ public class TacticsPlayerController : MonoBehaviour
     {
         if (turnManager != null && turnManager.IsTransitioningTurns)
         {
-            SetHoveredAbilityTarget(null);
+            SetHoveredAbilityTargets(null);
             return;
         }
 
@@ -215,7 +215,7 @@ public class TacticsPlayerController : MonoBehaviour
             combatSystem?.CancelTargeting();
         }
 
-        SetHoveredAbilityTarget(null);
+        SetHoveredAbilityTargets(null);
         SubscribeToSelectedCharacter(null);
 
         if (selectedCharacter != null)
@@ -420,7 +420,14 @@ public class TacticsPlayerController : MonoBehaviour
             SelectCharacter(activePlayerCharacter, SelectionState.CharacterSelected);
         }
 
-        if (combatSystem.BeginTargeting(activePlayerCharacter, ability))
+        if (!ability.RequiresTargetSelection)
+        {
+            if (combatSystem.TryUseAbility(activePlayerCharacter, ability, activePlayerCharacter.GridPosition))
+            {
+                selectionState = SelectionState.CharacterSelected;
+            }
+        }
+        else if (combatSystem.BeginTargeting(activePlayerCharacter, ability))
         {
             selectionState = SelectionState.AwaitingAbilityTarget;
         }
@@ -441,14 +448,14 @@ public class TacticsPlayerController : MonoBehaviour
         if (selectionState == SelectionState.AwaitingMoveTarget)
         {
             selectionState = SelectionState.CharacterSelected;
-            SetHoveredAbilityTarget(null);
+            SetHoveredAbilityTargets(null);
             RefreshHud();
         }
         else if (selectionState == SelectionState.AwaitingAbilityTarget)
         {
             combatSystem?.CancelTargeting();
             selectionState = SelectionState.CharacterSelected;
-            SetHoveredAbilityTarget(null);
+            SetHoveredAbilityTargets(null);
             RefreshHud();
         }
     }
@@ -545,7 +552,7 @@ public class TacticsPlayerController : MonoBehaviour
                 selectionState = SelectionState.CharacterSelected;
             }
 
-            SetHoveredAbilityTarget(null);
+            SetHoveredAbilityTargets(null);
         }
 
         RefreshHud();
@@ -639,7 +646,8 @@ public class TacticsPlayerController : MonoBehaviour
         if (selectionState == SelectionState.AwaitingAbilityTarget &&
             ReferenceEquals(selectedCharacter, GetActivePlayerCharacter()) &&
             combatSystem != null &&
-            combatSystem.TargetingAbility != null)
+            combatSystem.TargetingAbility != null &&
+            !combatSystem.TargetingAbility.UsesAreaOfEffect)
         {
             IReadOnlyList<Vector2Int> tiles = combatSystem.GetValidTargetTiles(selectedCharacter, combatSystem.TargetingAbility);
             validTargetTiles = new HashSet<Vector2Int>(tiles);
@@ -665,26 +673,48 @@ public class TacticsPlayerController : MonoBehaviour
             combatSystem == null ||
             combatSystem.TargetingAbility == null)
         {
-            SetHoveredAbilityTarget(null);
+            SetHoveredAbilityTargets(null);
             return;
         }
 
         if (blockWhenPointerOverUi && EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
         {
-            SetHoveredAbilityTarget(null);
+            SetHoveredAbilityTargets(null);
             return;
         }
 
-        if (!TryGetPointerHits(out Collider2D[] hits) ||
-            !TryGetClickedCharacter(hits, out TacticsCharacterController hoveredCharacter) ||
-            hoveredCharacter == null ||
-            !combatSystem.CanTargetFromTile(selectedCharacter, selectedCharacter.GridPosition, combatSystem.TargetingAbility, hoveredCharacter))
+        if (!TryGetPointerHits(out Collider2D[] hits))
         {
-            SetHoveredAbilityTarget(null);
+            SetHoveredAbilityTargets(null);
             return;
         }
 
-        SetHoveredAbilityTarget(hoveredCharacter);
+        TacticsAbilityDefinition targetingAbility = combatSystem.TargetingAbility;
+        if (targetingAbility.UsesAreaOfEffect)
+        {
+            if (!TryGetClickedTile(hits, out IsometricTileHoverInfo hoveredTile) || hoveredTile == null)
+            {
+                SetHoveredAbilityTargets(null);
+                return;
+            }
+
+            IReadOnlyList<TacticsCharacterController> previewTargets = combatSystem.GetPreviewTargets(
+                selectedCharacter,
+                targetingAbility,
+                new Vector2Int(hoveredTile.GridX, hoveredTile.GridY));
+            SetHoveredAbilityTargets(previewTargets);
+            return;
+        }
+
+        if (!TryGetClickedCharacter(hits, out TacticsCharacterController hoveredCharacter) ||
+            hoveredCharacter == null ||
+            !combatSystem.CanTargetFromTile(selectedCharacter, selectedCharacter.GridPosition, targetingAbility, hoveredCharacter))
+        {
+            SetHoveredAbilityTargets(null);
+            return;
+        }
+
+        SetHoveredAbilityTargets(new[] { hoveredCharacter });
     }
 
     private bool TryGetPointerHits(out Collider2D[] hits)
@@ -713,23 +743,52 @@ public class TacticsPlayerController : MonoBehaviour
         return hits != null && hits.Length > 0;
     }
 
-    private void SetHoveredAbilityTarget(TacticsCharacterController character)
+    private void SetHoveredAbilityTargets(IReadOnlyList<TacticsCharacterController> characters)
     {
-        if (ReferenceEquals(hoveredAbilityTarget, character))
+        bool matchesExistingTargets = characters != null && characters.Count == hoveredAbilityPreviewTargets.Count;
+        if (matchesExistingTargets)
+        {
+            for (int i = 0; i < characters.Count; i++)
+            {
+                if (!ReferenceEquals(hoveredAbilityPreviewTargets[i], characters[i]))
+                {
+                    matchesExistingTargets = false;
+                    break;
+                }
+            }
+        }
+
+        if (matchesExistingTargets || (characters == null && hoveredAbilityPreviewTargets.Count == 0))
         {
             return;
         }
 
-        if (hoveredAbilityTarget != null)
+        for (int i = 0; i < hoveredAbilityPreviewTargets.Count; i++)
         {
-            hoveredAbilityTarget.SetTargetHoverPreview(false);
+            TacticsCharacterController previousTarget = hoveredAbilityPreviewTargets[i];
+            if (previousTarget != null)
+            {
+                previousTarget.SetTargetHoverPreview(false);
+            }
         }
 
-        hoveredAbilityTarget = character;
+        hoveredAbilityPreviewTargets.Clear();
 
-        if (hoveredAbilityTarget != null)
+        if (characters == null)
         {
-            hoveredAbilityTarget.SetTargetHoverPreview(true);
+            return;
+        }
+
+        for (int i = 0; i < characters.Count; i++)
+        {
+            TacticsCharacterController character = characters[i];
+            if (character == null)
+            {
+                continue;
+            }
+
+            hoveredAbilityPreviewTargets.Add(character);
+            character.SetTargetHoverPreview(true);
         }
     }
 

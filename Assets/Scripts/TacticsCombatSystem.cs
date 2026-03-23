@@ -10,6 +10,7 @@ public sealed class TacticsCombatSystem : MonoBehaviour
     [SerializeField] private TacticsAbilityCatalog abilityCatalog;
 
     private readonly Dictionary<TacticsAbilityEffectKind, ITacticsAbilityEffectProcessor> effectProcessors = new();
+    private readonly List<TacticsCharacterController> reusableAreaTargets = new();
     private readonly List<Vector2Int> reusableTargetTiles = new();
     private readonly List<Vector2Int> reusableTargetableTiles = new();
     private Coroutine resolveRoutine;
@@ -75,16 +76,16 @@ public sealed class TacticsCombatSystem : MonoBehaviour
             return reusableTargetTiles;
         }
 
-        TacticsCharacterController[] characters = FindObjectsByType<TacticsCharacterController>(FindObjectsSortMode.None);
-        for (int i = 0; i < characters.Length; i++)
+        IReadOnlyList<Vector2Int> targetableTiles = GetTargetableTiles(source, ability);
+        for (int i = 0; i < targetableTiles.Count; i++)
         {
-            TacticsCharacterController target = characters[i];
-            if (!IsValidTarget(source, ability, target))
+            Vector2Int targetTile = targetableTiles[i];
+            if (!HasValidTargetsAtTile(source, ability, targetTile))
             {
                 continue;
             }
 
-            reusableTargetTiles.Add(target.GridPosition);
+            reusableTargetTiles.Add(targetTile);
         }
 
         return reusableTargetTiles;
@@ -142,17 +143,22 @@ public sealed class TacticsCombatSystem : MonoBehaviour
             return false;
         }
 
-        TacticsCharacterController target = FindCharacterAt(targetTile);
-        if (!IsValidTarget(source, ability, target))
+        if (!CanTargetTile(source, source.GridPosition, ability, targetTile))
+        {
+            return false;
+        }
+
+        List<TacticsCharacterController> affectedTargets = GetAffectedTargets(source, ability, targetTile, reusableAreaTargets);
+        if (affectedTargets.Count == 0)
         {
             return false;
         }
 
         TacticsAbilityExecutionContext context = new TacticsAbilityExecutionContext(
             source,
-            target,
             ability,
-            targetTile);
+            targetTile,
+            new List<TacticsCharacterController>(affectedTargets));
 
         if (!HasApplicableEffect(context))
         {
@@ -181,6 +187,22 @@ public sealed class TacticsCombatSystem : MonoBehaviour
                source.CanUseAbilitiesThisTurn &&
                source.HasResourcesForAbility(ability) &&
                source.isActiveAndEnabled;
+    }
+
+    public IReadOnlyList<TacticsCharacterController> GetPreviewTargets(
+        TacticsCharacterController source,
+        TacticsAbilityDefinition ability,
+        Vector2Int targetTile)
+    {
+        reusableAreaTargets.Clear();
+
+        if (!CanUseAbility(source, ability) ||
+            !CanTargetTile(source, source != null ? source.GridPosition : default, ability, targetTile))
+        {
+            return reusableAreaTargets;
+        }
+
+        return GetAffectedTargets(source, ability, targetTile, reusableAreaTargets);
     }
 
     private bool IsValidTarget(TacticsCharacterController source, TacticsAbilityDefinition ability, TacticsCharacterController target)
@@ -231,6 +253,79 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         return null;
     }
 
+    private bool HasValidTargetsAtTile(TacticsCharacterController source, TacticsAbilityDefinition ability, Vector2Int targetTile)
+    {
+        return GetAffectedTargets(source, ability, targetTile, reusableAreaTargets).Count > 0;
+    }
+
+    private List<TacticsCharacterController> GetAffectedTargets(
+        TacticsCharacterController source,
+        TacticsAbilityDefinition ability,
+        Vector2Int targetTile,
+        List<TacticsCharacterController> results)
+    {
+        results.Clear();
+
+        if (source == null || ability == null)
+        {
+            return results;
+        }
+
+        if (!ability.UsesAreaOfEffect)
+        {
+            TacticsCharacterController directTarget = FindCharacterAt(targetTile);
+            if (IsValidTarget(source, ability, directTarget))
+            {
+                results.Add(directTarget);
+            }
+
+            return results;
+        }
+
+        int areaRadius = ability.AreaOfEffectRadius;
+        TacticsCharacterController[] characters = FindObjectsByType<TacticsCharacterController>(FindObjectsSortMode.None);
+        for (int i = 0; i < characters.Length; i++)
+        {
+            TacticsCharacterController target = characters[i];
+            if (!CanAffectTarget(source, ability, target))
+            {
+                continue;
+            }
+
+            if (Mathf.Abs(target.GridPosition.x - targetTile.x) > areaRadius ||
+                Mathf.Abs(target.GridPosition.y - targetTile.y) > areaRadius)
+            {
+                continue;
+            }
+
+            results.Add(target);
+        }
+
+        return results;
+    }
+
+    private static bool CanAffectTarget(
+        TacticsCharacterController source,
+        TacticsAbilityDefinition ability,
+        TacticsCharacterController target)
+    {
+        if (source == null || ability == null || target == null || ReferenceEquals(source, target))
+        {
+            return false;
+        }
+
+        if (!target.isActiveAndEnabled || !target.IsAlive)
+        {
+            return false;
+        }
+
+        return ability.TargetRule switch
+        {
+            TacticsAbilityTargetRule.HostileUnit => source.Team != target.Team,
+            _ => false
+        };
+    }
+
     private bool CanTargetTile(
         TacticsCharacterController source,
         Vector2Int sourceTile,
@@ -260,10 +355,15 @@ public sealed class TacticsCombatSystem : MonoBehaviour
                        mapGenerator.GetTileElevation(sourceTile.x, sourceTile.y) == mapGenerator.GetTileElevation(targetTile.x, targetTile.y);
 
             case TacticsAbilityRangeType.Ranged:
+            case TacticsAbilityRangeType.RangedAoE:
                 return distance <= ability.Range && HasLineOfSight(source, sourceTile, targetTile);
 
             case TacticsAbilityRangeType.AbsoluteRanged:
+            case TacticsAbilityRangeType.AbsoluteAoE:
                 return distance <= ability.Range;
+
+            case TacticsAbilityRangeType.SurroundingAoE:
+                return targetTile == sourceTile;
 
             default:
                 return false;
@@ -440,20 +540,20 @@ public readonly struct TacticsAbilityExecutionContext
 {
     public TacticsAbilityExecutionContext(
         TacticsCharacterController source,
-        TacticsCharacterController target,
         TacticsAbilityDefinition ability,
-        Vector2Int targetTile)
+        Vector2Int targetTile,
+        IReadOnlyList<TacticsCharacterController> targets)
     {
         Source = source;
-        Target = target;
         Ability = ability;
         TargetTile = targetTile;
+        Targets = targets;
     }
 
     public TacticsCharacterController Source { get; }
-    public TacticsCharacterController Target { get; }
     public TacticsAbilityDefinition Ability { get; }
     public Vector2Int TargetTile { get; }
+    public IReadOnlyList<TacticsCharacterController> Targets { get; }
 }
 
 public interface ITacticsAbilityEffectProcessor
@@ -468,7 +568,7 @@ public sealed class TacticsDealDamageEffectProcessor : ITacticsAbilityEffectProc
 
     public bool CanApply(TacticsAbilityExecutionContext context, TacticsAbilityEffectDefinitionData effect)
     {
-        return context.Source != null && context.Target != null;
+        return context.Source != null && context.Targets != null && context.Targets.Count > 0;
     }
 
     public void Apply(TacticsAbilityExecutionContext context, TacticsAbilityEffectDefinitionData effect)
@@ -497,6 +597,16 @@ public sealed class TacticsDealDamageEffectProcessor : ITacticsAbilityEffectProc
         }
 
         Vector3? damageSourcePosition = context.Source != null ? context.Source.TurnFocusPoint : null;
-        context.Target.ApplyDamage(amount, damageSourcePosition, isCriticalHit, context.Source);
+        IReadOnlyList<TacticsCharacterController> targets = context.Targets;
+        for (int i = 0; i < targets.Count; i++)
+        {
+            TacticsCharacterController target = targets[i];
+            if (target == null || !target.isActiveAndEnabled || !target.IsAlive)
+            {
+                continue;
+            }
+
+            target.ApplyDamage(amount, damageSourcePosition, isCriticalHit, context.Source);
+        }
     }
 }

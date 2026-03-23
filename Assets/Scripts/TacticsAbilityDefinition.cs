@@ -14,6 +14,7 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
     [Header("Targeting")]
     [SerializeField] private TacticsAbilityRangeType rangeType = TacticsAbilityRangeType.Melee;
     [SerializeField, Min(1)] private int range = 1;
+    [SerializeField, Min(1)] private int areaOfEffectSize = 1;
     [SerializeField] private TacticsAbilityTargetRule targetRule = TacticsAbilityTargetRule.HostileUnit;
     [SerializeField] private TacticsAbilityDamageType damageType = TacticsAbilityDamageType.Melee;
 
@@ -31,7 +32,15 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
     public string DisplayName => string.IsNullOrWhiteSpace(displayName) ? name : displayName.Trim();
     public string Description => description;
     public TacticsAbilityRangeType RangeType => rangeType;
-    public int Range => rangeType == TacticsAbilityRangeType.Melee ? 1 : Mathf.Max(1, range);
+    public int Range => rangeType == TacticsAbilityRangeType.Melee ? 1 : UsesAbilityRange ? Mathf.Max(1, range) : 0;
+    public int AreaOfEffectSize => UsesAreaOfEffect ? Mathf.Max(1, areaOfEffectSize) : 1;
+    public int AreaOfEffectRadius => Mathf.Max(0, AreaOfEffectSize / 2);
+    public bool UsesAbilityRange => rangeType == TacticsAbilityRangeType.Ranged || rangeType == TacticsAbilityRangeType.AbsoluteRanged ||
+                                    rangeType == TacticsAbilityRangeType.RangedAoE || rangeType == TacticsAbilityRangeType.AbsoluteAoE;
+    public bool UsesAreaOfEffect => rangeType == TacticsAbilityRangeType.SurroundingAoE ||
+                                    rangeType == TacticsAbilityRangeType.RangedAoE ||
+                                    rangeType == TacticsAbilityRangeType.AbsoluteAoE;
+    public bool RequiresTargetSelection => rangeType != TacticsAbilityRangeType.SurroundingAoE;
     public TacticsAbilityTargetRule TargetRule => targetRule;
     public TacticsAbilityDamageType DamageType => damageType;
     public IReadOnlyList<TacticsAbilityEffectDefinitionData> Effects => effects;
@@ -48,6 +57,7 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
         ability.description = "A basic melee strike.";
         ability.rangeType = TacticsAbilityRangeType.Melee;
         ability.range = 1;
+        ability.areaOfEffectSize = 1;
         ability.targetRule = TacticsAbilityTargetRule.HostileUnit;
         ability.damageType = TacticsAbilityDamageType.Melee;
         ability.costResourceType = TacticsAbilityResourceType.None;
@@ -72,6 +82,12 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
 
         displayName = string.IsNullOrWhiteSpace(displayName) ? name : displayName.Trim();
         range = Mathf.Max(1, range);
+        areaOfEffectSize = Mathf.Max(1, areaOfEffectSize);
+        if (areaOfEffectSize % 2 == 0)
+        {
+            areaOfEffectSize += 1;
+        }
+
         costAmount = Mathf.Max(0, costAmount);
         effects ??= new List<TacticsAbilityEffectDefinitionData>();
 
@@ -121,7 +137,10 @@ public enum TacticsAbilityRangeType
 {
     Melee = 0,
     Ranged = 1,
-    AbsoluteRanged = 2
+    AbsoluteRanged = 2,
+    SurroundingAoE = 3,
+    RangedAoE = 4,
+    AbsoluteAoE = 5
 }
 
 public enum TacticsAbilityEffectKind
