@@ -179,6 +179,7 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         return source != null &&
                ability != null &&
                source.CanUseAbilitiesThisTurn &&
+               source.HasResourcesForAbility(ability) &&
                source.isActiveAndEnabled;
     }
 
@@ -412,7 +413,10 @@ public sealed class TacticsCombatSystem : MonoBehaviour
 
         if (appliedAnyEffect && context.Source != null && context.Source.isActiveAndEnabled)
         {
-            context.Source.CommitAbilityUse();
+            if (context.Source.TrySpendAbilityCost(context.Ability))
+            {
+                context.Source.CommitAbilityUse();
+            }
         }
 
         RestoreIdleState();
@@ -493,6 +497,6 @@ public sealed class TacticsDealDamageEffectProcessor : ITacticsAbilityEffectProc
         }
 
         Vector3? damageSourcePosition = context.Source != null ? context.Source.TurnFocusPoint : null;
-        context.Target.ApplyDamage(amount, damageSourcePosition, isCriticalHit);
+        context.Target.ApplyDamage(amount, damageSourcePosition, isCriticalHit, context.Source);
     }
 }

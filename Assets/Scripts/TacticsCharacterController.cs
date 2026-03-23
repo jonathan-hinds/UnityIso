@@ -28,6 +28,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     private Coroutine movementRoutine;
     private TacticsMovementDirection currentDirection = TacticsMovementDirection.SouthWest;
     private Vector2 lastAppliedTileAnchorOffset;
+    private TacticsCharacterData characterData;
     private TacticsCharacterDerivedStats derivedStats;
     private TacticsCharacterRuntimeResources runtimeResources;
     private TacticsTurnManager turnManager;
@@ -39,8 +40,9 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     public bool IsMoving => movementRoutine != null;
     public bool IsPerformingAction => isPerformingAction;
     public TacticsCharacterDefinition CharacterDefinition => characterDefinition;
-    public string DisplayName => characterDefinition != null ? characterDefinition.DisplayName : name;
-    public TacticsUnitTeam Team => characterDefinition != null ? characterDefinition.Team : TacticsUnitTeam.Player;
+    public TacticsCharacterData CharacterData => characterData;
+    public string DisplayName => characterData != null ? characterData.DisplayName : (characterDefinition != null ? characterDefinition.DisplayName : name);
+    public TacticsUnitTeam Team => characterData != null ? characterData.Team : (characterDefinition != null ? characterDefinition.Team : TacticsUnitTeam.Player);
     public bool IsPlayerControlled => Team == TacticsUnitTeam.Player;
     public TacticsCharacterDerivedStats DerivedStats => derivedStats;
     public TacticsCharacterRuntimeResources RuntimeResources => runtimeResources;
@@ -56,10 +58,14 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     public int BaseMagicDamageMax => derivedStats.baseMagicDamageMax;
     public float MeleeCriticalHitChance => derivedStats.meleeCriticalHitChance;
     public float MagicCriticalHitChance => derivedStats.magicCriticalHitChance;
-    public TacticsCharacterStats BaseStats => characterDefinition != null ? characterDefinition.BaseStats : TacticsCharacterStats.Default();
-    public int MoveRange => characterDefinition != null ? characterDefinition.BaseStats.MoveRange : 0;
-    public int JumpHeight => characterDefinition != null ? characterDefinition.BaseStats.JumpHeight : 0;
+    public TacticsCharacterStats BaseStats => characterData != null ? characterData.BaseStats : TacticsCharacterStats.Default();
+    public int MoveRange => BaseStats.MoveRange;
+    public int JumpHeight => BaseStats.JumpHeight;
     public int CurrentElevation => mapGenerator != null ? mapGenerator.GetTileElevation(GridPosition.x, GridPosition.y) : 0;
+    public int CurrentExperience { get; private set; }
+    public int CurrentLevel { get; private set; } = 1;
+    public int ExperienceToNextLevel { get; private set; }
+    public bool SupportsExperience => IsPlayerControlled && ExperienceToNextLevel > 0;
     public bool HasMovedThisTurn { get; private set; }
     public bool HasActedThisTurn { get; private set; }
     public bool IsTurnActive { get; private set; }
@@ -82,15 +88,27 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
             new TacticsSelectionHudResourceData("HP", CurrentHitPoints, MaxHitPoints, new Color(0.72f, 0.23f, 0.27f, 1f)),
             new TacticsSelectionHudResourceData("MP", CurrentMana, MaxMana, new Color(0.25f, 0.49f, 0.77f, 1f)),
             new TacticsSelectionHudResourceData("ST", CurrentStamina, MaxStamina, new Color(0.34f, 0.62f, 0.42f, 1f)),
-            characterDefinition != null ? characterDefinition.SelectedColor : Color.white);
+            new TacticsSelectionHudResourceData("EXP", CurrentExperience, ExperienceToNextLevel, new Color(0.58f, 0.32f, 0.82f, 1f), SupportsExperience),
+            characterData != null ? characterData.SelectedColor : Color.white);
     }
 
     public void Initialize(ProceduralIsometricMapGenerator generator, TacticsCharacterAnimator animator, TacticsCharacterDefinition definition, Vector2Int spawnTile)
     {
+        Initialize(generator, animator, definition != null ? definition.BuildRuntimeData() : null, spawnTile, definition);
+    }
+
+    public void Initialize(
+        ProceduralIsometricMapGenerator generator,
+        TacticsCharacterAnimator animator,
+        TacticsCharacterData data,
+        Vector2Int spawnTile,
+        TacticsCharacterDefinition definition = null)
+    {
         mapGenerator = generator;
         characterAnimator = animator;
         characterDefinition = definition;
-        ApplyDefinition(definition);
+        characterData = data ?? definition?.BuildRuntimeData();
+        ApplyCharacterData(characterData);
         startingGridPosition = spawnTile;
         SubscribeToMap();
         SnapToTile(GetBestValidTile(spawnTile));
@@ -114,7 +132,12 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
             characterAnimator = GetComponentInChildren<TacticsCharacterAnimator>();
         }
 
-        ApplyDefinition(characterDefinition);
+        if (characterData == null && characterDefinition != null)
+        {
+            characterData = characterDefinition.BuildRuntimeData();
+        }
+
+        ApplyCharacterData(characterData);
 
         if (mapGenerator == null || !mapGenerator.HasGeneratedMap)
         {
@@ -160,6 +183,11 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         characterAnimator?.SetTargeted(isTargeted);
     }
 
+    public void SetTargetHoverPreview(bool isActive)
+    {
+        characterAnimator?.SetTargetHoverPreview(isActive);
+    }
+
     public bool TryMoveTo(Vector2Int destination)
     {
         if (!CanMoveThisTurn || !IsAlive)
@@ -200,6 +228,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
             return false;
         }
 
+        RestoreEndTurnResources();
         IsTurnActive = false;
         characterAnimator?.SetTurnHighlight(false);
         NotifyTurnStateChanged();
@@ -241,7 +270,11 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         return BaseStats.GetPrimaryStat(stat);
     }
 
-    public bool ApplyDamage(int damageAmount, Vector3? damageSourceWorldPosition = null, bool isCriticalHit = false)
+    public bool ApplyDamage(
+        int damageAmount,
+        Vector3? damageSourceWorldPosition = null,
+        bool isCriticalHit = false,
+        TacticsCharacterController damageSourceCharacter = null)
     {
         if (!IsAlive || damageAmount <= 0)
         {
@@ -251,13 +284,69 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         runtimeResources.hitPoints = Mathf.Max(0, runtimeResources.hitPoints - damageAmount);
         characterAnimator?.PlayDamageImpact(damageSourceWorldPosition);
         TacticsCombatTextSystem.ShowDamage(this, damageAmount, isCriticalHit);
+        TacticsOverheadHealthBar.ShowFor(this);
         NotifyTurnStateChanged();
 
         if (runtimeResources.hitPoints == 0)
         {
-            HandleDefeat();
+            HandleDefeat(damageSourceCharacter);
         }
 
+        return true;
+    }
+
+    public bool HasResourcesForAbility(TacticsAbilityDefinition ability)
+    {
+        if (ability == null || !ability.HasResourceCost)
+        {
+            return true;
+        }
+
+        return GetCurrentResource(ability.CostResourceType) >= ability.CostAmount;
+    }
+
+    public bool TrySpendAbilityCost(TacticsAbilityDefinition ability)
+    {
+        if (ability == null || !ability.HasResourceCost)
+        {
+            return true;
+        }
+
+        if (!HasResourcesForAbility(ability))
+        {
+            return false;
+        }
+
+        switch (ability.CostResourceType)
+        {
+            case TacticsAbilityResourceType.Stamina:
+                runtimeResources.stamina = Mathf.Max(0, runtimeResources.stamina - ability.CostAmount);
+                break;
+
+            case TacticsAbilityResourceType.Mana:
+                runtimeResources.mana = Mathf.Max(0, runtimeResources.mana - ability.CostAmount);
+                break;
+        }
+
+        NotifyTurnStateChanged();
+        return true;
+    }
+
+    public bool TryAwardExperience(int amount)
+    {
+        if (!SupportsExperience || amount <= 0)
+        {
+            return false;
+        }
+
+        CurrentExperience += amount;
+        while (ExperienceToNextLevel > 0 && CurrentExperience >= ExperienceToNextLevel)
+        {
+            CurrentExperience -= ExperienceToNextLevel;
+            CurrentLevel++;
+        }
+
+        NotifyTurnStateChanged();
         return true;
     }
 
@@ -546,22 +635,46 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         return characterAnimator != null ? characterAnimator.CurrentSortingOrder : 0;
     }
 
-    private void ApplyDefinition(TacticsCharacterDefinition definition)
+    public int GetCurrentResource(TacticsAbilityResourceType resourceType)
     {
-        if (definition == null)
+        return resourceType switch
+        {
+            TacticsAbilityResourceType.Stamina => CurrentStamina,
+            TacticsAbilityResourceType.Mana => CurrentMana,
+            _ => 0
+        };
+    }
+
+    public int GetMaxResource(TacticsAbilityResourceType resourceType)
+    {
+        return resourceType switch
+        {
+            TacticsAbilityResourceType.Stamina => MaxStamina,
+            TacticsAbilityResourceType.Mana => MaxMana,
+            _ => 0
+        };
+    }
+
+    private void ApplyCharacterData(TacticsCharacterData data)
+    {
+        if (data == null)
         {
             return;
         }
 
-        moveSpeed = definition.MoveSpeed;
-        jumpDuration = definition.JumpDuration;
-        jumpArcHeight = definition.JumpArcHeight;
-        maxStepUp = definition.MaxStepUp;
-        maxStepDown = definition.MaxStepDown;
-        tileAnchorOffset = definition.TileAnchorOffset;
-        derivedStats = definition.BaseStats.CalculateDerivedStats();
-        runtimeResources = definition.BaseStats.CreateRuntimeResources();
-        RebuildAbilities(definition);
+        characterData = data;
+        moveSpeed = data.MoveSpeed;
+        jumpDuration = data.JumpDuration;
+        jumpArcHeight = data.JumpArcHeight;
+        maxStepUp = data.MaxStepUp;
+        maxStepDown = data.MaxStepDown;
+        tileAnchorOffset = data.TileAnchorOffset;
+        derivedStats = data.BaseStats.CalculateDerivedStats();
+        runtimeResources = data.BaseStats.CreateRuntimeResources();
+        CurrentLevel = 1;
+        CurrentExperience = 0;
+        ExperienceToNextLevel = data.Team == TacticsUnitTeam.Player ? Mathf.Max(1, data.ExperienceToNextLevel) : 0;
+        RebuildAbilities(data);
     }
 
     private void RegisterWithTurnManager()
@@ -579,13 +692,30 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         TurnStateChanged?.Invoke(this);
     }
 
-    private void RebuildAbilities(TacticsCharacterDefinition definition)
+    private void RestoreEndTurnResources()
+    {
+        RestoreResourceByPercent(ref runtimeResources.stamina, MaxStamina, 0.1f);
+        RestoreResourceByPercent(ref runtimeResources.mana, MaxMana, 0.1f);
+    }
+
+    private static void RestoreResourceByPercent(ref int currentValue, int maxValue, float percent)
+    {
+        if (maxValue <= 0 || percent <= 0f || currentValue >= maxValue)
+        {
+            return;
+        }
+
+        int restoreAmount = Mathf.Max(1, Mathf.CeilToInt(maxValue * percent));
+        currentValue = Mathf.Min(maxValue, currentValue + restoreAmount);
+    }
+
+    private void RebuildAbilities(TacticsCharacterData data)
     {
         abilities.Clear();
 
-        if (definition != null)
+        if (data != null)
         {
-            IReadOnlyList<TacticsAbilityDefinition> configuredAbilities = definition.StartingAbilities;
+            IReadOnlyList<TacticsAbilityDefinition> configuredAbilities = data.StartingAbilities;
             for (int i = 0; i < configuredAbilities.Count; i++)
             {
                 AddAbilityIfMissing(configuredAbilities[i]);
@@ -609,8 +739,17 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         abilities.Add(ability);
     }
 
-    private void HandleDefeat()
+    private void HandleDefeat(TacticsCharacterController defeatingCharacter)
     {
+        if (Team == TacticsUnitTeam.Enemy && defeatingCharacter != null)
+        {
+            int experienceReward = characterData != null ? characterData.RollExperienceReward() : 0;
+            if (experienceReward > 0 && defeatingCharacter.TryAwardExperience(experienceReward))
+            {
+                TacticsCombatTextSystem.ShowExperienceReward(defeatingCharacter, experienceReward);
+            }
+        }
+
         StopMovementImmediately();
         isPerformingAction = false;
 

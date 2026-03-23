@@ -9,18 +9,33 @@ public static class TacticsCharacterSpawner
         Vector2Int spawnTile,
         Transform parent = null)
     {
-        if (mapGenerator == null || definition == null)
+        return SpawnCharacter(
+            mapGenerator,
+            definition != null ? definition.BuildRuntimeData() : null,
+            spawnTile,
+            parent,
+            definition);
+    }
+
+    public static TacticsCharacterController SpawnCharacter(
+        ProceduralIsometricMapGenerator mapGenerator,
+        TacticsCharacterData characterData,
+        Vector2Int spawnTile,
+        Transform parent = null,
+        TacticsCharacterDefinition sourceDefinition = null)
+    {
+        if (mapGenerator == null || characterData == null)
         {
             return null;
         }
 
-        if (!definition.TryGetOrderedSprites(out _))
+        if (!characterData.TryGetOrderedSprites(out _))
         {
-            Debug.LogWarning($"Tactics spawner skipped '{definition.name}' because its sprite data is invalid.");
+            Debug.LogWarning($"Tactics spawner skipped '{characterData.DisplayName}' because its sprite data is invalid.");
             return null;
         }
 
-        GameObject characterRoot = new GameObject(definition.DisplayName);
+        GameObject characterRoot = new GameObject(characterData.DisplayName);
         if (parent != null)
         {
             characterRoot.transform.SetParent(parent, false);
@@ -42,7 +57,7 @@ public static class TacticsCharacterSpawner
         sortingGroup.sortingOrder = 0;
 
         TacticsCharacterAnimator animator = characterRoot.AddComponent<TacticsCharacterAnimator>();
-        animator.Initialize(spriteRenderer, definition, mapGenerator, impactPivotObject.transform);
+        animator.Initialize(spriteRenderer, characterData, mapGenerator, impactPivotObject.transform);
 
         BoxCollider2D selectionCollider = visualObject.AddComponent<BoxCollider2D>();
         Vector2 spriteSize = spriteRenderer.sprite != null ? spriteRenderer.sprite.bounds.size : new Vector2(0.2f, 0.3f);
@@ -50,9 +65,9 @@ public static class TacticsCharacterSpawner
         selectionCollider.offset = Vector2.zero;
 
         TacticsCharacterController characterController = characterRoot.AddComponent<TacticsCharacterController>();
-        characterController.Initialize(mapGenerator, animator, definition, spawnTile);
+        characterController.Initialize(mapGenerator, animator, characterData, spawnTile, sourceDefinition);
 
-        if (definition.Team == TacticsUnitTeam.Enemy)
+        if (characterData.Team == TacticsUnitTeam.Enemy)
         {
             characterRoot.AddComponent<TacticsEnemyController>();
         }

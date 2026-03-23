@@ -1,0 +1,41 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ae9cc498dab63e04db7bbce34b6e8fe9, type: 3}
+  m_Name: EnemyTable
+  m_EditorClassIdentifier: 
+  enemies:
+  - enemyId: bandit
+    displayName: Bandit
+    spriteSheetResourcePath: Characters/guy3
+    walkFramesPerSecond: 5
+    baseColor: {r: 1, g: 0.82, b: 0.82, a: 1}
+    selectedColor: {r: 1, g: 0.58, b: 0.58, a: 1}
+    moveSpeed: 1.2
+    jumpDuration: 0.5
+    jumpArcHeight: 0.5
+    maxStepUp: 1
+    maxStepDown: 1
+    tileAnchorOffset: {x: 0.18, y: 0.17}
+    baseStats:
+      primaryStats:
+        stamina: 2
+        strength: 2
+        agility: 4
+        wisdom: 1
+        intelligence: 1
+      mobilityStats:
+        moveRange: 4
+        jumpHeight: 2
+    startingAbilities:
+    - {fileID: 11400000, guid: 3001edcb51eaa3147bde39d09a4a27fd, type: 2}
+    minExperienceReward: 8
+    maxExperienceReward: 12

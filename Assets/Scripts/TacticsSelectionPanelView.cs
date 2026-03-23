@@ -36,6 +36,7 @@ public sealed class TacticsSelectionPanelView : MonoBehaviour
     private SelectionBarWidgets healthBar;
     private SelectionBarWidgets manaBar;
     private SelectionBarWidgets staminaBar;
+    private SelectionBarWidgets experienceBar;
     private Font sharedFont;
 
     private void Awake()
@@ -68,6 +69,7 @@ public sealed class TacticsSelectionPanelView : MonoBehaviour
         ApplyBar(healthBar, hudData.Health);
         ApplyBar(staminaBar, hudData.Stamina);
         ApplyBar(manaBar, hudData.Mana);
+        ApplyBar(experienceBar, hudData.Experience);
     }
 
     public void Hide()
@@ -183,14 +185,26 @@ public sealed class TacticsSelectionPanelView : MonoBehaviour
         nameRect.offsetMax = new Vector2(-28f, -8f);
         nameText.alignment = TextAnchor.UpperCenter;
 
-        healthBar = CreateSelectionBar("HealthBar", panelRoot.transform, 28f, 100f);
-        staminaBar = CreateSelectionBar("StaminaBar", panelRoot.transform, 28f, 56f);
-        manaBar = CreateSelectionBar("ManaBar", panelRoot.transform, 28f, 12f);
+        healthBar = CreateSelectionBar("HealthBar", panelRoot.transform, 28f, 122f, 28f);
+        staminaBar = CreateSelectionBar("StaminaBar", panelRoot.transform, 28f, 88f, 28f);
+        manaBar = CreateSelectionBar("ManaBar", panelRoot.transform, 28f, 54f, 28f);
+        experienceBar = CreateSelectionBar("ExperienceBar", panelRoot.transform, 28f, 20f, 28f);
         ApplyHeader();
     }
 
     private void ApplyBar(SelectionBarWidgets widgets, TacticsSelectionHudResourceData resourceData)
     {
+        if (widgets.Root == null)
+        {
+            return;
+        }
+
+        widgets.Root.SetActive(resourceData.IsVisible);
+        if (!resourceData.IsVisible)
+        {
+            return;
+        }
+
         widgets.Label.text = resourceData.Label.ToUpperInvariant();
         widgets.Value.text = $"{resourceData.CurrentValue}/{resourceData.MaxValue}";
         widgets.Fill.color = resourceData.FillColor;
@@ -219,7 +233,7 @@ public sealed class TacticsSelectionPanelView : MonoBehaviour
         }
     }
 
-    private SelectionBarWidgets CreateSelectionBar(string objectName, Transform parent, float leftInset, float bottomInset)
+    private SelectionBarWidgets CreateSelectionBar(string objectName, Transform parent, float leftInset, float bottomInset, float height)
     {
         GameObject rowRoot = CreateUiObject(objectName, parent);
         RectTransform rowRect = rowRoot.GetComponent<RectTransform>();
@@ -227,9 +241,9 @@ public sealed class TacticsSelectionPanelView : MonoBehaviour
         rowRect.anchorMax = new Vector2(1f, 0f);
         rowRect.pivot = new Vector2(0.5f, 0f);
         rowRect.offsetMin = new Vector2(leftInset, bottomInset);
-        rowRect.offsetMax = new Vector2(-28f, bottomInset + 36f);
+        rowRect.offsetMax = new Vector2(-28f, bottomInset + height);
 
-        Text labelText = CreateText("Label", rowRoot.transform, 30, FontStyle.Bold, secondaryTextColor);
+        Text labelText = CreateText("Label", rowRoot.transform, 24, FontStyle.Bold, secondaryTextColor);
         RectTransform labelRect = labelText.rectTransform;
         labelRect.anchorMin = new Vector2(0f, 0f);
         labelRect.anchorMax = new Vector2(0f, 1f);
@@ -263,7 +277,7 @@ public sealed class TacticsSelectionPanelView : MonoBehaviour
         Image fillImage = fillObject.AddComponent<Image>();
         fillImage.type = Image.Type.Simple;
 
-        Text valueText = CreateText("Value", rowRoot.transform, 20, FontStyle.Normal, primaryTextColor);
+        Text valueText = CreateText("Value", rowRoot.transform, 18, FontStyle.Normal, primaryTextColor);
         RectTransform valueRect = valueText.rectTransform;
         valueRect.anchorMin = new Vector2(1f, 0f);
         valueRect.anchorMax = new Vector2(1f, 1f);
@@ -272,7 +286,7 @@ public sealed class TacticsSelectionPanelView : MonoBehaviour
         valueRect.anchoredPosition = Vector2.zero;
         valueText.alignment = TextAnchor.MiddleRight;
 
-        return new SelectionBarWidgets(labelText, valueText, fillImage);
+        return new SelectionBarWidgets(rowRoot, labelText, valueText, fillImage);
     }
 
     private Text CreateText(string objectName, Transform parent, int fontSize, FontStyle fontStyle, Color textColor)
@@ -299,13 +313,15 @@ public sealed class TacticsSelectionPanelView : MonoBehaviour
 
     private readonly struct SelectionBarWidgets
     {
-        public SelectionBarWidgets(Text label, Text value, Image fill)
+        public SelectionBarWidgets(GameObject root, Text label, Text value, Image fill)
         {
+            Root = root;
             Label = label;
             Value = value;
             Fill = fill;
         }
 
+        public GameObject Root { get; }
         public Text Label { get; }
         public Text Value { get; }
         public Image Fill { get; }

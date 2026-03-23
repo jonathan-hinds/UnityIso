@@ -58,7 +58,22 @@ public sealed class TacticsCombatTextSystem : MonoBehaviour
         Instance.SpawnDamageNumber(target, amount, isCriticalHit);
     }
 
+    public static void ShowExperienceReward(TacticsCharacterController target, int amount)
+    {
+        if (target == null || amount <= 0)
+        {
+            return;
+        }
+
+        Instance.SpawnText(target, $"+EXP: {amount}", Color.white, Color.black);
+    }
+
     private void SpawnDamageNumber(TacticsCharacterController target, int amount, bool isCriticalHit)
+    {
+        SpawnText(target, isCriticalHit ? $"{amount}!" : amount.ToString(), Color.white, Color.black);
+    }
+
+    private void SpawnText(TacticsCharacterController target, string text, Color fillColor, Color outlineColor)
     {
         Vector3 spawnPosition = target.GetCombatTextSpawnPosition(verticalSpawnPadding);
         int sortingLayerId = target.GetCombatTextSortingLayerId();
@@ -67,8 +82,11 @@ public sealed class TacticsCombatTextSystem : MonoBehaviour
         TacticsFloatingCombatText.Create(
             parent: transform,
             worldPosition: spawnPosition,
-            text: isCriticalHit ? $"{amount}!" : amount.ToString(),
+            text: text,
             sortingLayerId: sortingLayerId,
-            sortingOrder: sortingOrder);
+            sortingOrder: sortingOrder,
+            fillColor: fillColor,
+            outlineColor: outlineColor,
+            isExperienceText: text.StartsWith("+EXP: "));
     }
 }

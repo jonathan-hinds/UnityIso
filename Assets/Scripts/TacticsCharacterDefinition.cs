@@ -38,6 +38,13 @@ public sealed class TacticsCharacterDefinition : ScriptableObject
     [Header("Abilities")]
     [SerializeField] private List<TacticsAbilityDefinition> startingAbilities = new();
 
+    [Header("Progression")]
+    [SerializeField, Min(1)] private int experienceToNextLevel = 100;
+
+    [Header("Rewards")]
+    [SerializeField, Min(0)] private int experienceRewardMin;
+    [SerializeField, Min(0)] private int experienceRewardMax;
+
     public string CharacterId => characterId;
     public string DisplayName => string.IsNullOrWhiteSpace(displayName) ? name : displayName;
     public TacticsUnitTeam Team => team;
@@ -54,18 +61,31 @@ public sealed class TacticsCharacterDefinition : ScriptableObject
     public TacticsCharacterStats BaseStats => baseStats;
     public TacticsCharacterDerivedStats DerivedStats => baseStats.CalculateDerivedStats();
     public IReadOnlyList<TacticsAbilityDefinition> StartingAbilities => startingAbilities;
+    public string SpriteSheetResourcePath => spriteSheetResourcePath;
+    public int ExperienceToNextLevel => Mathf.Max(1, experienceToNextLevel);
+    public int ExperienceRewardMin => Mathf.Max(0, experienceRewardMin);
+    public int ExperienceRewardMax => Mathf.Max(ExperienceRewardMin, experienceRewardMax);
 
     public bool TryGetOrderedSprites(out IReadOnlyList<Sprite> sprites)
     {
+        return TryLoadOrderedSprites(spriteSheetResourcePath, out sprites);
+    }
+
+    public TacticsCharacterData BuildRuntimeData()
+    {
+        return TacticsCharacterData.FromDefinition(this);
+    }
+
+    public static bool TryLoadOrderedSprites(string path, out IReadOnlyList<Sprite> sprites)
+    {
         sprites = Array.Empty<Sprite>();
 
-        if (string.IsNullOrWhiteSpace(spriteSheetResourcePath))
+        if (string.IsNullOrWhiteSpace(path))
         {
             return false;
         }
 
-        Sprite[] loadedSprites = LoadSprites(spriteSheetResourcePath);
-
+        Sprite[] loadedSprites = LoadSprites(path);
         if (loadedSprites.Length < 10)
         {
             return false;
@@ -85,6 +105,9 @@ public sealed class TacticsCharacterDefinition : ScriptableObject
         walkFramesPerSecond = Mathf.Max(0.01f, walkFramesPerSecond);
         characterId = string.IsNullOrWhiteSpace(characterId) ? name.ToLowerInvariant().Replace(' ', '_') : characterId.Trim();
         displayName = string.IsNullOrWhiteSpace(displayName) ? name : displayName.Trim();
+        experienceToNextLevel = Mathf.Max(1, experienceToNextLevel);
+        experienceRewardMin = Mathf.Max(0, experienceRewardMin);
+        experienceRewardMax = Mathf.Max(experienceRewardMin, experienceRewardMax);
         startingAbilities ??= new List<TacticsAbilityDefinition>();
     }
 

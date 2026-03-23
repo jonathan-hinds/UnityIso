@@ -9,6 +9,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 {
     private const string BootstrapName = "Tactics Runtime Bootstrap";
     private const string CharacterRosterResourcePath = "Tactics/CharacterRoster";
+    private const string EnemyTableResourcePath = "Tactics/EnemyTable";
     private static readonly Vector3 IsometricTransparencySortAxis = new Vector3(0f, 1f, 0f);
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -399,6 +400,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         }
 
         IReadOnlyList<TacticsEnemySpawnEntry> enemySpawnEntries = mapGenerator.EnemySpawnEntries;
+        TacticsEnemyTable enemyTable = Resources.Load<TacticsEnemyTable>(EnemyTableResourcePath);
         for (int i = 0; i < enemySpawnEntries.Count; i++)
         {
             TacticsEnemySpawnEntry spawnEntry = enemySpawnEntries[i];
@@ -407,11 +409,17 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
                 continue;
             }
 
+            if (!TryResolveEnemyCharacterData(spawnEntry, enemyTable, out TacticsCharacterData enemyData, out TacticsCharacterDefinition sourceDefinition))
+            {
+                Debug.LogWarning("Tactics bootstrap skipped an enemy spawn entry because no enemy table row or fallback character definition could be resolved.");
+                continue;
+            }
+
             List<Vector2Int> spawnTiles = mapGenerator.GetRandomSpawnTiles(spawnEntry.Count, occupiedTiles);
             if (spawnTiles.Count < spawnEntry.Count)
             {
                 Debug.LogWarning(
-                    $"Tactics bootstrap could only find {spawnTiles.Count} valid spawn tiles for '{spawnEntry.CharacterDefinition.DisplayName}' " +
+                    $"Tactics bootstrap could only find {spawnTiles.Count} valid spawn tiles for '{enemyData.DisplayName}' " +
                     $"out of the requested {spawnEntry.Count}.");
             }
 
@@ -419,8 +427,9 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             {
                 TacticsCharacterController enemy = TacticsCharacterSpawner.SpawnCharacter(
                     mapGenerator,
-                    spawnEntry.CharacterDefinition,
-                    spawnTiles[tileIndex]);
+                    enemyData,
+                    spawnTiles[tileIndex],
+                    sourceDefinition: sourceDefinition);
 
                 if (enemy != null)
                 {
@@ -480,5 +489,31 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         }
 
         return true;
+    }
+
+    private static bool TryResolveEnemyCharacterData(
+        TacticsEnemySpawnEntry spawnEntry,
+        TacticsEnemyTable enemyTable,
+        out TacticsCharacterData enemyData,
+        out TacticsCharacterDefinition sourceDefinition)
+    {
+        enemyData = null;
+        sourceDefinition = null;
+
+        if (!string.IsNullOrWhiteSpace(spawnEntry.EnemyId) &&
+            enemyTable != null &&
+            enemyTable.TryGetCharacterData(spawnEntry.EnemyId, out enemyData))
+        {
+            return true;
+        }
+
+        sourceDefinition = spawnEntry.CharacterDefinition;
+        if (sourceDefinition == null)
+        {
+            return false;
+        }
+
+        enemyData = sourceDefinition.BuildRuntimeData();
+        return enemyData != null;
     }
 }

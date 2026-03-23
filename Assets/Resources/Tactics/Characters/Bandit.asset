@@ -46,3 +46,6 @@ MonoBehaviour:
       jumpHeight: 2
   startingAbilities:
   - {fileID: 11400000, guid: 3001edcb51eaa3147bde39d09a4a27fd, type: 2}
+  experienceToNextLevel: 100
+  experienceRewardMin: 8
+  experienceRewardMax: 12

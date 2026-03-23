@@ -24,6 +24,7 @@ public class TacticsPlayerController : MonoBehaviour
     [SerializeField] private TacticsTileTargetOverlay tileTargetOverlay;
 
     private TacticsCharacterController selectedCharacter;
+    private TacticsCharacterController hoveredAbilityTarget;
     private SelectionState selectionState;
     private readonly List<TacticsActionMenuAbilityOption> reusableAbilityOptions = new();
 
@@ -125,6 +126,7 @@ public class TacticsPlayerController : MonoBehaviour
         }
 
         SubscribeToSelectedCharacter(null);
+        SetHoveredAbilityTarget(null);
         RefreshTargetIndicators();
     }
 
@@ -132,10 +134,12 @@ public class TacticsPlayerController : MonoBehaviour
     {
         if (turnManager != null && turnManager.IsTransitioningTurns)
         {
+            SetHoveredAbilityTarget(null);
             return;
         }
 
         HandleCancelInput();
+        RefreshHoveredAbilityTarget();
 
         Mouse mouse = Mouse.current;
         if (mouse == null || !mouse.leftButton.wasPressedThisFrame)
@@ -211,6 +215,7 @@ public class TacticsPlayerController : MonoBehaviour
             combatSystem?.CancelTargeting();
         }
 
+        SetHoveredAbilityTarget(null);
         SubscribeToSelectedCharacter(null);
 
         if (selectedCharacter != null)
@@ -436,12 +441,14 @@ public class TacticsPlayerController : MonoBehaviour
         if (selectionState == SelectionState.AwaitingMoveTarget)
         {
             selectionState = SelectionState.CharacterSelected;
+            SetHoveredAbilityTarget(null);
             RefreshHud();
         }
         else if (selectionState == SelectionState.AwaitingAbilityTarget)
         {
             combatSystem?.CancelTargeting();
             selectionState = SelectionState.CharacterSelected;
+            SetHoveredAbilityTarget(null);
             RefreshHud();
         }
     }
@@ -537,6 +544,8 @@ public class TacticsPlayerController : MonoBehaviour
             {
                 selectionState = SelectionState.CharacterSelected;
             }
+
+            SetHoveredAbilityTarget(null);
         }
 
         RefreshHud();
@@ -649,6 +658,81 @@ public class TacticsPlayerController : MonoBehaviour
         }
     }
 
+    private void RefreshHoveredAbilityTarget()
+    {
+        if (selectionState != SelectionState.AwaitingAbilityTarget ||
+            !ReferenceEquals(selectedCharacter, GetActivePlayerCharacter()) ||
+            combatSystem == null ||
+            combatSystem.TargetingAbility == null)
+        {
+            SetHoveredAbilityTarget(null);
+            return;
+        }
+
+        if (blockWhenPointerOverUi && EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+        {
+            SetHoveredAbilityTarget(null);
+            return;
+        }
+
+        if (!TryGetPointerHits(out Collider2D[] hits) ||
+            !TryGetClickedCharacter(hits, out TacticsCharacterController hoveredCharacter) ||
+            hoveredCharacter == null ||
+            !combatSystem.CanTargetFromTile(selectedCharacter, selectedCharacter.GridPosition, combatSystem.TargetingAbility, hoveredCharacter))
+        {
+            SetHoveredAbilityTarget(null);
+            return;
+        }
+
+        SetHoveredAbilityTarget(hoveredCharacter);
+    }
+
+    private bool TryGetPointerHits(out Collider2D[] hits)
+    {
+        hits = null;
+
+        Mouse mouse = Mouse.current;
+        if (mouse == null)
+        {
+            return false;
+        }
+
+        if (targetCamera == null)
+        {
+            targetCamera = Camera.main;
+            if (targetCamera == null)
+            {
+                return false;
+            }
+        }
+
+        Vector2 screenPosition = mouse.position.ReadValue();
+        Vector3 worldPosition = targetCamera.ScreenToWorldPoint(new Vector3(screenPosition.x, screenPosition.y, 0f));
+        Vector2 point = new Vector2(worldPosition.x, worldPosition.y);
+        hits = Physics2D.OverlapPointAll(point);
+        return hits != null && hits.Length > 0;
+    }
+
+    private void SetHoveredAbilityTarget(TacticsCharacterController character)
+    {
+        if (ReferenceEquals(hoveredAbilityTarget, character))
+        {
+            return;
+        }
+
+        if (hoveredAbilityTarget != null)
+        {
+            hoveredAbilityTarget.SetTargetHoverPreview(false);
+        }
+
+        hoveredAbilityTarget = character;
+
+        if (hoveredAbilityTarget != null)
+        {
+            hoveredAbilityTarget.SetTargetHoverPreview(true);
+        }
+    }
+
     private void BuildAbilityOptions(
         TacticsCharacterController character,
         List<TacticsActionMenuAbilityOption> abilityOptions)
@@ -672,13 +756,49 @@ public class TacticsPlayerController : MonoBehaviour
                 continue;
             }
 
+            bool hasResources = character.HasResourcesForAbility(ability);
+            bool hasTargets = combatSystem != null &&
+                              character.CanUseAbilitiesThisTurn &&
+                              hasResources &&
+                              combatSystem.GetValidTargetTiles(character, ability).Count > 0;
             bool isInteractable = combatSystem != null &&
                                   character.CanUseAbilitiesThisTurn &&
-                                  combatSystem.GetValidTargetTiles(character, ability).Count > 0;
+                                  hasResources &&
+                                  hasTargets;
             bool isSelected = isTargetingWithCharacter &&
                               ReferenceEquals(combatSystem.TargetingAbility, ability);
+            string statusText = BuildAbilityStatusText(character, ability, hasResources, hasTargets);
 
-            abilityOptions.Add(new TacticsActionMenuAbilityOption(ability, isInteractable, isSelected));
+            abilityOptions.Add(new TacticsActionMenuAbilityOption(ability, isInteractable, isSelected, statusText));
         }
+    }
+
+    private static string BuildAbilityStatusText(
+        TacticsCharacterController character,
+        TacticsAbilityDefinition ability,
+        bool hasResources,
+        bool hasTargets)
+    {
+        if (character == null || ability == null)
+        {
+            return "Unavailable";
+        }
+
+        if (!character.CanUseAbilitiesThisTurn)
+        {
+            return character.IsTurnActive ? "Action spent" : "Not your turn";
+        }
+
+        if (!hasResources)
+        {
+            return ability.CostResourceType switch
+            {
+                TacticsAbilityResourceType.Stamina => "Not enough stamina",
+                TacticsAbilityResourceType.Mana => "Not enough mana",
+                _ => "Not enough resources"
+            };
+        }
+
+        return hasTargets ? "Ready" : "No targets";
     }
 }

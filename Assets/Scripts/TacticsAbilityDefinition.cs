@@ -23,6 +23,10 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
         TacticsAbilityEffectDefinitionData.CreateDealDamage()
     };
 
+    [Header("Cost")]
+    [SerializeField] private TacticsAbilityResourceType costResourceType = TacticsAbilityResourceType.None;
+    [SerializeField, Min(0)] private int costAmount;
+
     public string AbilityId => abilityId;
     public string DisplayName => string.IsNullOrWhiteSpace(displayName) ? name : displayName.Trim();
     public string Description => description;
@@ -31,6 +35,9 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
     public TacticsAbilityTargetRule TargetRule => targetRule;
     public TacticsAbilityDamageType DamageType => damageType;
     public IReadOnlyList<TacticsAbilityEffectDefinitionData> Effects => effects;
+    public TacticsAbilityResourceType CostResourceType => costAmount > 0 ? costResourceType : TacticsAbilityResourceType.None;
+    public int CostAmount => Mathf.Max(0, costAmount);
+    public bool HasResourceCost => CostResourceType != TacticsAbilityResourceType.None && CostAmount > 0;
 
     public static TacticsAbilityDefinition CreateFallbackAttack()
     {
@@ -43,6 +50,8 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
         ability.range = 1;
         ability.targetRule = TacticsAbilityTargetRule.HostileUnit;
         ability.damageType = TacticsAbilityDamageType.Melee;
+        ability.costResourceType = TacticsAbilityResourceType.None;
+        ability.costAmount = 0;
         ability.effects = new List<TacticsAbilityEffectDefinitionData>
         {
             TacticsAbilityEffectDefinitionData.CreateDealDamage(
@@ -63,6 +72,7 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
 
         displayName = string.IsNullOrWhiteSpace(displayName) ? name : displayName.Trim();
         range = Mathf.Max(1, range);
+        costAmount = Mathf.Max(0, costAmount);
         effects ??= new List<TacticsAbilityEffectDefinitionData>();
 
         for (int i = 0; i < effects.Count; i++)
@@ -123,6 +133,13 @@ public enum TacticsAbilityDamageType
 {
     Melee = 0,
     Magic = 1
+}
+
+public enum TacticsAbilityResourceType
+{
+    None = 0,
+    Stamina = 1,
+    Mana = 2
 }
 
 public enum TacticsDamageFormula

@@ -515,7 +515,7 @@ public class TacticsActionMenuView : MonoBehaviour
     {
         TacticsAbilityDefinition ability = option.Ability;
         widgets.Name.text = ability != null ? ability.DisplayName.ToUpperInvariant() : "ABILITY";
-        widgets.Detail.text = BuildAbilityDetailText(ability, option.IsInteractable);
+        widgets.Detail.text = BuildAbilityDetailText(ability, option.StatusText);
         widgets.Button.interactable = option.IsInteractable;
 
         Color backgroundColor = option.IsSelected ? selectedAbilityColor : buttonColor;
@@ -530,7 +530,7 @@ public class TacticsActionMenuView : MonoBehaviour
         }
     }
 
-    private string BuildAbilityDetailText(TacticsAbilityDefinition ability, bool isInteractable)
+    private string BuildAbilityDetailText(TacticsAbilityDefinition ability, string statusText)
     {
         if (ability == null)
         {
@@ -541,8 +541,9 @@ public class TacticsActionMenuView : MonoBehaviour
             ? "No description."
             : ability.Description.Trim();
 
-        string availability = isInteractable ? "Ready" : "No targets";
-        return $"{GetRangeLabel(ability)}  |  {availability}\n{description}";
+        string costLabel = GetCostLabel(ability);
+        string availability = string.IsNullOrWhiteSpace(statusText) ? "Ready" : statusText.Trim();
+        return $"{GetRangeLabel(ability)}  |  {costLabel}  |  {availability}\n{description}";
     }
 
     private static string GetRangeLabel(TacticsAbilityDefinition ability)
@@ -558,6 +559,21 @@ public class TacticsActionMenuView : MonoBehaviour
             TacticsAbilityRangeType.Ranged => $"RANGED {ability.Range}",
             TacticsAbilityRangeType.AbsoluteRanged => $"ABSOLUTE {ability.Range}",
             _ => $"RANGE {ability.Range}"
+        };
+    }
+
+    private static string GetCostLabel(TacticsAbilityDefinition ability)
+    {
+        if (ability == null || !ability.HasResourceCost)
+        {
+            return "NO COST";
+        }
+
+        return ability.CostResourceType switch
+        {
+            TacticsAbilityResourceType.Stamina => $"ST {ability.CostAmount}",
+            TacticsAbilityResourceType.Mana => $"MP {ability.CostAmount}",
+            _ => "NO COST"
         };
     }
 
@@ -621,14 +637,17 @@ public readonly struct TacticsActionMenuAbilityOption
     public TacticsActionMenuAbilityOption(
         TacticsAbilityDefinition ability,
         bool isInteractable,
-        bool isSelected)
+        bool isSelected,
+        string statusText)
     {
         Ability = ability;
         IsInteractable = isInteractable;
         IsSelected = isSelected;
+        StatusText = statusText;
     }
 
     public TacticsAbilityDefinition Ability { get; }
     public bool IsInteractable { get; }
     public bool IsSelected { get; }
+    public string StatusText { get; }
 }
