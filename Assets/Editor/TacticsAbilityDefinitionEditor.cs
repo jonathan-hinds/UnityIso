@@ -12,6 +12,7 @@ public sealed class TacticsAbilityDefinitionEditor : Editor
     private SerializedProperty areaOfEffectSizeProperty;
     private SerializedProperty targetRuleProperty;
     private SerializedProperty damageTypeProperty;
+    private SerializedProperty projectilePrefabProperty;
     private SerializedProperty effectsProperty;
     private SerializedProperty costResourceTypeProperty;
     private SerializedProperty costAmountProperty;
@@ -26,6 +27,7 @@ public sealed class TacticsAbilityDefinitionEditor : Editor
         areaOfEffectSizeProperty = serializedObject.FindProperty("areaOfEffectSize");
         targetRuleProperty = serializedObject.FindProperty("targetRule");
         damageTypeProperty = serializedObject.FindProperty("damageType");
+        projectilePrefabProperty = serializedObject.FindProperty("projectilePrefab");
         effectsProperty = serializedObject.FindProperty("effects");
         costResourceTypeProperty = serializedObject.FindProperty("costResourceType");
         costAmountProperty = serializedObject.FindProperty("costAmount");
@@ -57,6 +59,10 @@ public sealed class TacticsAbilityDefinitionEditor : Editor
 
         EditorGUILayout.PropertyField(targetRuleProperty);
         EditorGUILayout.PropertyField(damageTypeProperty);
+
+        EditorGUILayout.Space();
+        EditorGUILayout.LabelField("Presentation", EditorStyles.boldLabel);
+        EditorGUILayout.PropertyField(projectilePrefabProperty, new GUIContent("Projectile Prefab", "Optional prefab spawned for ranged-style ability presentation. Leave empty for instant effects."));
 
         EditorGUILayout.Space();
         EditorGUILayout.LabelField("Effects", EditorStyles.boldLabel);

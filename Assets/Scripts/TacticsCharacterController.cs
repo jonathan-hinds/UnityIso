@@ -635,6 +635,16 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         return characterAnimator != null ? characterAnimator.CurrentSortingOrder : 0;
     }
 
+    public Vector3 GetProjectileLaunchPosition(float normalizedHeight = 0.58f)
+    {
+        return GetVisualAnchorPosition(normalizedHeight, new Vector3(0f, 0.55f, 0f));
+    }
+
+    public Vector3 GetProjectileImpactPosition(float normalizedHeight = 0.5f)
+    {
+        return GetVisualAnchorPosition(normalizedHeight, new Vector3(0f, 0.45f, 0f));
+    }
+
     public int GetCurrentResource(TacticsAbilityResourceType resourceType)
     {
         return resourceType switch
@@ -675,6 +685,21 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         CurrentExperience = 0;
         ExperienceToNextLevel = data.Team == TacticsUnitTeam.Player ? Mathf.Max(1, data.ExperienceToNextLevel) : 0;
         RebuildAbilities(data);
+    }
+
+    private Vector3 GetVisualAnchorPosition(float normalizedHeight, Vector3 fallbackOffset)
+    {
+        SpriteRenderer targetRenderer = characterAnimator != null ? characterAnimator.TargetRenderer : null;
+        if (targetRenderer != null && targetRenderer.sprite != null)
+        {
+            Bounds bounds = targetRenderer.bounds;
+            return new Vector3(
+                bounds.center.x,
+                Mathf.Lerp(bounds.min.y, bounds.max.y, Mathf.Clamp01(normalizedHeight)),
+                transform.position.z);
+        }
+
+        return transform.position + fallbackOffset;
     }
 
     private void RegisterWithTurnManager()

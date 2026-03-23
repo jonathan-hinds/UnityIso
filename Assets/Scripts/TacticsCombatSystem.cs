@@ -517,6 +517,11 @@ public sealed class TacticsCombatSystem : MonoBehaviour
             yield return context.Source.PlayAttackAnimationTowards(context.TargetTile);
         }
 
+        if (context.Ability != null && context.Ability.UsesProjectilePresentation)
+        {
+            yield return PlayProjectilePresentationRoutine(context);
+        }
+
         bool appliedAnyEffect = false;
         IReadOnlyList<TacticsAbilityEffectDefinitionData> effects = context.Ability.Effects;
         for (int i = 0; i < effects.Count; i++)
@@ -546,6 +551,53 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         }
 
         RestoreIdleState();
+    }
+
+    private IEnumerator PlayProjectilePresentationRoutine(TacticsAbilityExecutionContext context)
+    {
+        if (context.Source == null ||
+            context.Ability == null ||
+            context.Ability.ProjectilePrefab == null)
+        {
+            yield break;
+        }
+
+        Vector3 launchPosition = context.Source.GetProjectileLaunchPosition();
+        Vector3 impactPosition = ResolveProjectileImpactPosition(context);
+        int sortingLayerId = context.Source.GetCombatTextSortingLayerId();
+        int sortingOrder = context.Source.GetCombatTextSortingOrder();
+
+        TacticsAbilityProjectile projectile = Instantiate(
+            context.Ability.ProjectilePrefab,
+            launchPosition,
+            Quaternion.identity);
+
+        yield return projectile.Play(new TacticsAbilityProjectileFlight(
+            launchPosition,
+            impactPosition,
+            sortingLayerId,
+            sortingOrder));
+    }
+
+    private Vector3 ResolveProjectileImpactPosition(TacticsAbilityExecutionContext context)
+    {
+        if (!context.Ability.UsesAreaOfEffect && context.Targets != null && context.Targets.Count > 0)
+        {
+            TacticsCharacterController target = context.Targets[0];
+            if (target != null && target.isActiveAndEnabled)
+            {
+                return target.GetProjectileImpactPosition();
+            }
+        }
+
+        if (mapGenerator != null && mapGenerator.HasGeneratedMap)
+        {
+            int impactElevation = mapGenerator.GetTileElevation(context.TargetTile.x, context.TargetTile.y);
+            Vector3 impactTilePosition = mapGenerator.GridToWorldPosition(context.TargetTile.x, context.TargetTile.y, impactElevation);
+            return impactTilePosition + new Vector3(0f, mapGenerator.TileHeight * 0.5f, 0f);
+        }
+
+        return context.Source != null ? context.Source.TurnFocusPoint : Vector3.zero;
     }
 
     private void SetState(TacticsCombatState nextState)

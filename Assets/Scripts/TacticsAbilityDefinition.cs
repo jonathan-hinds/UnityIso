@@ -18,6 +18,9 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
     [SerializeField] private TacticsAbilityTargetRule targetRule = TacticsAbilityTargetRule.HostileUnit;
     [SerializeField] private TacticsAbilityDamageType damageType = TacticsAbilityDamageType.Melee;
 
+    [Header("Presentation")]
+    [SerializeField] private TacticsAbilityProjectile projectilePrefab;
+
     [Header("Effects")]
     [SerializeField] private List<TacticsAbilityEffectDefinitionData> effects = new()
     {
@@ -43,6 +46,8 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
     public bool RequiresTargetSelection => rangeType != TacticsAbilityRangeType.SurroundingAoE;
     public TacticsAbilityTargetRule TargetRule => targetRule;
     public TacticsAbilityDamageType DamageType => damageType;
+    public TacticsAbilityProjectile ProjectilePrefab => projectilePrefab;
+    public bool UsesProjectilePresentation => projectilePrefab != null;
     public IReadOnlyList<TacticsAbilityEffectDefinitionData> Effects => effects;
     public TacticsAbilityResourceType CostResourceType => costAmount > 0 ? costResourceType : TacticsAbilityResourceType.None;
     public int CostAmount => Mathf.Max(0, costAmount);
