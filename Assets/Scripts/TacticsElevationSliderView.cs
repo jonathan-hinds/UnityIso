@@ -26,6 +26,7 @@ public sealed class TacticsElevationSliderView : MonoBehaviour
     private Font sharedFont;
     private IsometricMapLayerVisibilityController visibilityController;
     private bool suppressValueChanged;
+    private bool isPanelVisible = true;
 
     private void Awake()
     {
@@ -59,6 +60,26 @@ public sealed class TacticsElevationSliderView : MonoBehaviour
         }
     }
 
+    public bool IsPanelVisible => panelRoot != null && panelRoot.activeSelf;
+
+    public void TogglePanelVisibility()
+    {
+        SetPanelVisible(!isPanelVisible);
+    }
+
+    public void SetPanelVisible(bool visible)
+    {
+        isPanelVisible = visible;
+
+        if (visibilityController == null)
+        {
+            Hide();
+            return;
+        }
+
+        HandleVisibilityChanged(visibilityController.VisibleElevation, visibilityController.MaximumElevation);
+    }
+
     private void HandleVisibilityChanged(int visibleElevation, int maximumElevation)
     {
         EnsureBuilt();
@@ -69,7 +90,7 @@ public sealed class TacticsElevationSliderView : MonoBehaviour
             return;
         }
 
-        panelRoot.SetActive(true);
+        panelRoot.SetActive(isPanelVisible);
         RebuildTicks(maximumElevation);
 
         suppressValueChanged = true;
@@ -132,7 +153,7 @@ public sealed class TacticsElevationSliderView : MonoBehaviour
         panelRect.anchorMin = new Vector2(1f, 1f);
         panelRect.anchorMax = new Vector2(1f, 1f);
         panelRect.pivot = new Vector2(1f, 1f);
-        panelRect.anchoredPosition = new Vector2(-36f, -36f);
+        panelRect.anchoredPosition = new Vector2(-36f, -124f);
         panelRect.sizeDelta = new Vector2(188f, 360f);
 
         Image panelImage = panelRoot.AddComponent<Image>();

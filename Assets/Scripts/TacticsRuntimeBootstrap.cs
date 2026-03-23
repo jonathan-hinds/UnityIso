@@ -86,6 +86,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             new Vector2(576f, 268f));
         IsometricMapLayerVisibilityController layerVisibilityController = EnsureLayerVisibilityController();
         TacticsElevationSliderView elevationSliderView = EnsureElevationSliderView();
+        TacticsTopRightNavBarView topRightNavBarView = EnsureTopRightNavBarView();
         TacticsTileTargetOverlay tileTargetOverlay = EnsureTileTargetOverlay();
         EnsureCombatTextSystem();
         EnsureTurnCameraDirector();
@@ -99,6 +100,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             selectedCharacterPanelView,
             layerVisibilityController,
             elevationSliderView,
+            topRightNavBarView,
             tileTargetOverlay,
             turnManager,
             combatSystem);
@@ -202,6 +204,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         TacticsSelectionPanelView selectedCharacterPanelView,
         IsometricMapLayerVisibilityController layerVisibilityController,
         TacticsElevationSliderView elevationSliderView,
+        TacticsTopRightNavBarView topRightNavBarView,
         TacticsTileTargetOverlay tileTargetOverlay,
         TacticsTurnManager turnManager,
         TacticsCombatSystem combatSystem)
@@ -214,6 +217,11 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         if (elevationSliderView != null)
         {
             elevationSliderView.AssignVisibilityController(layerVisibilityController);
+        }
+
+        if (topRightNavBarView != null)
+        {
+            topRightNavBarView.AssignElevationSliderView(elevationSliderView);
         }
 
         TacticsPlayerController playerController = FindFirstObjectByType<TacticsPlayerController>();
@@ -253,6 +261,18 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
         GameObject hudObject = new GameObject("Tactics Elevation Slider HUD");
         return hudObject.AddComponent<TacticsElevationSliderView>();
+    }
+
+    private TacticsTopRightNavBarView EnsureTopRightNavBarView()
+    {
+        TacticsTopRightNavBarView existingView = FindFirstObjectByType<TacticsTopRightNavBarView>();
+        if (existingView != null)
+        {
+            return existingView;
+        }
+
+        GameObject hudObject = new GameObject("Tactics Top Right Nav HUD");
+        return hudObject.AddComponent<TacticsTopRightNavBarView>();
     }
 
     private TacticsTurnManager EnsureTurnManager()
