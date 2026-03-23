@@ -542,7 +542,23 @@ public class TacticsActionMenuView : MonoBehaviour
             : ability.Description.Trim();
 
         string availability = isInteractable ? "Ready" : "No targets";
-        return $"RANGE {ability.Range}  |  {availability}\n{description}";
+        return $"{GetRangeLabel(ability)}  |  {availability}\n{description}";
+    }
+
+    private static string GetRangeLabel(TacticsAbilityDefinition ability)
+    {
+        if (ability == null)
+        {
+            return "RANGE ?";
+        }
+
+        return ability.RangeType switch
+        {
+            TacticsAbilityRangeType.Melee => "MELEE 1",
+            TacticsAbilityRangeType.Ranged => $"RANGED {ability.Range}",
+            TacticsAbilityRangeType.AbsoluteRanged => $"ABSOLUTE {ability.Range}",
+            _ => $"RANGE {ability.Range}"
+        };
     }
 
     private void HandleFlyoutBackgroundClicked()

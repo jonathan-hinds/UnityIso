@@ -11,6 +11,7 @@ public sealed class TacticsCombatSystem : MonoBehaviour
 
     private readonly Dictionary<TacticsAbilityEffectKind, ITacticsAbilityEffectProcessor> effectProcessors = new();
     private readonly List<Vector2Int> reusableTargetTiles = new();
+    private readonly List<Vector2Int> reusableTargetableTiles = new();
     private Coroutine resolveRoutine;
 
     public event Action StateChanged;
@@ -89,6 +90,36 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         return reusableTargetTiles;
     }
 
+    public IReadOnlyList<Vector2Int> GetTargetableTiles(TacticsCharacterController source, TacticsAbilityDefinition ability)
+    {
+        reusableTargetableTiles.Clear();
+
+        if (!CanUseAbility(source, ability) || mapGenerator == null || !mapGenerator.HasGeneratedMap)
+        {
+            return reusableTargetableTiles;
+        }
+
+        Vector2Int sourceTile = source.GridPosition;
+        for (int x = 0; x < mapGenerator.Width; x++)
+        {
+            for (int y = 0; y < mapGenerator.Length; y++)
+            {
+                if (!mapGenerator.IsTraversable(x, y))
+                {
+                    continue;
+                }
+
+                Vector2Int targetTile = new Vector2Int(x, y);
+                if (CanTargetTile(source, sourceTile, ability, targetTile))
+                {
+                    reusableTargetableTiles.Add(targetTile);
+                }
+            }
+        }
+
+        return reusableTargetableTiles;
+    }
+
     public bool TryExecuteTargetAt(Vector2Int targetTile)
     {
         if (State != TacticsCombatState.TargetingAbility)
@@ -134,6 +165,15 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         return true;
     }
 
+    public bool CanTargetFromTile(
+        TacticsCharacterController source,
+        Vector2Int sourceTile,
+        TacticsAbilityDefinition ability,
+        TacticsCharacterController target)
+    {
+        return IsValidTarget(source, sourceTile, ability, target);
+    }
+
     public bool CanUseAbility(TacticsCharacterController source, TacticsAbilityDefinition ability)
     {
         return source != null &&
@@ -143,6 +183,15 @@ public sealed class TacticsCombatSystem : MonoBehaviour
     }
 
     private bool IsValidTarget(TacticsCharacterController source, TacticsAbilityDefinition ability, TacticsCharacterController target)
+    {
+        return IsValidTarget(source, source != null ? source.GridPosition : default, ability, target);
+    }
+
+    private bool IsValidTarget(
+        TacticsCharacterController source,
+        Vector2Int sourceTile,
+        TacticsAbilityDefinition ability,
+        TacticsCharacterController target)
     {
         if (source == null || ability == null || target == null || ReferenceEquals(source, target))
         {
@@ -154,7 +203,7 @@ public sealed class TacticsCombatSystem : MonoBehaviour
             return false;
         }
 
-        if (!IsWithinRange(source.GridPosition, target.GridPosition, ability.Range))
+        if (!CanTargetTile(source, sourceTile, ability, target.GridPosition))
         {
             return false;
         }
@@ -181,10 +230,129 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         return null;
     }
 
-    private static bool IsWithinRange(Vector2Int source, Vector2Int target, int range)
+    private bool CanTargetTile(
+        TacticsCharacterController source,
+        Vector2Int sourceTile,
+        TacticsAbilityDefinition ability,
+        Vector2Int targetTile)
     {
-        int distance = Mathf.Abs(source.x - target.x) + Mathf.Abs(source.y - target.y);
-        return distance > 0 && distance <= Mathf.Max(1, range);
+        if (source == null || ability == null || mapGenerator == null || !mapGenerator.HasGeneratedMap)
+        {
+            return false;
+        }
+
+        if (!mapGenerator.IsTraversable(targetTile.x, targetTile.y))
+        {
+            return false;
+        }
+
+        int distance = GetTileDistance(sourceTile, targetTile);
+        if (distance <= 0)
+        {
+            return false;
+        }
+
+        switch (ability.RangeType)
+        {
+            case TacticsAbilityRangeType.Melee:
+                return distance == 1 &&
+                       mapGenerator.GetTileElevation(sourceTile.x, sourceTile.y) == mapGenerator.GetTileElevation(targetTile.x, targetTile.y);
+
+            case TacticsAbilityRangeType.Ranged:
+                return distance <= ability.Range && HasLineOfSight(source, sourceTile, targetTile);
+
+            case TacticsAbilityRangeType.AbsoluteRanged:
+                return distance <= ability.Range;
+
+            default:
+                return false;
+        }
+    }
+
+    private bool HasLineOfSight(TacticsCharacterController source, Vector2Int sourceTile, Vector2Int targetTile)
+    {
+        if (mapGenerator == null)
+        {
+            return false;
+        }
+
+        List<Vector2Int> traversedTiles = GetLineTiles(sourceTile, targetTile);
+        if (traversedTiles.Count <= 2)
+        {
+            return true;
+        }
+
+        int sourceElevation = mapGenerator.GetTileElevation(sourceTile.x, sourceTile.y);
+        int targetElevation = mapGenerator.GetTileElevation(targetTile.x, targetTile.y);
+        int blockingElevationThreshold = Mathf.Min(sourceElevation, targetElevation);
+
+        for (int i = 1; i < traversedTiles.Count - 1; i++)
+        {
+            Vector2Int tile = traversedTiles[i];
+            int tileElevation = mapGenerator.GetTileElevation(tile.x, tile.y);
+
+            // Ranged line of sight behaves like same-level visibility plus the ability
+            // to see onto a single ledge face one elevation higher. Intermediate tiles
+            // only block when they rise above the lower endpoint elevation, which makes
+            // a one-tile ledge targetable while thicker raised plateaus become walls.
+            if (tileElevation > blockingElevationThreshold)
+            {
+                return false;
+            }
+
+            TacticsCharacterController blockingCharacter = FindCharacterAt(tile);
+            if (blockingCharacter != null &&
+                blockingCharacter.isActiveAndEnabled &&
+                blockingCharacter.IsAlive &&
+                !ReferenceEquals(blockingCharacter, source))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static int GetTileDistance(Vector2Int source, Vector2Int target)
+    {
+        return Mathf.Abs(source.x - target.x) + Mathf.Abs(source.y - target.y);
+    }
+
+    private static List<Vector2Int> GetLineTiles(Vector2Int start, Vector2Int end)
+    {
+        List<Vector2Int> tiles = new();
+
+        int x = start.x;
+        int y = start.y;
+        int deltaX = Mathf.Abs(end.x - start.x);
+        int deltaY = Mathf.Abs(end.y - start.y);
+        int stepX = start.x < end.x ? 1 : -1;
+        int stepY = start.y < end.y ? 1 : -1;
+        int error = deltaX - deltaY;
+
+        while (true)
+        {
+            tiles.Add(new Vector2Int(x, y));
+            if (x == end.x && y == end.y)
+            {
+                break;
+            }
+
+            int doubledError = error * 2;
+            if (doubledError > -deltaY)
+            {
+                error -= deltaY;
+                x += stepX;
+            }
+
+            if (doubledError < deltaX)
+            {
+                error += deltaX;
+                y += stepY;
+            }
+        }
+
+        return tiles;
     }
 
     private void RestoreIdleState()
@@ -312,7 +480,7 @@ public sealed class TacticsDealDamageEffectProcessor : ITacticsAbilityEffectProc
         };
 
         amount += TacticsAbilityScalingCalculator.EvaluateDamageBonus(context.Source, damage.Scaling);
-        amount = Mathf.Max(0, amount + damage.BonusAmount);
+        amount = Mathf.Max(0, Mathf.RoundToInt(amount * damage.BonusMultiplier));
         if (amount <= 0)
         {
             return;

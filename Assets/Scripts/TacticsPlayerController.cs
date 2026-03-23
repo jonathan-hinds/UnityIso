@@ -125,6 +125,7 @@ public class TacticsPlayerController : MonoBehaviour
         }
 
         SubscribeToSelectedCharacter(null);
+        RefreshTargetIndicators();
     }
 
     private void Update()
@@ -599,6 +600,7 @@ public class TacticsPlayerController : MonoBehaviour
     {
         if (tileTargetOverlay == null)
         {
+            RefreshTargetIndicators();
             return;
         }
 
@@ -607,11 +609,44 @@ public class TacticsPlayerController : MonoBehaviour
             combatSystem != null &&
             combatSystem.TargetingAbility != null)
         {
-            tileTargetOverlay.ShowTiles(combatSystem.GetValidTargetTiles(selectedCharacter, combatSystem.TargetingAbility));
+            tileTargetOverlay.ShowTiles(combatSystem.GetTargetableTiles(selectedCharacter, combatSystem.TargetingAbility));
+            RefreshTargetIndicators();
             return;
         }
 
         tileTargetOverlay.Hide();
+        RefreshTargetIndicators();
+    }
+
+    private void RefreshTargetIndicators()
+    {
+        TacticsCharacterController[] characters = FindObjectsByType<TacticsCharacterController>(FindObjectsSortMode.None);
+        if (characters.Length == 0)
+        {
+            return;
+        }
+
+        HashSet<Vector2Int> validTargetTiles = null;
+        if (selectionState == SelectionState.AwaitingAbilityTarget &&
+            ReferenceEquals(selectedCharacter, GetActivePlayerCharacter()) &&
+            combatSystem != null &&
+            combatSystem.TargetingAbility != null)
+        {
+            IReadOnlyList<Vector2Int> tiles = combatSystem.GetValidTargetTiles(selectedCharacter, combatSystem.TargetingAbility);
+            validTargetTiles = new HashSet<Vector2Int>(tiles);
+        }
+
+        for (int i = 0; i < characters.Length; i++)
+        {
+            TacticsCharacterController character = characters[i];
+            if (character == null)
+            {
+                continue;
+            }
+
+            bool isTargeted = validTargetTiles != null && validTargetTiles.Contains(character.GridPosition);
+            character.SetTargeted(isTargeted);
+        }
     }
 
     private void BuildAbilityOptions(

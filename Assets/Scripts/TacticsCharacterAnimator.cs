@@ -39,6 +39,7 @@ public class TacticsCharacterAnimator : MonoBehaviour
     [Header("Selection Indicator")]
     [SerializeField] private Color friendlySelectionColor = new Color(0.35f, 0.9f, 0.45f, 1f);
     [SerializeField] private Color enemySelectionColor = new Color(1f, 0.32f, 0.32f, 1f);
+    [SerializeField] private Color targetedCarrotColor = new Color(1f, 0.25f, 0.25f, 1f);
     [SerializeField, Min(0.01f)] private float selectionRingWidth = 0.6f;
     [SerializeField, Min(0.01f)] private float selectionRingIsoHeightMultiplier = 2f;
     [SerializeField, Min(0.01f)] private float selectionRingVerticalSquish = 0.9f;
@@ -81,6 +82,7 @@ public class TacticsCharacterAnimator : MonoBehaviour
     private SortingGroup sortingGroup;
     private bool isTurnHighlighted;
     private bool isSelected;
+    private bool isTargeted;
     private int occlusionDetectedFrameCount;
     private float occlusionHideTimer;
     private int activeOcclusionSortingOrder;
@@ -257,6 +259,12 @@ public class TacticsCharacterAnimator : MonoBehaviour
     {
         this.isSelected = isSelected;
         UpdateRendererColor();
+        UpdateSelectionIndicatorVisuals();
+    }
+
+    public void SetTargeted(bool isTargeted)
+    {
+        this.isTargeted = isTargeted;
         UpdateSelectionIndicatorVisuals();
     }
 
@@ -472,7 +480,12 @@ public class TacticsCharacterAnimator : MonoBehaviour
     private void UpdateSelectionIndicatorVisuals()
     {
         EnsureSelectionIndicatorObjects();
-        if (!isSelected || targetRenderer == null || selectionRingRenderer == null || selectionCarrotRenderer == null)
+        bool shouldShowRing = isSelected;
+        bool shouldShowCarrot = isSelected || isTargeted;
+        if ((!shouldShowRing && !shouldShowCarrot) ||
+            targetRenderer == null ||
+            selectionRingRenderer == null ||
+            selectionCarrotRenderer == null)
         {
             HideSelectionIndicator();
             return;
@@ -490,13 +503,13 @@ public class TacticsCharacterAnimator : MonoBehaviour
         selectionRingRenderer.color = selectionColor;
         selectionRingRenderer.sortingLayerID = sortingLayerId;
         selectionRingRenderer.sortingOrder = localBaseSortingOrder + selectionRingSortingOrder;
-        selectionRingRenderer.enabled = true;
+        selectionRingRenderer.enabled = shouldShowRing;
 
         selectionCarrotRenderer.sprite = GetSelectionCarrotSprite();
-        selectionCarrotRenderer.color = selectionColor;
+        selectionCarrotRenderer.color = isTargeted ? targetedCarrotColor : selectionColor;
         selectionCarrotRenderer.sortingLayerID = sortingLayerId;
         selectionCarrotRenderer.sortingOrder = localBaseSortingOrder + selectionCarrotSortingOrder;
-        selectionCarrotRenderer.enabled = true;
+        selectionCarrotRenderer.enabled = shouldShowCarrot;
 
         float bobTime = Application.isPlaying ? Time.time : Time.realtimeSinceStartup;
         float bobOffset = Mathf.Sin(bobTime * Mathf.PI * 2f * selectionCarrotBobFrequency) * selectionCarrotBobAmplitude;

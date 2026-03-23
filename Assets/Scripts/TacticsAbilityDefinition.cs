@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using UnityEngine.Serialization;
 using UnityEngine;
 
 [CreateAssetMenu(fileName = "TacticsAbility", menuName = "Tactics/Combat/Ability")]
@@ -11,6 +12,7 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
     [SerializeField, TextArea] private string description = "A basic melee strike.";
 
     [Header("Targeting")]
+    [SerializeField] private TacticsAbilityRangeType rangeType = TacticsAbilityRangeType.Melee;
     [SerializeField, Min(1)] private int range = 1;
     [SerializeField] private TacticsAbilityTargetRule targetRule = TacticsAbilityTargetRule.HostileUnit;
     [SerializeField] private TacticsAbilityDamageType damageType = TacticsAbilityDamageType.Melee;
@@ -24,7 +26,8 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
     public string AbilityId => abilityId;
     public string DisplayName => string.IsNullOrWhiteSpace(displayName) ? name : displayName.Trim();
     public string Description => description;
-    public int Range => Mathf.Max(1, range);
+    public TacticsAbilityRangeType RangeType => rangeType;
+    public int Range => rangeType == TacticsAbilityRangeType.Melee ? 1 : Mathf.Max(1, range);
     public TacticsAbilityTargetRule TargetRule => targetRule;
     public TacticsAbilityDamageType DamageType => damageType;
     public IReadOnlyList<TacticsAbilityEffectDefinitionData> Effects => effects;
@@ -36,6 +39,7 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
         ability.abilityId = "attack";
         ability.displayName = "Attack";
         ability.description = "A basic melee strike.";
+        ability.rangeType = TacticsAbilityRangeType.Melee;
         ability.range = 1;
         ability.targetRule = TacticsAbilityTargetRule.HostileUnit;
         ability.damageType = TacticsAbilityDamageType.Melee;
@@ -101,6 +105,13 @@ public static class TacticsAbilityCatalogResources
 public enum TacticsAbilityTargetRule
 {
     HostileUnit = 0
+}
+
+public enum TacticsAbilityRangeType
+{
+    Melee = 0,
+    Ranged = 1,
+    AbsoluteRanged = 2
 }
 
 public enum TacticsAbilityEffectKind
@@ -177,12 +188,14 @@ public struct TacticsDealDamageEffectData
 {
     [SerializeField] private TacticsDamageFormula damageFormula;
     [SerializeField, Min(0)] private int flatAmount;
-    [SerializeField] private int bonusAmount;
+    [SerializeField, Min(0.01f)]
+    [FormerlySerializedAs("bonusAmount")]
+    private float bonusMultiplier;
     [SerializeField] private List<TacticsAbilityScalingDefinitionData> scaling;
 
     public TacticsDamageFormula DamageFormula => damageFormula;
     public int FlatAmount => Mathf.Max(0, flatAmount);
-    public int BonusAmount => bonusAmount;
+    public float BonusMultiplier => bonusMultiplier <= 0f ? 1f : bonusMultiplier;
     public IReadOnlyList<TacticsAbilityScalingDefinitionData> Scaling => scaling;
 
     public static TacticsDealDamageEffectData Default()
@@ -191,7 +204,7 @@ public struct TacticsDealDamageEffectData
         {
             damageFormula = TacticsDamageFormula.AttackerBaseDamage,
             flatAmount = 0,
-            bonusAmount = 0,
+            bonusMultiplier = 1f,
             scaling = new List<TacticsAbilityScalingDefinitionData>()
         };
     }
@@ -199,6 +212,7 @@ public struct TacticsDealDamageEffectData
     public void Sanitize()
     {
         flatAmount = Mathf.Max(0, flatAmount);
+        bonusMultiplier = bonusMultiplier <= 0f ? 1f : bonusMultiplier;
         scaling ??= new List<TacticsAbilityScalingDefinitionData>();
     }
 
@@ -210,7 +224,7 @@ public struct TacticsDealDamageEffectData
         {
             damageFormula = formula,
             flatAmount = 0,
-            bonusAmount = 0,
+            bonusMultiplier = 1f,
             scaling = scalingDefinitions != null
                 ? new List<TacticsAbilityScalingDefinitionData>(scalingDefinitions)
                 : new List<TacticsAbilityScalingDefinitionData>()

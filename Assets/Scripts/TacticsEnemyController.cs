@@ -114,7 +114,7 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         if (TryGetClosestTarget(out TacticsCharacterController target, out List<Vector2Int> pathToTarget))
         {
             if (!TryUsePrimaryAbility(target) &&
-                TryGetMovementDestination(pathToTarget, out Vector2Int destination) &&
+                TryGetMovementDestination(pathToTarget, target, out Vector2Int destination) &&
                 character.TryMoveTo(destination))
             {
                 while (character != null && character.IsMoving)
@@ -179,25 +179,6 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         return TryGetClosestTarget(out TacticsCharacterController closestTarget, out _) ? closestTarget : null;
     }
 
-    private bool TryGetMovementDestination(IReadOnlyList<Vector2Int> pathToTarget, out Vector2Int destination)
-    {
-        destination = default;
-
-        if (pathToTarget == null || pathToTarget.Count <= 2)
-        {
-            return false;
-        }
-
-        int destinationIndex = Mathf.Min(character.MoveRange, pathToTarget.Count - 2);
-        if (destinationIndex <= 0)
-        {
-            return false;
-        }
-
-        destination = pathToTarget[destinationIndex];
-        return destination != character.GridPosition;
-    }
-
     private bool TryUsePrimaryAbility(TacticsCharacterController target)
     {
         if (character == null || combatSystem == null || target == null)
@@ -212,5 +193,38 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         }
 
         return combatSystem.TryUseAbility(character, primaryAbility, target.GridPosition);
+    }
+
+    private bool TryGetMovementDestination(IReadOnlyList<Vector2Int> pathToTarget, TacticsCharacterController target, out Vector2Int destination)
+    {
+        destination = default;
+
+        if (pathToTarget == null || pathToTarget.Count <= 2)
+        {
+            return false;
+        }
+
+        TacticsAbilityDefinition primaryAbility = character != null ? character.GetPrimaryActionAbility() : null;
+        int furthestReachableIndex = Mathf.Min(character.MoveRange, pathToTarget.Count - 2);
+        if (furthestReachableIndex <= 0)
+        {
+            return false;
+        }
+
+        if (combatSystem != null && primaryAbility != null && target != null)
+        {
+            for (int i = furthestReachableIndex; i >= 1; i--)
+            {
+                Vector2Int candidate = pathToTarget[i];
+                if (combatSystem.CanTargetFromTile(character, candidate, primaryAbility, target))
+                {
+                    destination = candidate;
+                    return true;
+                }
+            }
+        }
+
+        destination = pathToTarget[furthestReachableIndex];
+        return destination != character.GridPosition;
     }
 }

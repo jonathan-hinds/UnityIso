@@ -155,6 +155,11 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         characterAnimator?.SetSelected(isSelected);
     }
 
+    public void SetTargeted(bool isTargeted)
+    {
+        characterAnimator?.SetTargeted(isTargeted);
+    }
+
     public bool TryMoveTo(Vector2Int destination)
     {
         if (!CanMoveThisTurn || !IsAlive)
@@ -554,7 +559,6 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         maxStepUp = definition.MaxStepUp;
         maxStepDown = definition.MaxStepDown;
         tileAnchorOffset = definition.TileAnchorOffset;
-        startingGridPosition = definition.PreferredSpawnTile;
         derivedStats = definition.BaseStats.CalculateDerivedStats();
         runtimeResources = definition.BaseStats.CreateRuntimeResources();
         RebuildAbilities(definition);
@@ -614,6 +618,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         HasMovedThisTurn = true;
         HasActedThisTurn = true;
         SetSelected(false);
+        SetTargeted(false);
         characterAnimator?.SetTurnHighlight(false);
         NotifyTurnStateChanged();
         gameObject.SetActive(false);
