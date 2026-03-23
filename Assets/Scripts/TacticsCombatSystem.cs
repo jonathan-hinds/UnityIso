@@ -30,6 +30,7 @@ public sealed class TacticsCombatSystem : MonoBehaviour
 
         abilityCatalog ??= TacticsAbilityCatalogResources.LoadCatalog();
         effectProcessors[TacticsAbilityEffectKind.DealDamage] = new TacticsDealDamageEffectProcessor();
+        effectProcessors[TacticsAbilityEffectKind.RestoreHitPoints] = new TacticsRestoreHitPointsEffectProcessor();
     }
 
     public void AssignMapGenerator(ProceduralIsometricMapGenerator generator)
@@ -244,7 +245,11 @@ public sealed class TacticsCombatSystem : MonoBehaviour
     {
         if (source == null || ability == null || target == null || ReferenceEquals(source, target))
         {
-            return false;
+            return ability != null &&
+                   source != null &&
+                   target != null &&
+                   ReferenceEquals(source, target) &&
+                   CanAffectTarget(source, ability, target);
         }
 
         if (!target.isActiveAndEnabled || !target.IsAlive)
@@ -260,6 +265,9 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         return ability.TargetRule switch
         {
             TacticsAbilityTargetRule.HostileUnit => source.Team != target.Team,
+            TacticsAbilityTargetRule.AlliedUnit => source.Team == target.Team && !ReferenceEquals(source, target),
+            TacticsAbilityTargetRule.AlliedUnitOrSelf => source.Team == target.Team,
+            TacticsAbilityTargetRule.Self => ReferenceEquals(source, target),
             _ => false
         };
     }
@@ -337,7 +345,11 @@ public sealed class TacticsCombatSystem : MonoBehaviour
     {
         if (source == null || ability == null || target == null || ReferenceEquals(source, target))
         {
-            return false;
+            return ability != null &&
+                   source != null &&
+                   target != null &&
+                   ReferenceEquals(source, target) &&
+                   ability.TargetRule is TacticsAbilityTargetRule.AlliedUnitOrSelf or TacticsAbilityTargetRule.Self;
         }
 
         if (!target.isActiveAndEnabled || !target.IsAlive)
@@ -348,6 +360,9 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         return ability.TargetRule switch
         {
             TacticsAbilityTargetRule.HostileUnit => source.Team != target.Team,
+            TacticsAbilityTargetRule.AlliedUnit => source.Team == target.Team && !ReferenceEquals(source, target),
+            TacticsAbilityTargetRule.AlliedUnitOrSelf => source.Team == target.Team,
+            TacticsAbilityTargetRule.Self => ReferenceEquals(source, target),
             _ => false
         };
     }
@@ -371,7 +386,8 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         int distance = GetTileDistance(sourceTile, targetTile);
         if (distance <= 0)
         {
-            return false;
+            return ability.TargetRule is TacticsAbilityTargetRule.AlliedUnitOrSelf or TacticsAbilityTargetRule.Self &&
+                   targetTile == sourceTile;
         }
 
         switch (ability.RangeType)
@@ -685,6 +701,57 @@ public sealed class TacticsDealDamageEffectProcessor : ITacticsAbilityEffectProc
             }
 
             target.ApplyDamage(amount, damageSourcePosition, isCriticalHit, context.Source);
+        }
+    }
+}
+
+public sealed class TacticsRestoreHitPointsEffectProcessor : ITacticsAbilityEffectProcessor
+{
+    public bool CanApply(TacticsAbilityExecutionContext context, TacticsAbilityEffectDefinitionData effect)
+    {
+        if (context.Source == null || context.Targets == null || context.Targets.Count == 0)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < context.Targets.Count; i++)
+        {
+            TacticsCharacterController target = context.Targets[i];
+            if (target != null && target.isActiveAndEnabled && target.IsAlive && target.CurrentHitPoints < target.MaxHitPoints)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public void Apply(TacticsAbilityExecutionContext context, TacticsAbilityEffectDefinitionData effect)
+    {
+        TacticsRestoreHitPointsEffectData restoreHitPoints = effect.RestoreHitPoints;
+        int amount = restoreHitPoints.HealingFormula switch
+        {
+            TacticsDamageFormula.AttackerBaseDamage => context.Source.RollBaseDamage(TacticsAbilityDamageType.Magic),
+            _ => restoreHitPoints.FlatAmount
+        };
+
+        amount += TacticsAbilityScalingCalculator.EvaluateDamageBonus(context.Source, restoreHitPoints.Scaling);
+        amount = Mathf.Max(0, Mathf.RoundToInt(amount * restoreHitPoints.BonusMultiplier));
+        if (amount <= 0)
+        {
+            return;
+        }
+
+        IReadOnlyList<TacticsCharacterController> targets = context.Targets;
+        for (int i = 0; i < targets.Count; i++)
+        {
+            TacticsCharacterController target = targets[i];
+            if (target == null || !target.isActiveAndEnabled || !target.IsAlive)
+            {
+                continue;
+            }
+
+            target.RestoreHitPoints(amount);
         }
     }
 }

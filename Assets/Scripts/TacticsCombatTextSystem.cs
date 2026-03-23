@@ -58,6 +58,16 @@ public sealed class TacticsCombatTextSystem : MonoBehaviour
         Instance.SpawnDamageNumber(target, amount, isCriticalHit);
     }
 
+    public static void ShowHealing(TacticsCharacterController target, int amount)
+    {
+        if (target == null || amount <= 0)
+        {
+            return;
+        }
+
+        Instance.SpawnHealingNumber(target, amount);
+    }
+
     public static void ShowExperienceReward(TacticsCharacterController target, int amount)
     {
         if (target == null || amount <= 0)
@@ -70,7 +80,12 @@ public sealed class TacticsCombatTextSystem : MonoBehaviour
 
     private void SpawnDamageNumber(TacticsCharacterController target, int amount, bool isCriticalHit)
     {
-        SpawnText(target, isCriticalHit ? $"{amount}!" : amount.ToString(), Color.white, Color.black);
+        SpawnText(target, isCriticalHit ? $"-{amount}!" : $"-{amount}", Color.white, Color.black);
+    }
+
+    private void SpawnHealingNumber(TacticsCharacterController target, int amount)
+    {
+        SpawnText(target, $"+{amount}", new Color(0.54f, 0.9f, 0.5f, 1f), new Color(0.08f, 0.25f, 0.08f, 1f));
     }
 
     private void SpawnText(TacticsCharacterController target, string text, Color fillColor, Color outlineColor)

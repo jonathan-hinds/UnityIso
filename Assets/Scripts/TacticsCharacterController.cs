@@ -295,6 +295,21 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         return true;
     }
 
+    public int RestoreHitPoints(int amount)
+    {
+        if (!IsAlive || amount <= 0 || CurrentHitPoints >= MaxHitPoints)
+        {
+            return 0;
+        }
+
+        int restoredAmount = Mathf.Min(amount, MaxHitPoints - CurrentHitPoints);
+        runtimeResources.hitPoints = Mathf.Min(MaxHitPoints, runtimeResources.hitPoints + restoredAmount);
+        TacticsCombatTextSystem.ShowHealing(this, restoredAmount);
+        TacticsOverheadHealthBar.ShowFor(this);
+        NotifyTurnStateChanged();
+        return restoredAmount;
+    }
+
     public bool HasResourcesForAbility(TacticsAbilityDefinition ability)
     {
         if (ability == null || !ability.HasResourceCost)

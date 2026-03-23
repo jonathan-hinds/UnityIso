@@ -135,7 +135,10 @@ public static class TacticsAbilityCatalogResources
 
 public enum TacticsAbilityTargetRule
 {
-    HostileUnit = 0
+    HostileUnit = 0,
+    AlliedUnit = 1,
+    AlliedUnitOrSelf = 2,
+    Self = 3
 }
 
 public enum TacticsAbilityRangeType
@@ -150,7 +153,8 @@ public enum TacticsAbilityRangeType
 
 public enum TacticsAbilityEffectKind
 {
-    DealDamage = 0
+    DealDamage = 0,
+    RestoreHitPoints = 1
 }
 
 public enum TacticsAbilityDamageType
@@ -196,9 +200,11 @@ public struct TacticsAbilityEffectDefinitionData
 {
     [SerializeField] private TacticsAbilityEffectKind effectKind;
     [SerializeField] private TacticsDealDamageEffectData dealDamage;
+    [SerializeField] private TacticsRestoreHitPointsEffectData restoreHitPoints;
 
     public TacticsAbilityEffectKind EffectKind => effectKind;
     public TacticsDealDamageEffectData DealDamage => dealDamage;
+    public TacticsRestoreHitPointsEffectData RestoreHitPoints => restoreHitPoints;
 
     public static TacticsAbilityEffectDefinitionData CreateDealDamage()
     {
@@ -218,9 +224,28 @@ public struct TacticsAbilityEffectDefinitionData
         };
     }
 
+    public static TacticsAbilityEffectDefinitionData CreateRestoreHitPoints()
+    {
+        return new TacticsAbilityEffectDefinitionData
+        {
+            effectKind = TacticsAbilityEffectKind.RestoreHitPoints,
+            restoreHitPoints = TacticsRestoreHitPointsEffectData.Default()
+        };
+    }
+
+    public static TacticsAbilityEffectDefinitionData CreateRestoreHitPoints(TacticsRestoreHitPointsEffectData restoreEffect)
+    {
+        return new TacticsAbilityEffectDefinitionData
+        {
+            effectKind = TacticsAbilityEffectKind.RestoreHitPoints,
+            restoreHitPoints = restoreEffect
+        };
+    }
+
     public void Sanitize()
     {
         dealDamage.Sanitize();
+        restoreHitPoints.Sanitize();
     }
 }
 
@@ -265,6 +290,54 @@ public struct TacticsDealDamageEffectData
         {
             damageFormula = formula,
             flatAmount = 0,
+            bonusMultiplier = 1f,
+            scaling = scalingDefinitions != null
+                ? new List<TacticsAbilityScalingDefinitionData>(scalingDefinitions)
+                : new List<TacticsAbilityScalingDefinitionData>()
+        };
+    }
+}
+
+[Serializable]
+public struct TacticsRestoreHitPointsEffectData
+{
+    [SerializeField] private TacticsDamageFormula healingFormula;
+    [SerializeField, Min(0)] private int flatAmount;
+    [SerializeField, Min(0.01f)] private float bonusMultiplier;
+    [SerializeField] private List<TacticsAbilityScalingDefinitionData> scaling;
+
+    public TacticsDamageFormula HealingFormula => healingFormula;
+    public int FlatAmount => Mathf.Max(0, flatAmount);
+    public float BonusMultiplier => bonusMultiplier <= 0f ? 1f : bonusMultiplier;
+    public IReadOnlyList<TacticsAbilityScalingDefinitionData> Scaling => scaling;
+
+    public static TacticsRestoreHitPointsEffectData Default()
+    {
+        return new TacticsRestoreHitPointsEffectData
+        {
+            healingFormula = TacticsDamageFormula.FlatValue,
+            flatAmount = 1,
+            bonusMultiplier = 1f,
+            scaling = new List<TacticsAbilityScalingDefinitionData>()
+        };
+    }
+
+    public void Sanitize()
+    {
+        flatAmount = Mathf.Max(0, flatAmount);
+        bonusMultiplier = bonusMultiplier <= 0f ? 1f : bonusMultiplier;
+        scaling ??= new List<TacticsAbilityScalingDefinitionData>();
+    }
+
+    public static TacticsRestoreHitPointsEffectData CreateScaledHealing(
+        TacticsDamageFormula formula,
+        int flatAmount = 0,
+        params TacticsAbilityScalingDefinitionData[] scalingDefinitions)
+    {
+        return new TacticsRestoreHitPointsEffectData
+        {
+            healingFormula = formula,
+            flatAmount = Mathf.Max(0, flatAmount),
             bonusMultiplier = 1f,
             scaling = scalingDefinitions != null
                 ? new List<TacticsAbilityScalingDefinitionData>(scalingDefinitions)
