@@ -50,8 +50,12 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     public int MaxStamina => derivedStats.maxStamina;
     public int CurrentMana => runtimeResources.mana;
     public int MaxMana => derivedStats.maxMana;
-    public int BaseDamageMin => derivedStats.baseDamageMin;
-    public int BaseDamageMax => derivedStats.baseDamageMax;
+    public int BaseMeleeDamageMin => derivedStats.baseMeleeDamageMin;
+    public int BaseMeleeDamageMax => derivedStats.baseMeleeDamageMax;
+    public int BaseMagicDamageMin => derivedStats.baseMagicDamageMin;
+    public int BaseMagicDamageMax => derivedStats.baseMagicDamageMax;
+    public float MeleeCriticalHitChance => derivedStats.meleeCriticalHitChance;
+    public float MagicCriticalHitChance => derivedStats.magicCriticalHitChance;
     public TacticsCharacterStats BaseStats => characterDefinition != null ? characterDefinition.BaseStats : TacticsCharacterStats.Default();
     public int MoveRange => characterDefinition != null ? characterDefinition.BaseStats.MoveRange : 0;
     public int JumpHeight => characterDefinition != null ? characterDefinition.BaseStats.JumpHeight : 0;
@@ -208,11 +212,23 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         return abilities.Count > 0 ? abilities[0] : null;
     }
 
-    public int RollBaseDamage()
+    public int RollBaseDamage(TacticsAbilityDamageType damageType)
     {
-        int minimumDamage = Mathf.Max(0, BaseDamageMin);
-        int maximumDamage = Mathf.Max(minimumDamage, BaseDamageMax);
+        int minimumDamage = damageType == TacticsAbilityDamageType.Magic
+            ? Mathf.Max(0, BaseMagicDamageMin)
+            : Mathf.Max(0, BaseMeleeDamageMin);
+        int maximumDamage = damageType == TacticsAbilityDamageType.Magic
+            ? Mathf.Max(minimumDamage, BaseMagicDamageMax)
+            : Mathf.Max(minimumDamage, BaseMeleeDamageMax);
         return UnityEngine.Random.Range(minimumDamage, maximumDamage + 1);
+    }
+
+    public bool RollCriticalHit(TacticsAbilityDamageType damageType)
+    {
+        float criticalHitChance = damageType == TacticsAbilityDamageType.Magic
+            ? MagicCriticalHitChance
+            : MeleeCriticalHitChance;
+        return UnityEngine.Random.value < Mathf.Clamp01(criticalHitChance);
     }
 
     public int GetPrimaryStat(TacticsAbilityScalingStat stat)
@@ -220,7 +236,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         return BaseStats.GetPrimaryStat(stat);
     }
 
-    public bool ApplyDamage(int damageAmount, Vector3? damageSourceWorldPosition = null)
+    public bool ApplyDamage(int damageAmount, Vector3? damageSourceWorldPosition = null, bool isCriticalHit = false)
     {
         if (!IsAlive || damageAmount <= 0)
         {
@@ -229,7 +245,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
 
         runtimeResources.hitPoints = Mathf.Max(0, runtimeResources.hitPoints - damageAmount);
         characterAnimator?.PlayDamageImpact(damageSourceWorldPosition);
-        TacticsCombatTextSystem.ShowDamage(this, damageAmount);
+        TacticsCombatTextSystem.ShowDamage(this, damageAmount, isCriticalHit);
         NotifyTurnStateChanged();
 
         if (runtimeResources.hitPoints == 0)

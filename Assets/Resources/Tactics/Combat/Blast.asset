@@ -17,6 +17,7 @@ MonoBehaviour:
   description: A magical blast.
   range: 4
   targetRule: 0
+  damageType: 1
   effects:
   - effectKind: 0
     dealDamage:

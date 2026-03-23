@@ -292,6 +292,8 @@ public interface ITacticsAbilityEffectProcessor
 
 public sealed class TacticsDealDamageEffectProcessor : ITacticsAbilityEffectProcessor
 {
+    private const float CriticalHitDamageMultiplier = 1.5f;
+
     public bool CanApply(TacticsAbilityExecutionContext context, TacticsAbilityEffectDefinitionData effect)
     {
         return context.Source != null && context.Target != null;
@@ -300,10 +302,13 @@ public sealed class TacticsDealDamageEffectProcessor : ITacticsAbilityEffectProc
     public void Apply(TacticsAbilityExecutionContext context, TacticsAbilityEffectDefinitionData effect)
     {
         TacticsDealDamageEffectData damage = effect.DealDamage;
+        TacticsAbilityDamageType damageType = context.Ability != null
+            ? context.Ability.DamageType
+            : TacticsAbilityDamageType.Melee;
         int amount = damage.DamageFormula switch
         {
             TacticsDamageFormula.FlatValue => damage.FlatAmount,
-            _ => context.Source.RollBaseDamage()
+            _ => context.Source.RollBaseDamage(damageType)
         };
 
         amount += TacticsAbilityScalingCalculator.EvaluateDamageBonus(context.Source, damage.Scaling);
@@ -313,7 +318,13 @@ public sealed class TacticsDealDamageEffectProcessor : ITacticsAbilityEffectProc
             return;
         }
 
+        bool isCriticalHit = context.Source.RollCriticalHit(damageType);
+        if (isCriticalHit)
+        {
+            amount = Mathf.Max(1, Mathf.RoundToInt(amount * CriticalHitDamageMultiplier));
+        }
+
         Vector3? damageSourcePosition = context.Source != null ? context.Source.TurnFocusPoint : null;
-        context.Target.ApplyDamage(amount, damageSourcePosition);
+        context.Target.ApplyDamage(amount, damageSourcePosition, isCriticalHit);
     }
 }

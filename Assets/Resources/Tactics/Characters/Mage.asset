@@ -39,6 +39,8 @@ MonoBehaviour:
       bonusMaxStamina: 0
       bonusBaseDamageMin: -3
       bonusBaseDamageMax: -1
+      bonusBaseMagicDamageMin: -3
+      bonusBaseMagicDamageMax: -1
     mobilityStats:
       moveRange: 4
       jumpHeight: 2

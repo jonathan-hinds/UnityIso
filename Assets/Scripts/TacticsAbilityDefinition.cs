@@ -13,6 +13,7 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
     [Header("Targeting")]
     [SerializeField, Min(1)] private int range = 1;
     [SerializeField] private TacticsAbilityTargetRule targetRule = TacticsAbilityTargetRule.HostileUnit;
+    [SerializeField] private TacticsAbilityDamageType damageType = TacticsAbilityDamageType.Melee;
 
     [Header("Effects")]
     [SerializeField] private List<TacticsAbilityEffectDefinitionData> effects = new()
@@ -25,6 +26,7 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
     public string Description => description;
     public int Range => Mathf.Max(1, range);
     public TacticsAbilityTargetRule TargetRule => targetRule;
+    public TacticsAbilityDamageType DamageType => damageType;
     public IReadOnlyList<TacticsAbilityEffectDefinitionData> Effects => effects;
 
     public static TacticsAbilityDefinition CreateFallbackAttack()
@@ -36,6 +38,7 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
         ability.description = "A basic melee strike.";
         ability.range = 1;
         ability.targetRule = TacticsAbilityTargetRule.HostileUnit;
+        ability.damageType = TacticsAbilityDamageType.Melee;
         ability.effects = new List<TacticsAbilityEffectDefinitionData>
         {
             TacticsAbilityEffectDefinitionData.CreateDealDamage(
@@ -103,6 +106,12 @@ public enum TacticsAbilityTargetRule
 public enum TacticsAbilityEffectKind
 {
     DealDamage = 0
+}
+
+public enum TacticsAbilityDamageType
+{
+    Melee = 0,
+    Magic = 1
 }
 
 public enum TacticsDamageFormula

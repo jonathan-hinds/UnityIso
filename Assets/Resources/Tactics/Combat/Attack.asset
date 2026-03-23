@@ -17,6 +17,7 @@ MonoBehaviour:
   description: A basic melee strike.
   range: 1
   targetRule: 0
+  damageType: 0
   effects:
   - effectKind: 0
     dealDamage:

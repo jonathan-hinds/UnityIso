@@ -140,7 +140,6 @@ public sealed class TacticsCharacterDefinition : ScriptableObject
 public struct TacticsCharacterStats
 {
     public TacticsPrimaryStats primaryStats;
-    public TacticsDerivedStatModifiers derivedStatModifiers;
     public TacticsMobilityStats mobilityStats;
 
     public int MoveRange => Mathf.Max(0, mobilityStats.moveRange);
@@ -149,21 +148,32 @@ public struct TacticsCharacterStats
 
     public TacticsCharacterDerivedStats CalculateDerivedStats()
     {
-        int maxHitPoints = 40 + (primaryStats.stamina * 8) + (primaryStats.strength * 2) + derivedStatModifiers.bonusMaxHitPoints;
-        int maxStamina = 15 + (primaryStats.stamina * 6) + (primaryStats.agility * 2) + derivedStatModifiers.bonusMaxStamina;
-        int maxMana = 10 + (primaryStats.intelligence * 6) + (primaryStats.wisdom * 4) + derivedStatModifiers.bonusMaxMana;
+        int maxHitPoints = 40 + (primaryStats.stamina * 10);
+        int maxStamina = 15 + (primaryStats.agility * 5);
+        int maxMana = 10 + (primaryStats.wisdom * 5);
 
-        int calculatedBaseDamageMin = 1 + (primaryStats.strength * 2) + Mathf.FloorToInt(primaryStats.agility * 0.5f) + derivedStatModifiers.bonusBaseDamageMin;
-        int clampedBaseDamageMin = Mathf.Max(0, calculatedBaseDamageMin);
-        int calculatedBaseDamageMax = calculatedBaseDamageMin + Mathf.Max(1, primaryStats.strength + Mathf.CeilToInt(primaryStats.agility * 0.5f)) + derivedStatModifiers.bonusBaseDamageMax;
+        int calculatedMeleeDamageMin = 1 + (primaryStats.strength * 2);
+        int clampedMeleeDamageMin = Mathf.Max(0, calculatedMeleeDamageMin);
+        int calculatedMeleeDamageMax = calculatedMeleeDamageMin + Mathf.Max(1, primaryStats.strength);
+
+        int calculatedMagicDamageMin = 1 + (primaryStats.intelligence * 2);
+        int clampedMagicDamageMin = Mathf.Max(0, calculatedMagicDamageMin);
+        int calculatedMagicDamageMax = calculatedMagicDamageMin + Mathf.Max(1, primaryStats.intelligence);
+
+        float meleeCriticalHitChance = Mathf.Clamp01(0.05f + (primaryStats.agility * 0.015f));
+        float magicCriticalHitChance = Mathf.Clamp01(0.05f + (primaryStats.wisdom * 0.015f));
 
         return new TacticsCharacterDerivedStats
         {
             maxHitPoints = Mathf.Max(1, maxHitPoints),
             maxStamina = Mathf.Max(0, maxStamina),
             maxMana = Mathf.Max(0, maxMana),
-            baseDamageMin = clampedBaseDamageMin,
-            baseDamageMax = Mathf.Max(clampedBaseDamageMin, calculatedBaseDamageMax)
+            baseMeleeDamageMin = clampedMeleeDamageMin,
+            baseMeleeDamageMax = Mathf.Max(clampedMeleeDamageMin, calculatedMeleeDamageMax),
+            baseMagicDamageMin = clampedMagicDamageMin,
+            baseMagicDamageMax = Mathf.Max(clampedMagicDamageMin, calculatedMagicDamageMax),
+            meleeCriticalHitChance = meleeCriticalHitChance,
+            magicCriticalHitChance = magicCriticalHitChance
         };
     }
 
@@ -177,7 +187,6 @@ public struct TacticsCharacterStats
         return new TacticsCharacterStats
         {
             primaryStats = TacticsPrimaryStats.Default(),
-            derivedStatModifiers = TacticsDerivedStatModifiers.Default(),
             mobilityStats = TacticsMobilityStats.Default()
         };
     }
@@ -220,31 +229,6 @@ public struct TacticsPrimaryStats
 }
 
 [Serializable]
-public struct TacticsDerivedStatModifiers
-{
-    [FormerlySerializedAs("maxHitPoints")]
-    public int bonusMaxHitPoints;
-    [FormerlySerializedAs("maxManaPoints")]
-    public int bonusMaxMana;
-    public int bonusMaxStamina;
-    [FormerlySerializedAs("physicalAttack")]
-    public int bonusBaseDamageMin;
-    public int bonusBaseDamageMax;
-
-    public static TacticsDerivedStatModifiers Default()
-    {
-        return new TacticsDerivedStatModifiers
-        {
-            bonusMaxHitPoints = 0,
-            bonusMaxMana = 0,
-            bonusMaxStamina = 0,
-            bonusBaseDamageMin = 0,
-            bonusBaseDamageMax = 0
-        };
-    }
-}
-
-[Serializable]
 public struct TacticsMobilityStats
 {
     [FormerlySerializedAs("moveRange")]
@@ -268,8 +252,12 @@ public struct TacticsCharacterDerivedStats
     [Min(1)] public int maxHitPoints;
     [Min(0)] public int maxStamina;
     [Min(0)] public int maxMana;
-    [Min(0)] public int baseDamageMin;
-    [Min(0)] public int baseDamageMax;
+    [Min(0)] public int baseMeleeDamageMin;
+    [Min(0)] public int baseMeleeDamageMax;
+    [Min(0)] public int baseMagicDamageMin;
+    [Min(0)] public int baseMagicDamageMax;
+    [Range(0f, 1f)] public float meleeCriticalHitChance;
+    [Range(0f, 1f)] public float magicCriticalHitChance;
 }
 
 [Serializable]

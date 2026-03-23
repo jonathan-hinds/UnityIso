@@ -48,17 +48,17 @@ public sealed class TacticsCombatTextSystem : MonoBehaviour
         }
     }
 
-    public static void ShowDamage(TacticsCharacterController target, int amount)
+    public static void ShowDamage(TacticsCharacterController target, int amount, bool isCriticalHit = false)
     {
         if (target == null || amount <= 0)
         {
             return;
         }
 
-        Instance.SpawnDamageNumber(target, amount);
+        Instance.SpawnDamageNumber(target, amount, isCriticalHit);
     }
 
-    private void SpawnDamageNumber(TacticsCharacterController target, int amount)
+    private void SpawnDamageNumber(TacticsCharacterController target, int amount, bool isCriticalHit)
     {
         Vector3 spawnPosition = target.GetCombatTextSpawnPosition(verticalSpawnPadding);
         int sortingLayerId = target.GetCombatTextSortingLayerId();
@@ -67,7 +67,7 @@ public sealed class TacticsCombatTextSystem : MonoBehaviour
         TacticsFloatingCombatText.Create(
             parent: transform,
             worldPosition: spawnPosition,
-            text: amount.ToString(),
+            text: isCriticalHit ? $"{amount}!" : amount.ToString(),
             sortingLayerId: sortingLayerId,
             sortingOrder: sortingOrder);
     }
