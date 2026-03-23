@@ -409,9 +409,15 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
                 continue;
             }
 
-            if (!TryResolveEnemyCharacterData(spawnEntry, enemyTable, out TacticsCharacterData enemyData, out TacticsCharacterDefinition sourceDefinition))
+            if (enemyTable == null)
             {
-                Debug.LogWarning("Tactics bootstrap skipped an enemy spawn entry because no enemy table row or fallback character definition could be resolved.");
+                Debug.LogWarning($"Tactics bootstrap could not find an enemy table at Resources/{EnemyTableResourcePath}.");
+                break;
+            }
+
+            if (!enemyTable.TryGetCharacterData(spawnEntry.EnemyId, out TacticsCharacterData enemyData))
+            {
+                Debug.LogWarning($"Tactics bootstrap skipped enemy spawn entry '{spawnEntry.EnemyId}' because no matching enemy table row was found.");
                 continue;
             }
 
@@ -428,8 +434,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
                 TacticsCharacterController enemy = TacticsCharacterSpawner.SpawnCharacter(
                     mapGenerator,
                     enemyData,
-                    spawnTiles[tileIndex],
-                    sourceDefinition: sourceDefinition);
+                    spawnTiles[tileIndex]);
 
                 if (enemy != null)
                 {
@@ -489,31 +494,5 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         }
 
         return true;
-    }
-
-    private static bool TryResolveEnemyCharacterData(
-        TacticsEnemySpawnEntry spawnEntry,
-        TacticsEnemyTable enemyTable,
-        out TacticsCharacterData enemyData,
-        out TacticsCharacterDefinition sourceDefinition)
-    {
-        enemyData = null;
-        sourceDefinition = null;
-
-        if (!string.IsNullOrWhiteSpace(spawnEntry.EnemyId) &&
-            enemyTable != null &&
-            enemyTable.TryGetCharacterData(spawnEntry.EnemyId, out enemyData))
-        {
-            return true;
-        }
-
-        sourceDefinition = spawnEntry.CharacterDefinition;
-        if (sourceDefinition == null)
-        {
-            return false;
-        }
-
-        enemyData = sourceDefinition.BuildRuntimeData();
-        return enemyData != null;
     }
 }

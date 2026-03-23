@@ -15,7 +15,9 @@ MonoBehaviour:
   abilityId: blast
   displayName: Blast
   description: A magical blast.
+  rangeType: 4
   range: 4
+  areaOfEffectSize: 3
   targetRule: 0
   damageType: 1
   effects:
@@ -23,7 +25,9 @@ MonoBehaviour:
     dealDamage:
       damageFormula: 0
       flatAmount: 0
-      bonusAmount: 0
+      bonusMultiplier: 1
       scaling:
       - stat: 4
         rank: 5
+  costResourceType: 2
+  costAmount: 15

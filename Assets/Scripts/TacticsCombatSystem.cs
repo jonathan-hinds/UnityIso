@@ -205,6 +205,32 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         return GetAffectedTargets(source, ability, targetTile, reusableAreaTargets);
     }
 
+    public bool CanTargetTileFromTile(
+        TacticsCharacterController source,
+        Vector2Int sourceTile,
+        TacticsAbilityDefinition ability,
+        Vector2Int targetTile)
+    {
+        return CanTargetTile(source, sourceTile, ability, targetTile);
+    }
+
+    public IReadOnlyList<TacticsCharacterController> GetPreviewTargetsFromTile(
+        TacticsCharacterController source,
+        Vector2Int sourceTile,
+        TacticsAbilityDefinition ability,
+        Vector2Int targetTile)
+    {
+        reusableAreaTargets.Clear();
+
+        if (!CanUseAbility(source, ability) ||
+            !CanTargetTile(source, sourceTile, ability, targetTile))
+        {
+            return reusableAreaTargets;
+        }
+
+        return GetAffectedTargets(source, ability, targetTile, reusableAreaTargets);
+    }
+
     private bool IsValidTarget(TacticsCharacterController source, TacticsAbilityDefinition ability, TacticsCharacterController target)
     {
         return IsValidTarget(source, source != null ? source.GridPosition : default, ability, target);

@@ -20,6 +20,47 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
 
     private Coroutine turnRoutine;
 
+    private readonly struct EnemyAbilityPlan
+    {
+        public EnemyAbilityPlan(
+            TacticsAbilityDefinition ability,
+            TacticsCharacterController target,
+            Vector2Int sourceTile,
+            Vector2Int targetTile,
+            Vector2Int moveDestination,
+            bool requiresMovement,
+            float score)
+        {
+            Ability = ability;
+            Target = target;
+            SourceTile = sourceTile;
+            TargetTile = targetTile;
+            MoveDestination = moveDestination;
+            RequiresMovement = requiresMovement;
+            Score = score;
+        }
+
+        public TacticsAbilityDefinition Ability { get; }
+        public TacticsCharacterController Target { get; }
+        public Vector2Int SourceTile { get; }
+        public Vector2Int TargetTile { get; }
+        public Vector2Int MoveDestination { get; }
+        public bool RequiresMovement { get; }
+        public float Score { get; }
+    }
+
+    private readonly struct EnemyMovementPlan
+    {
+        public EnemyMovementPlan(Vector2Int destination, float score)
+        {
+            Destination = destination;
+            Score = score;
+        }
+
+        public Vector2Int Destination { get; }
+        public float Score { get; }
+    }
+
     private void Awake()
     {
         if (character == null)
@@ -111,20 +152,40 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
             yield break;
         }
 
-        if (TryGetClosestTarget(out TacticsCharacterController target, out List<Vector2Int> pathToTarget))
+        bool attemptedAction = false;
+        if (TryBuildBestAbilityPlan(out EnemyAbilityPlan abilityPlan))
         {
-            if (!TryUsePrimaryAbility(target) &&
-                TryGetMovementDestination(pathToTarget, target, out Vector2Int destination) &&
-                character.TryMoveTo(destination))
+            if (abilityPlan.RequiresMovement && character.TryMoveTo(abilityPlan.MoveDestination))
             {
                 while (character != null && character.IsMoving)
                 {
                     yield return null;
                 }
-
-                target = FindClosestPlayerTarget();
-                TryUsePrimaryAbility(target);
             }
+
+            if (character != null &&
+                combatSystem != null &&
+                abilityPlan.Target != null &&
+                abilityPlan.Target.isActiveAndEnabled &&
+                abilityPlan.Target.IsAlive)
+            {
+                attemptedAction = combatSystem.TryUseAbility(character, abilityPlan.Ability, abilityPlan.TargetTile);
+            }
+        }
+        else if (TryBuildBestMovementPlan(out EnemyMovementPlan movementPlan))
+        {
+            if (character.TryMoveTo(movementPlan.Destination))
+            {
+                while (character != null && character.IsMoving)
+                {
+                    yield return null;
+                }
+            }
+        }
+
+        if (!attemptedAction)
+        {
+            TryUseBestAbilityFromCurrentPosition();
         }
 
         while (combatSystem != null && combatSystem.State == TacticsCombatState.ResolvingAbility)
@@ -145,12 +206,345 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         turnRoutine = null;
     }
 
-    private bool TryGetClosestTarget(out TacticsCharacterController closestTarget, out List<Vector2Int> shortestPath)
+    private bool TryBuildBestAbilityPlan(out EnemyAbilityPlan bestPlan)
     {
-        closestTarget = null;
-        shortestPath = null;
+        bestPlan = default;
 
+        if (character == null || combatSystem == null)
+        {
+            return false;
+        }
+
+        IReadOnlyList<TacticsAbilityDefinition> abilities = character.Abilities;
+        if (abilities == null || abilities.Count == 0)
+        {
+            return false;
+        }
+
+        bool foundPlan = false;
+        TacticsCharacterController[] targets = GetPlayerTargets();
+        if (targets.Length == 0)
+        {
+            return false;
+        }
+
+        for (int targetIndex = 0; targetIndex < targets.Length; targetIndex++)
+        {
+            TacticsCharacterController target = targets[targetIndex];
+            if (!TryGetPathToTarget(target, out List<Vector2Int> pathToTarget))
+            {
+                continue;
+            }
+
+            EvaluateAbilityPlansForTile(
+                abilities,
+                target,
+                character.GridPosition,
+                character.GridPosition,
+                requiresMovement: false,
+                ref foundPlan,
+                ref bestPlan);
+
+            int furthestReachableIndex = Mathf.Min(character.MoveRange, pathToTarget.Count - 2);
+            for (int i = 1; i <= furthestReachableIndex; i++)
+            {
+                Vector2Int candidateTile = pathToTarget[i];
+                EvaluateAbilityPlansForTile(
+                    abilities,
+                    target,
+                    candidateTile,
+                    candidateTile,
+                    requiresMovement: true,
+                    ref foundPlan,
+                    ref bestPlan);
+            }
+        }
+
+        return foundPlan;
+    }
+
+    private bool TryBuildBestMovementPlan(out EnemyMovementPlan bestPlan)
+    {
+        bestPlan = default;
+
+        if (character == null || combatSystem == null)
+        {
+            return false;
+        }
+
+        bool foundPlan = false;
+        TacticsCharacterController[] targets = GetPlayerTargets();
+        if (targets.Length == 0)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < targets.Length; i++)
+        {
+            TacticsCharacterController target = targets[i];
+            if (!TryGetPathToTarget(target, out List<Vector2Int> pathToTarget))
+            {
+                continue;
+            }
+
+            int furthestReachableIndex = Mathf.Min(character.MoveRange, pathToTarget.Count - 2);
+            for (int pathIndex = 1; pathIndex <= furthestReachableIndex; pathIndex++)
+            {
+                Vector2Int candidateTile = pathToTarget[pathIndex];
+
+                float damageOpportunityScore = GetBestDamageOpportunityScore(candidateTile);
+                float distanceToTarget = GetTileDistance(candidateTile, target.GridPosition);
+                float score = damageOpportunityScore - (distanceToTarget * 0.25f) - (pathIndex * 0.05f);
+                if (!foundPlan || score > bestPlan.Score)
+                {
+                    foundPlan = true;
+                    bestPlan = new EnemyMovementPlan(candidateTile, score);
+                }
+            }
+        }
+
+        return foundPlan;
+    }
+
+    private bool TryUseBestAbilityFromCurrentPosition()
+    {
+        if (!TryBuildBestImmediateAbilityPlan(out EnemyAbilityPlan immediatePlan))
+        {
+            return false;
+        }
+
+        return combatSystem != null &&
+               immediatePlan.Target != null &&
+               immediatePlan.Target.isActiveAndEnabled &&
+               immediatePlan.Target.IsAlive &&
+               combatSystem.TryUseAbility(character, immediatePlan.Ability, immediatePlan.TargetTile);
+    }
+
+    private bool TryBuildBestImmediateAbilityPlan(out EnemyAbilityPlan bestPlan)
+    {
+        bestPlan = default;
+
+        if (character == null || combatSystem == null)
+        {
+            return false;
+        }
+
+        IReadOnlyList<TacticsAbilityDefinition> abilities = character.Abilities;
+        if (abilities == null || abilities.Count == 0)
+        {
+            return false;
+        }
+
+        bool foundPlan = false;
+        TacticsCharacterController[] targets = GetPlayerTargets();
+        for (int i = 0; i < targets.Length; i++)
+        {
+            EvaluateAbilityPlansForTile(
+                abilities,
+                targets[i],
+                character.GridPosition,
+                character.GridPosition,
+                requiresMovement: false,
+                ref foundPlan,
+                ref bestPlan);
+        }
+
+        return foundPlan;
+    }
+
+    private void EvaluateAbilityPlansForTile(
+        IReadOnlyList<TacticsAbilityDefinition> abilities,
+        TacticsCharacterController primaryTarget,
+        Vector2Int sourceTile,
+        Vector2Int moveDestination,
+        bool requiresMovement,
+        ref bool foundPlan,
+        ref EnemyAbilityPlan bestPlan)
+    {
+        for (int i = 0; i < abilities.Count; i++)
+        {
+            TacticsAbilityDefinition ability = abilities[i];
+            if (ability == null || !character.HasResourcesForAbility(ability))
+            {
+                continue;
+            }
+
+            if (!combatSystem.CanTargetTileFromTile(character, sourceTile, ability, primaryTarget.GridPosition))
+            {
+                continue;
+            }
+
+            IReadOnlyList<TacticsCharacterController> affectedTargets = combatSystem.GetPreviewTargetsFromTile(
+                character,
+                sourceTile,
+                ability,
+                primaryTarget.GridPosition);
+
+            if (affectedTargets.Count == 0)
+            {
+                continue;
+            }
+
+            float score = ScoreAbilityPlan(ability, primaryTarget, sourceTile, requiresMovement, affectedTargets.Count);
+            if (!foundPlan || score > bestPlan.Score)
+            {
+                foundPlan = true;
+                bestPlan = new EnemyAbilityPlan(
+                    ability,
+                    primaryTarget,
+                    sourceTile,
+                    primaryTarget.GridPosition,
+                    moveDestination,
+                    requiresMovement,
+                    score);
+            }
+        }
+    }
+
+    private float ScoreAbilityPlan(
+        TacticsAbilityDefinition ability,
+        TacticsCharacterController target,
+        Vector2Int sourceTile,
+        bool requiresMovement,
+        int affectedTargetCount)
+    {
+        float distanceToTarget = GetTileDistance(sourceTile, target.GridPosition);
+        float preferredDistance = GetPreferredCombatDistance(ability);
+        float averageDamage = GetAverageAbilityDamage(ability);
+        float splashBonus = Mathf.Max(0, affectedTargetCount - 1) * 8f;
+        float rangeBias = ability.UsesAbilityRange ? ability.Range * 0.35f : 0f;
+        float movementPenalty = requiresMovement ? 0.75f : 0f;
+        float distancePenalty = Mathf.Abs(distanceToTarget - preferredDistance) * 1.5f;
+
+        return averageDamage + splashBonus + rangeBias - movementPenalty - distancePenalty;
+    }
+
+    private float GetAverageAbilityDamage(TacticsAbilityDefinition ability)
+    {
+        if (ability == null || character == null)
+        {
+            return 0f;
+        }
+
+        float baseDamage = ability.DamageType == TacticsAbilityDamageType.Magic
+            ? (character.BaseMagicDamageMin + character.BaseMagicDamageMax) * 0.5f
+            : (character.BaseMeleeDamageMin + character.BaseMeleeDamageMax) * 0.5f;
+
+        float bonusDamage = 0f;
+        IReadOnlyList<TacticsAbilityEffectDefinitionData> effects = ability.Effects;
+        for (int i = 0; i < effects.Count; i++)
+        {
+            TacticsAbilityEffectDefinitionData effect = effects[i];
+            if (effect.EffectKind != TacticsAbilityEffectKind.DealDamage)
+            {
+                continue;
+            }
+
+            TacticsDealDamageEffectData damage = effect.DealDamage;
+            float effectBase = damage.DamageFormula == TacticsDamageFormula.FlatValue ? damage.FlatAmount : baseDamage;
+            float scalingBonus = TacticsAbilityScalingCalculator.EvaluateDamageBonus(character, damage.Scaling);
+            bonusDamage += Mathf.Max(0f, (effectBase + scalingBonus) * damage.BonusMultiplier);
+        }
+
+        return bonusDamage;
+    }
+
+    private float GetBestDamageOpportunityScore(Vector2Int sourceTile)
+    {
+        if (character == null || combatSystem == null)
+        {
+            return 0f;
+        }
+
+        float bestScore = 0f;
+        bool foundOpportunity = false;
+        IReadOnlyList<TacticsAbilityDefinition> abilities = character.Abilities;
+        TacticsCharacterController[] targets = GetPlayerTargets();
+        for (int targetIndex = 0; targetIndex < targets.Length; targetIndex++)
+        {
+            TacticsCharacterController target = targets[targetIndex];
+            for (int abilityIndex = 0; abilityIndex < abilities.Count; abilityIndex++)
+            {
+                TacticsAbilityDefinition ability = abilities[abilityIndex];
+                if (ability == null || !character.HasResourcesForAbility(ability))
+                {
+                    continue;
+                }
+
+                if (!combatSystem.CanTargetTileFromTile(character, sourceTile, ability, target.GridPosition))
+                {
+                    continue;
+                }
+
+                IReadOnlyList<TacticsCharacterController> affectedTargets = combatSystem.GetPreviewTargetsFromTile(
+                    character,
+                    sourceTile,
+                    ability,
+                    target.GridPosition);
+                if (affectedTargets.Count == 0)
+                {
+                    continue;
+                }
+
+                float score = ScoreAbilityPlan(ability, target, sourceTile, requiresMovement: false, affectedTargetCount: affectedTargets.Count);
+                if (!foundOpportunity || score > bestScore)
+                {
+                    foundOpportunity = true;
+                    bestScore = score;
+                }
+            }
+        }
+
+        return foundOpportunity ? bestScore : 0f;
+    }
+
+    private float GetPreferredCombatDistance(IReadOnlyList<TacticsAbilityDefinition> abilities)
+    {
+        if (abilities == null || abilities.Count == 0)
+        {
+            return 1f;
+        }
+
+        float preferredDistance = 1f;
+        for (int i = 0; i < abilities.Count; i++)
+        {
+            preferredDistance = Mathf.Max(preferredDistance, GetPreferredCombatDistance(abilities[i]));
+        }
+
+        return preferredDistance;
+    }
+
+    private static float GetPreferredCombatDistance(TacticsAbilityDefinition ability)
+    {
+        if (ability == null)
+        {
+            return 1f;
+        }
+
+        if (!ability.UsesAbilityRange)
+        {
+            return 1f;
+        }
+
+        return Mathf.Max(2f, ability.Range - 1);
+    }
+
+    private bool TryGetPathToTarget(TacticsCharacterController target, out List<Vector2Int> path)
+    {
+        path = null;
+
+        if (character == null || target == null || !target.isActiveAndEnabled || !target.IsAlive)
+        {
+            return false;
+        }
+
+        return character.TryGetPathTo(target.GridPosition, out path, enforceMoveRange: false);
+    }
+
+    private TacticsCharacterController[] GetPlayerTargets()
+    {
         TacticsCharacterController[] characters = FindObjectsByType<TacticsCharacterController>(FindObjectsSortMode.None);
+        List<TacticsCharacterController> targets = new();
         for (int i = 0; i < characters.Length; i++)
         {
             TacticsCharacterController candidate = characters[i];
@@ -159,72 +553,14 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
                 continue;
             }
 
-            if (!character.TryGetPathTo(candidate.GridPosition, out List<Vector2Int> path, enforceMoveRange: false))
-            {
-                continue;
-            }
-
-            if (shortestPath == null || path.Count < shortestPath.Count)
-            {
-                closestTarget = candidate;
-                shortestPath = path;
-            }
+            targets.Add(candidate);
         }
 
-        return closestTarget != null;
+        return targets.ToArray();
     }
 
-    private TacticsCharacterController FindClosestPlayerTarget()
+    private static int GetTileDistance(Vector2Int source, Vector2Int target)
     {
-        return TryGetClosestTarget(out TacticsCharacterController closestTarget, out _) ? closestTarget : null;
-    }
-
-    private bool TryUsePrimaryAbility(TacticsCharacterController target)
-    {
-        if (character == null || combatSystem == null || target == null)
-        {
-            return false;
-        }
-
-        TacticsAbilityDefinition primaryAbility = character.GetPrimaryActionAbility();
-        if (primaryAbility == null)
-        {
-            return false;
-        }
-
-        return combatSystem.TryUseAbility(character, primaryAbility, target.GridPosition);
-    }
-
-    private bool TryGetMovementDestination(IReadOnlyList<Vector2Int> pathToTarget, TacticsCharacterController target, out Vector2Int destination)
-    {
-        destination = default;
-
-        if (pathToTarget == null || pathToTarget.Count <= 2)
-        {
-            return false;
-        }
-
-        TacticsAbilityDefinition primaryAbility = character != null ? character.GetPrimaryActionAbility() : null;
-        int furthestReachableIndex = Mathf.Min(character.MoveRange, pathToTarget.Count - 2);
-        if (furthestReachableIndex <= 0)
-        {
-            return false;
-        }
-
-        if (combatSystem != null && primaryAbility != null && target != null)
-        {
-            for (int i = furthestReachableIndex; i >= 1; i--)
-            {
-                Vector2Int candidate = pathToTarget[i];
-                if (combatSystem.CanTargetFromTile(character, candidate, primaryAbility, target))
-                {
-                    destination = candidate;
-                    return true;
-                }
-            }
-        }
-
-        destination = pathToTarget[furthestReachableIndex];
-        return destination != character.GridPosition;
+        return Mathf.Abs(source.x - target.x) + Mathf.Abs(source.y - target.y);
     }
 }

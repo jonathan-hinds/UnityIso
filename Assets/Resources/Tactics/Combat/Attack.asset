@@ -15,7 +15,9 @@ MonoBehaviour:
   abilityId: attack
   displayName: Attack
   description: A basic melee strike.
+  rangeType: 0
   range: 1
+  areaOfEffectSize: 1
   targetRule: 0
   damageType: 0
   effects:
@@ -23,7 +25,9 @@ MonoBehaviour:
     dealDamage:
       damageFormula: 0
       flatAmount: 0
-      bonusAmount: 0
+      bonusMultiplier: 1
       scaling:
       - stat: 0
         rank: 4
+  costResourceType: 1
+  costAmount: 10
