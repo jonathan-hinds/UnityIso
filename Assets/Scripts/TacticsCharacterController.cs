@@ -432,6 +432,36 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         return true;
     }
 
+    public bool TryCommitProgression(TacticsCharacterProgressionSnapshot updatedProgression)
+    {
+        if (!SupportsExperience)
+        {
+            return false;
+        }
+
+        TacticsCharacterProgressionSnapshot resolvedProgression =
+            ResolveProgression(updatedProgression, characterData != null ? characterData.CharacterId : string.Empty);
+        if (AreEquivalent(progression, resolvedProgression))
+        {
+            return false;
+        }
+
+        ApplyProgressionSnapshot(resolvedProgression, preserveResourceRatios: true, emitNotification: true);
+        return true;
+    }
+
+    public TacticsCharacterStats GetStatsForProgression(TacticsCharacterProgressionSnapshot snapshot)
+    {
+        TacticsCharacterProgressionSnapshot resolvedProgression =
+            ResolveProgression(snapshot, characterData != null ? characterData.CharacterId : string.Empty);
+        return resolvedProgression.ApplyTo(characterData != null ? characterData.BaseStats : TacticsCharacterStats.Default());
+    }
+
+    public TacticsCharacterDerivedStats GetDerivedStatsForProgression(TacticsCharacterProgressionSnapshot snapshot)
+    {
+        return GetStatsForProgression(snapshot).CalculateDerivedStats();
+    }
+
     public void CommitAbilityUse()
     {
         if (HasActedThisTurn)
@@ -836,6 +866,21 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         adjustedResources.hitPoints = RecalculateCurrentResource(adjustedResources.hitPoints, previousDerivedStats.maxHitPoints, derivedStats.maxHitPoints);
         adjustedResources.stamina = RecalculateCurrentResource(adjustedResources.stamina, previousDerivedStats.maxStamina, derivedStats.maxStamina);
         adjustedResources.mana = RecalculateCurrentResource(adjustedResources.mana, previousDerivedStats.maxMana, derivedStats.maxMana);
+    }
+
+    private static bool AreEquivalent(TacticsCharacterProgressionSnapshot left, TacticsCharacterProgressionSnapshot right)
+    {
+        TacticsCharacterProgressionSnapshot lhs = left.Sanitize();
+        TacticsCharacterProgressionSnapshot rhs = right.Sanitize();
+        return string.Equals(lhs.CharacterId, rhs.CharacterId, StringComparison.OrdinalIgnoreCase) &&
+               lhs.Level == rhs.Level &&
+               lhs.CurrentExperience == rhs.CurrentExperience &&
+               lhs.UnspentAttributePoints == rhs.UnspentAttributePoints &&
+               lhs.allocatedPrimaryStats.stamina == rhs.allocatedPrimaryStats.stamina &&
+               lhs.allocatedPrimaryStats.strength == rhs.allocatedPrimaryStats.strength &&
+               lhs.allocatedPrimaryStats.agility == rhs.allocatedPrimaryStats.agility &&
+               lhs.allocatedPrimaryStats.wisdom == rhs.allocatedPrimaryStats.wisdom &&
+               lhs.allocatedPrimaryStats.intelligence == rhs.allocatedPrimaryStats.intelligence;
     }
 
     private static int RecalculateCurrentResource(int currentValue, int previousMax, int nextMax)

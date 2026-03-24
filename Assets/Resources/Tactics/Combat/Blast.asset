@@ -36,4 +36,4 @@ MonoBehaviour:
       bonusMultiplier: 1
       scaling: []
   costResourceType: 2
-  costAmount: 15
+  costAmount: 6

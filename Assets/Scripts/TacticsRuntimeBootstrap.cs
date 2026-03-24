@@ -405,8 +405,8 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         if (characterMenuView != null)
         {
             characterMenuView.AssignDependencies(progressionService, coopSessionCoordinator);
-            characterMenuView.AttributePointRequested -= HandleAttributePointRequested;
-            characterMenuView.AttributePointRequested += HandleAttributePointRequested;
+            characterMenuView.ProgressionCommitRequested -= HandleProgressionCommitRequested;
+            characterMenuView.ProgressionCommitRequested += HandleProgressionCommitRequested;
             BindCharacterProgressionPersistence(characterMenuView);
             characterMenuView.RefreshCharacterList();
         }
@@ -963,10 +963,10 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         }
 
         TacticsCharacterMenuView characterMenuView = FindFirstObjectByType<TacticsCharacterMenuView>();
-        characterMenuView?.RefreshCharacterList();
+        characterMenuView?.MarkProgressionCommitted(character);
     }
 
-    private void HandleAttributePointRequested(TacticsCharacterController character, TacticsAbilityScalingStat stat)
+    private void HandleProgressionCommitRequested(TacticsCharacterController character, TacticsCharacterProgressionSnapshot snapshot)
     {
         if (character == null)
         {
@@ -975,10 +975,10 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
         if (coopSessionCoordinator != null)
         {
-            coopSessionCoordinator.RequestAllocateAttributePoint(character, stat);
+            coopSessionCoordinator.RequestCommitProgression(character, snapshot);
             return;
         }
 
-        character.TryAllocateAttributePoint(stat);
+        character.TryCommitProgression(snapshot);
     }
 }

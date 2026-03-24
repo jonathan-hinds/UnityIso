@@ -16,10 +16,12 @@ public sealed class TacticsCharacterMenuView : MonoBehaviour
     [SerializeField] private Color secondaryTextColor = new Color(0.72f, 0.74f, 0.79f, 1f);
     [SerializeField] private Color accentColor = new Color(0.76f, 0.69f, 0.5f, 1f);
     [SerializeField] private Color lockedColor = new Color(0.44f, 0.49f, 0.56f, 1f);
+    [SerializeField] private Color positiveDeltaColor = new Color(0.78f, 0.9f, 0.67f, 1f);
 
     private readonly Dictionary<string, CharacterButtonWidgets> characterButtons = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, TacticsCharacterProgressionPlan> progressionPlansByCharacterId = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<TacticsAbilityScalingStat, StatRowWidgets> primaryStatRows = new();
-    private readonly List<Text> derivedValueLabels = new();
+    private readonly List<DerivedRowWidgets> derivedRows = new();
 
     private Canvas rootCanvas;
     private GameObject panelRoot;
@@ -28,11 +30,14 @@ public sealed class TacticsCharacterMenuView : MonoBehaviour
     private Text progressionText;
     private Text resourcesText;
     private Text statusText;
+    private Text primaryEditHeaderLabel;
+    private Button saveButton;
+    private Text saveButtonLabel;
     private Font sharedFont;
     private TacticsCharacterController selectedCharacter;
     private TacticsCoopSessionCoordinator coopSessionCoordinator;
 
-    public event Action<TacticsCharacterController, TacticsAbilityScalingStat> AttributePointRequested;
+    public event Action<TacticsCharacterController, TacticsCharacterProgressionSnapshot> ProgressionCommitRequested;
 
     public bool IsPanelVisible => panelRoot != null && panelRoot.activeSelf;
 
@@ -40,14 +45,6 @@ public sealed class TacticsCharacterMenuView : MonoBehaviour
     {
         EnsureBuilt();
         SetPanelVisible(false);
-    }
-
-    private void OnDisable()
-    {
-    }
-
-    private void OnDestroy()
-    {
     }
 
     private void Update()
@@ -84,7 +81,10 @@ public sealed class TacticsCharacterMenuView : MonoBehaviour
         if (visible)
         {
             RefreshCharacterList();
+            return;
         }
+
+        progressionPlansByCharacterId.Clear();
     }
 
     public void RefreshCharacterList()
@@ -93,6 +93,18 @@ public sealed class TacticsCharacterMenuView : MonoBehaviour
         RebuildCharacterButtons();
         RefreshSelectedCharacter();
         RefreshSelectedCharacterDetails();
+    }
+
+    public void MarkProgressionCommitted(TacticsCharacterController character)
+    {
+        if (character == null)
+        {
+            return;
+        }
+
+        TacticsCharacterProgressionPlan plan = GetOrCreatePlan(character);
+        plan.SyncCommittedSnapshot(character.Progression, preservePendingChanges: false);
+        RefreshCharacterList();
     }
 
     private void EnsureBuilt()
@@ -107,6 +119,7 @@ public sealed class TacticsCharacterMenuView : MonoBehaviour
         {
             rootCanvas = gameObject.AddComponent<Canvas>();
         }
+
         rootCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
         rootCanvas.sortingOrder = 4998;
 
@@ -115,6 +128,7 @@ public sealed class TacticsCharacterMenuView : MonoBehaviour
         {
             scaler = gameObject.AddComponent<CanvasScaler>();
         }
+
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920f, 1080f);
         scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
@@ -137,7 +151,7 @@ public sealed class TacticsCharacterMenuView : MonoBehaviour
         panelRect.anchorMax = new Vector2(1f, 1f);
         panelRect.pivot = new Vector2(1f, 1f);
         panelRect.anchoredPosition = new Vector2(-36f, -124f);
-        panelRect.sizeDelta = new Vector2(1100f, 760f);
+        panelRect.sizeDelta = new Vector2(1180f, 760f);
 
         Image panelImage = panelRoot.AddComponent<Image>();
         panelImage.color = panelColor;
@@ -175,7 +189,17 @@ public sealed class TacticsCharacterMenuView : MonoBehaviour
         statusRect.anchorMin = new Vector2(0f, 1f);
         statusRect.anchorMax = new Vector2(1f, 1f);
         statusRect.offsetMin = new Vector2(28f, -30f);
-        statusRect.offsetMax = new Vector2(-28f, 0f);
+        statusRect.offsetMax = new Vector2(-190f, 0f);
+
+        saveButton = CreateSlimButton("SaveProgression", panelRoot.transform, "SAVE");
+        RectTransform saveRect = saveButton.GetComponent<RectTransform>();
+        saveRect.anchorMin = new Vector2(1f, 1f);
+        saveRect.anchorMax = new Vector2(1f, 1f);
+        saveRect.pivot = new Vector2(1f, 1f);
+        saveRect.anchoredPosition = new Vector2(-28f, -32f);
+        saveRect.sizeDelta = new Vector2(138f, 44f);
+        saveButton.onClick.AddListener(HandleSaveButtonClicked);
+        saveButtonLabel = saveButton.GetComponentInChildren<Text>();
     }
 
     private void BuildCharacterList()
@@ -214,6 +238,7 @@ public sealed class TacticsCharacterMenuView : MonoBehaviour
         statRect.offsetMax = new Vector2(-24f, -156f);
 
         GameObject primaryColumn = CreateColumn(statRoot.transform, "PRIMARY", new Vector2(0f, 0f), new Vector2(0.5f, 1f));
+        CreateComparisonHeader(primaryColumn.transform, includeAdjustmentButtons: true);
         CreatePrimaryStatRow(primaryColumn.transform, "STAMINA", TacticsAbilityScalingStat.Stamina);
         CreatePrimaryStatRow(primaryColumn.transform, "STRENGTH", TacticsAbilityScalingStat.Strength);
         CreatePrimaryStatRow(primaryColumn.transform, "AGILITY", TacticsAbilityScalingStat.Agility);
@@ -223,6 +248,7 @@ public sealed class TacticsCharacterMenuView : MonoBehaviour
         CreateDerivedRow(primaryColumn.transform, "JUMP");
 
         GameObject derivedColumn = CreateColumn(statRoot.transform, "DERIVED", new Vector2(0.5f, 0f), new Vector2(1f, 1f));
+        CreateComparisonHeader(derivedColumn.transform, includeAdjustmentButtons: false);
         CreateDerivedRow(derivedColumn.transform, "MAX HP");
         CreateDerivedRow(derivedColumn.transform, "MAX ST");
         CreateDerivedRow(derivedColumn.transform, "MAX MP");
@@ -251,6 +277,43 @@ public sealed class TacticsCharacterMenuView : MonoBehaviour
         return column;
     }
 
+    private void CreateComparisonHeader(Transform parent, bool includeAdjustmentButtons)
+    {
+        GameObject row = CreateUiObject("ComparisonHeader", parent);
+        HorizontalLayoutGroup layout = row.AddComponent<HorizontalLayoutGroup>();
+        layout.spacing = 8f;
+        layout.childForceExpandHeight = false;
+        layout.childForceExpandWidth = false;
+
+        LayoutElement rowLayout = row.AddComponent<LayoutElement>();
+        rowLayout.preferredHeight = 26f;
+
+        Text spacer = CreateText("Spacer", row.transform, 12, FontStyle.Bold, secondaryTextColor, TextAnchor.MiddleLeft);
+        spacer.text = string.Empty;
+        AddFixedWidth(spacer.gameObject, 120f);
+
+        Text currentText = CreateText("CurrentHeader", row.transform, 12, FontStyle.Bold, secondaryTextColor, TextAnchor.MiddleCenter);
+        currentText.text = "CURRENT";
+        AddFixedWidth(currentText.gameObject, 66f);
+
+        Text previewText = CreateText("PreviewHeader", row.transform, 12, FontStyle.Bold, secondaryTextColor, TextAnchor.MiddleCenter);
+        previewText.text = "PREVIEW";
+        AddFixedWidth(previewText.gameObject, 66f);
+
+        Text deltaText = CreateText("DeltaHeader", row.transform, 12, FontStyle.Bold, secondaryTextColor, TextAnchor.MiddleCenter);
+        deltaText.text = "SHIFT";
+        AddFixedWidth(deltaText.gameObject, 62f);
+
+        if (!includeAdjustmentButtons)
+        {
+            return;
+        }
+
+        primaryEditHeaderLabel = CreateText("SpendHeader", row.transform, 12, FontStyle.Bold, secondaryTextColor, TextAnchor.MiddleCenter);
+        primaryEditHeaderLabel.text = "EDIT";
+        AddFixedWidth(primaryEditHeaderLabel.gameObject, 84f);
+    }
+
     private void CreatePrimaryStatRow(Transform parent, string label, TacticsAbilityScalingStat stat)
     {
         GameObject row = CreateUiObject($"{label}Row", parent);
@@ -266,22 +329,22 @@ public sealed class TacticsCharacterMenuView : MonoBehaviour
         labelText.text = label;
         AddFixedWidth(labelText.gameObject, 120f);
 
-        Text valueText = CreateText($"{label}Value", row.transform, 16, FontStyle.Bold, primaryTextColor, TextAnchor.MiddleCenter);
-        AddFixedWidth(valueText.gameObject, 50f);
+        Text currentText = CreateText($"{label}Current", row.transform, 16, FontStyle.Bold, primaryTextColor, TextAnchor.MiddleCenter);
+        AddFixedWidth(currentText.gameObject, 66f);
 
-        Text bonusText = CreateText($"{label}Bonus", row.transform, 14, FontStyle.Bold, accentColor, TextAnchor.MiddleCenter);
-        AddFixedWidth(bonusText.gameObject, 56f);
+        Text previewText = CreateText($"{label}Preview", row.transform, 16, FontStyle.Bold, primaryTextColor, TextAnchor.MiddleCenter);
+        AddFixedWidth(previewText.gameObject, 66f);
 
-        Button increaseButton = CreateSlimButton($"{label}Increase", row.transform, "+");
-        increaseButton.onClick.AddListener(() =>
-        {
-            if (selectedCharacter != null)
-            {
-                AttributePointRequested?.Invoke(selectedCharacter, stat);
-            }
-        });
+        Text deltaText = CreateText($"{label}Delta", row.transform, 14, FontStyle.Bold, accentColor, TextAnchor.MiddleCenter);
+        AddFixedWidth(deltaText.gameObject, 62f);
 
-        primaryStatRows[stat] = new StatRowWidgets(valueText, bonusText, increaseButton);
+        Button decreaseButton = CreateAdjustmentButton($"{label}Decrease", row.transform, "<");
+        decreaseButton.onClick.AddListener(() => HandleDecreaseRequested(stat));
+
+        Button increaseButton = CreateAdjustmentButton($"{label}Increase", row.transform, ">");
+        increaseButton.onClick.AddListener(() => HandleIncreaseRequested(stat));
+
+        primaryStatRows[stat] = new StatRowWidgets(currentText, previewText, deltaText, decreaseButton, increaseButton);
     }
 
     private void CreateDerivedRow(Transform parent, string label)
@@ -297,11 +360,18 @@ public sealed class TacticsCharacterMenuView : MonoBehaviour
 
         Text labelText = CreateText($"{label}Label", row.transform, 15, FontStyle.Bold, secondaryTextColor, TextAnchor.MiddleLeft);
         labelText.text = label;
-        AddFixedWidth(labelText.gameObject, 140f);
+        AddFixedWidth(labelText.gameObject, 120f);
 
-        Text valueText = CreateText($"{label}Value", row.transform, 16, FontStyle.Bold, primaryTextColor, TextAnchor.MiddleLeft);
-        valueText.text = "--";
-        derivedValueLabels.Add(valueText);
+        Text currentText = CreateText($"{label}Current", row.transform, 15, FontStyle.Bold, primaryTextColor, TextAnchor.MiddleCenter);
+        AddFixedWidth(currentText.gameObject, 66f);
+
+        Text previewText = CreateText($"{label}Preview", row.transform, 15, FontStyle.Bold, primaryTextColor, TextAnchor.MiddleCenter);
+        AddFixedWidth(previewText.gameObject, 66f);
+
+        Text deltaText = CreateText($"{label}Delta", row.transform, 14, FontStyle.Bold, accentColor, TextAnchor.MiddleCenter);
+        AddFixedWidth(deltaText.gameObject, 62f);
+
+        derivedRows.Add(new DerivedRowWidgets(label, currentText, previewText, deltaText));
     }
 
     private void RebuildCharacterButtons()
@@ -333,7 +403,9 @@ public sealed class TacticsCharacterMenuView : MonoBehaviour
             if (label != null)
             {
                 bool isOwned = coopSessionCoordinator == null || coopSessionCoordinator.CanLocalPlayerControlCharacter(character);
-                label.text = $"{character.DisplayName.ToUpperInvariant()}\n<size=12>{(isOwned ? "YOU" : "ALLY")}  LV {character.CurrentLevel:00}</size>";
+                TacticsCharacterProgressionPlan plan = GetOrCreatePlan(character);
+                string pendingSuffix = plan.HasPendingChanges ? "\n<size=12>UNSAVED</size>" : string.Empty;
+                label.text = $"{character.DisplayName.ToUpperInvariant()}\n<size=12>{(isOwned ? "YOU" : "ALLY")}  LV {character.CurrentLevel:00}</size>{pendingSuffix}";
                 label.alignment = TextAnchor.MiddleLeft;
             }
 
@@ -372,57 +444,141 @@ public sealed class TacticsCharacterMenuView : MonoBehaviour
             progressionText.text = "No player-controlled characters are available.";
             resourcesText.text = string.Empty;
             statusText.text = string.Empty;
-            SetDerivedValues(Array.Empty<string>());
+            SetEmptyRows();
+            SetEditControlsVisible(false);
+            UpdateSaveButtonState(null);
             return;
         }
 
+        TacticsCharacterProgressionPlan plan = GetOrCreatePlan(selectedCharacter);
+        plan.SyncCommittedSnapshot(selectedCharacter.Progression, preservePendingChanges: true);
+
+        TacticsCharacterStats committedStats = selectedCharacter.GetStatsForProgression(plan.CommittedSnapshot);
+        TacticsCharacterStats previewStats = selectedCharacter.GetStatsForProgression(plan.WorkingSnapshot);
+        TacticsCharacterDerivedStats committedDerived = committedStats.CalculateDerivedStats();
+        TacticsCharacterDerivedStats previewDerived = previewStats.CalculateDerivedStats();
+
         subtitleText.text = selectedCharacter.DisplayName.ToUpperInvariant();
-        progressionText.text = $"LV {selectedCharacter.CurrentLevel:00}   EXP {selectedCharacter.CurrentExperience}/{selectedCharacter.ExperienceToNextLevel}   AP {selectedCharacter.UnspentAttributePoints:00}";
-        resourcesText.text = $"HP {selectedCharacter.CurrentHitPoints}/{selectedCharacter.MaxHitPoints}   ST {selectedCharacter.CurrentStamina}/{selectedCharacter.MaxStamina}   MP {selectedCharacter.CurrentMana}/{selectedCharacter.MaxMana}";
-        statusText.text = CanEditSelectedCharacter() ? "ALLOCATE POINTS" : "ALLY DATA";
+        progressionText.text =
+            $"LV {selectedCharacter.CurrentLevel:00}   EXP {selectedCharacter.CurrentExperience}/{selectedCharacter.ExperienceToNextLevel}   AP {plan.CommittedSnapshot.UnspentAttributePoints:00} -> {plan.WorkingSnapshot.UnspentAttributePoints:00}";
+        resourcesText.text =
+            $"HP {selectedCharacter.CurrentHitPoints}/{selectedCharacter.MaxHitPoints}   ST {selectedCharacter.CurrentStamina}/{selectedCharacter.MaxStamina}   MP {selectedCharacter.CurrentMana}/{selectedCharacter.MaxMana}";
+        statusText.text = BuildStatusText(plan);
+        SetEditControlsVisible(ShouldShowEditControls(plan));
 
-        ApplyPrimaryStatRow(TacticsAbilityScalingStat.Stamina, selectedCharacter.BaseStats.primaryStats.stamina, selectedCharacter.Progression.GetAllocatedValue(TacticsAbilityScalingStat.Stamina));
-        ApplyPrimaryStatRow(TacticsAbilityScalingStat.Strength, selectedCharacter.BaseStats.primaryStats.strength, selectedCharacter.Progression.GetAllocatedValue(TacticsAbilityScalingStat.Strength));
-        ApplyPrimaryStatRow(TacticsAbilityScalingStat.Agility, selectedCharacter.BaseStats.primaryStats.agility, selectedCharacter.Progression.GetAllocatedValue(TacticsAbilityScalingStat.Agility));
-        ApplyPrimaryStatRow(TacticsAbilityScalingStat.Wisdom, selectedCharacter.BaseStats.primaryStats.wisdom, selectedCharacter.Progression.GetAllocatedValue(TacticsAbilityScalingStat.Wisdom));
-        ApplyPrimaryStatRow(TacticsAbilityScalingStat.Intelligence, selectedCharacter.BaseStats.primaryStats.intelligence, selectedCharacter.Progression.GetAllocatedValue(TacticsAbilityScalingStat.Intelligence));
+        ApplyPrimaryStatRow(TacticsAbilityScalingStat.Stamina, committedStats.primaryStats.stamina, previewStats.primaryStats.stamina, plan.CanDecrease(TacticsAbilityScalingStat.Stamina), plan.CanIncrease(TacticsAbilityScalingStat.Stamina));
+        ApplyPrimaryStatRow(TacticsAbilityScalingStat.Strength, committedStats.primaryStats.strength, previewStats.primaryStats.strength, plan.CanDecrease(TacticsAbilityScalingStat.Strength), plan.CanIncrease(TacticsAbilityScalingStat.Strength));
+        ApplyPrimaryStatRow(TacticsAbilityScalingStat.Agility, committedStats.primaryStats.agility, previewStats.primaryStats.agility, plan.CanDecrease(TacticsAbilityScalingStat.Agility), plan.CanIncrease(TacticsAbilityScalingStat.Agility));
+        ApplyPrimaryStatRow(TacticsAbilityScalingStat.Wisdom, committedStats.primaryStats.wisdom, previewStats.primaryStats.wisdom, plan.CanDecrease(TacticsAbilityScalingStat.Wisdom), plan.CanIncrease(TacticsAbilityScalingStat.Wisdom));
+        ApplyPrimaryStatRow(TacticsAbilityScalingStat.Intelligence, committedStats.primaryStats.intelligence, previewStats.primaryStats.intelligence, plan.CanDecrease(TacticsAbilityScalingStat.Intelligence), plan.CanIncrease(TacticsAbilityScalingStat.Intelligence));
 
-        SetDerivedValues(new[]
-        {
-            selectedCharacter.MoveRange.ToString(),
-            selectedCharacter.JumpHeight.ToString(),
-            selectedCharacter.MaxHitPoints.ToString(),
-            selectedCharacter.MaxStamina.ToString(),
-            selectedCharacter.MaxMana.ToString(),
-            $"{selectedCharacter.BaseMeleeDamageMin}-{selectedCharacter.BaseMeleeDamageMax}",
-            $"{selectedCharacter.BaseMagicDamageMin}-{selectedCharacter.BaseMagicDamageMax}",
-            $"{selectedCharacter.MeleeCriticalHitChance * 100f:0}%",
-            $"{selectedCharacter.MagicCriticalHitChance * 100f:0}%"
-        });
+        SetDerivedValue("MOVE", committedStats.MoveRange.ToString(), previewStats.MoveRange.ToString());
+        SetDerivedValue("JUMP", committedStats.JumpHeight.ToString(), previewStats.JumpHeight.ToString());
+        SetDerivedValue("MAX HP", committedDerived.maxHitPoints.ToString(), previewDerived.maxHitPoints.ToString());
+        SetDerivedValue("MAX ST", committedDerived.maxStamina.ToString(), previewDerived.maxStamina.ToString());
+        SetDerivedValue("MAX MP", committedDerived.maxMana.ToString(), previewDerived.maxMana.ToString());
+        SetDerivedValue("MELEE", $"{committedDerived.baseMeleeDamageMin}-{committedDerived.baseMeleeDamageMax}", $"{previewDerived.baseMeleeDamageMin}-{previewDerived.baseMeleeDamageMax}");
+        SetDerivedValue("MAGIC", $"{committedDerived.baseMagicDamageMin}-{committedDerived.baseMagicDamageMax}", $"{previewDerived.baseMagicDamageMin}-{previewDerived.baseMagicDamageMax}");
+        SetDerivedValue("MELEE CRIT", $"{committedDerived.meleeCriticalHitChance * 100f:0}%", $"{previewDerived.meleeCriticalHitChance * 100f:0}%");
+        SetDerivedValue("MAGIC CRIT", $"{committedDerived.magicCriticalHitChance * 100f:0}%", $"{previewDerived.magicCriticalHitChance * 100f:0}%");
+
+        UpdateSaveButtonState(plan);
     }
 
-    private void ApplyPrimaryStatRow(TacticsAbilityScalingStat stat, int value, int allocatedBonus)
+    private void HandleIncreaseRequested(TacticsAbilityScalingStat stat)
+    {
+        if (!CanEditSelectedCharacter())
+        {
+            return;
+        }
+
+        TacticsCharacterProgressionPlan plan = GetOrCreatePlan(selectedCharacter);
+        if (!plan.TryIncrease(stat))
+        {
+            return;
+        }
+
+        RefreshCharacterList();
+    }
+
+    private void HandleDecreaseRequested(TacticsAbilityScalingStat stat)
+    {
+        if (!CanEditSelectedCharacter())
+        {
+            return;
+        }
+
+        TacticsCharacterProgressionPlan plan = GetOrCreatePlan(selectedCharacter);
+        if (!plan.TryDecrease(stat))
+        {
+            return;
+        }
+
+        RefreshCharacterList();
+    }
+
+    private void HandleSaveButtonClicked()
+    {
+        if (!CanEditSelectedCharacter() || selectedCharacter == null)
+        {
+            return;
+        }
+
+        TacticsCharacterProgressionPlan plan = GetOrCreatePlan(selectedCharacter);
+        if (!plan.HasPendingChanges)
+        {
+            return;
+        }
+
+        ProgressionCommitRequested?.Invoke(selectedCharacter, plan.WorkingSnapshot);
+    }
+
+    private void ApplyPrimaryStatRow(TacticsAbilityScalingStat stat, int currentValue, int previewValue, bool canDecrease, bool canIncrease)
     {
         if (!primaryStatRows.TryGetValue(stat, out StatRowWidgets widgets))
         {
             return;
         }
 
-        widgets.Value.text = value.ToString();
-        widgets.Bonus.text = allocatedBonus > 0 ? $"+{allocatedBonus}" : string.Empty;
-        widgets.IncreaseButton.interactable = CanEditSelectedCharacter() && selectedCharacter.UnspentAttributePoints > 0;
-        Image buttonImage = widgets.IncreaseButton.targetGraphic as Image;
-        if (buttonImage != null)
+        widgets.CurrentValue.text = currentValue.ToString();
+        widgets.PreviewValue.text = previewValue.ToString();
+        ApplyDeltaText(widgets.DeltaValue, previewValue - currentValue);
+        SetButtonState(widgets.DecreaseButton, CanEditSelectedCharacter() && canDecrease);
+        SetButtonState(widgets.IncreaseButton, CanEditSelectedCharacter() && canIncrease);
+    }
+
+    private void SetDerivedValue(string label, string currentValue, string previewValue)
+    {
+        for (int i = 0; i < derivedRows.Count; i++)
         {
-            buttonImage.color = widgets.IncreaseButton.interactable ? buttonHighlightColor : lockedColor;
+            if (!string.Equals(derivedRows[i].Label, label, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            derivedRows[i].CurrentValue.text = currentValue;
+            derivedRows[i].PreviewValue.text = previewValue;
+            ApplyDerivedDeltaText(derivedRows[i].DeltaValue, currentValue, previewValue);
+            return;
         }
     }
 
-    private void SetDerivedValues(IReadOnlyList<string> values)
+    private void SetEmptyRows()
     {
-        for (int i = 0; i < derivedValueLabels.Count; i++)
+        foreach (KeyValuePair<TacticsAbilityScalingStat, StatRowWidgets> pair in primaryStatRows)
         {
-            derivedValueLabels[i].text = values != null && i < values.Count ? values[i] : "--";
+            pair.Value.CurrentValue.text = "--";
+            pair.Value.PreviewValue.text = "--";
+            pair.Value.DeltaValue.text = string.Empty;
+            SetButtonState(pair.Value.DecreaseButton, false);
+            SetButtonState(pair.Value.IncreaseButton, false);
+        }
+
+        for (int i = 0; i < derivedRows.Count; i++)
+        {
+            derivedRows[i].CurrentValue.text = "--";
+            derivedRows[i].PreviewValue.text = "--";
+            derivedRows[i].DeltaValue.text = string.Empty;
         }
     }
 
@@ -437,6 +593,93 @@ public sealed class TacticsCharacterMenuView : MonoBehaviour
                 pair.Value.Background.color = isSelected ? buttonHighlightColor : buttonColor;
             }
         }
+    }
+
+    private void UpdateSaveButtonState(TacticsCharacterProgressionPlan plan)
+    {
+        bool showEditControls = ShouldShowEditControls(plan);
+        if (saveButton != null)
+        {
+            saveButton.gameObject.SetActive(showEditControls);
+        }
+
+        bool canSave = showEditControls && plan != null && CanEditSelectedCharacter() && plan.HasPendingChanges;
+        saveButton.interactable = canSave;
+        Image buttonImage = saveButton.targetGraphic as Image;
+        if (buttonImage != null)
+        {
+            buttonImage.color = canSave ? buttonHighlightColor : lockedColor;
+        }
+
+        if (saveButtonLabel != null)
+        {
+            saveButtonLabel.text = canSave ? "SAVE" : "SAVED";
+        }
+    }
+
+    private string BuildStatusText(TacticsCharacterProgressionPlan plan)
+    {
+        if (!CanEditSelectedCharacter())
+        {
+            return "ALLY DATA";
+        }
+
+        if (plan == null)
+        {
+            return "READY";
+        }
+
+        return plan.HasPendingChanges
+            ? $"PREVIEWING {plan.WorkingSnapshot.UnspentAttributePoints:00} AP LEFT"
+            : "READY TO TUNE";
+    }
+
+    private bool ShouldShowEditControls(TacticsCharacterProgressionPlan plan)
+    {
+        if (!CanEditSelectedCharacter() || plan == null)
+        {
+            return false;
+        }
+
+        return plan.CommittedSnapshot.UnspentAttributePoints > 0 || plan.HasPendingChanges;
+    }
+
+    private void SetEditControlsVisible(bool visible)
+    {
+        if (primaryEditHeaderLabel != null)
+        {
+            primaryEditHeaderLabel.gameObject.SetActive(visible);
+        }
+
+        foreach (KeyValuePair<TacticsAbilityScalingStat, StatRowWidgets> pair in primaryStatRows)
+        {
+            if (pair.Value.DecreaseButton != null)
+            {
+                pair.Value.DecreaseButton.gameObject.SetActive(visible);
+            }
+
+            if (pair.Value.IncreaseButton != null)
+            {
+                pair.Value.IncreaseButton.gameObject.SetActive(visible);
+            }
+        }
+    }
+
+    private TacticsCharacterProgressionPlan GetOrCreatePlan(TacticsCharacterController character)
+    {
+        if (character == null)
+        {
+            return new TacticsCharacterProgressionPlan(TacticsCharacterProgressionSnapshot.CreateDefault(string.Empty));
+        }
+
+        string key = character.RuntimeCharacterId;
+        if (!progressionPlansByCharacterId.TryGetValue(key, out TacticsCharacterProgressionPlan plan))
+        {
+            plan = new TacticsCharacterProgressionPlan(character.Progression);
+            progressionPlansByCharacterId[key] = plan;
+        }
+
+        return plan;
     }
 
     private bool CanEditSelectedCharacter()
@@ -471,6 +714,19 @@ public sealed class TacticsCharacterMenuView : MonoBehaviour
         return button;
     }
 
+    private Button CreateAdjustmentButton(string objectName, Transform parent, string labelText)
+    {
+        Button button = CreateSlimButton(objectName, parent, labelText);
+        RectTransform rect = button.GetComponent<RectTransform>();
+        rect.sizeDelta = new Vector2(38f, 34f);
+
+        LayoutElement layoutElement = button.GetComponent<LayoutElement>();
+        layoutElement.preferredHeight = 34f;
+        layoutElement.preferredWidth = 38f;
+        layoutElement.minWidth = 38f;
+        return button;
+    }
+
     private Text CreateText(string objectName, Transform parent, int fontSize, FontStyle fontStyle, Color color, TextAnchor alignment)
     {
         GameObject textObject = CreateUiObject(objectName, parent);
@@ -483,6 +739,131 @@ public sealed class TacticsCharacterMenuView : MonoBehaviour
         text.horizontalOverflow = HorizontalWrapMode.Overflow;
         text.verticalOverflow = VerticalWrapMode.Overflow;
         return text;
+    }
+
+    private void SetButtonState(Button button, bool enabled)
+    {
+        if (button == null)
+        {
+            return;
+        }
+
+        button.interactable = enabled;
+        Image image = button.targetGraphic as Image;
+        if (image != null)
+        {
+            image.color = enabled ? buttonHighlightColor : lockedColor;
+        }
+    }
+
+    private void ApplyDeltaText(Text label, int delta)
+    {
+        if (label == null)
+        {
+            return;
+        }
+
+        if (delta == 0)
+        {
+            label.text = string.Empty;
+            label.color = accentColor;
+            return;
+        }
+
+        label.text = delta > 0 ? $"+{delta}" : delta.ToString();
+        label.color = delta > 0 ? positiveDeltaColor : lockedColor;
+    }
+
+    private void ApplyDerivedDeltaText(Text label, string currentValue, string previewValue)
+    {
+        if (label == null)
+        {
+            return;
+        }
+
+        if (string.Equals(currentValue, previewValue, StringComparison.OrdinalIgnoreCase))
+        {
+            label.text = string.Empty;
+            label.color = accentColor;
+            return;
+        }
+
+        if (TryFormatRangeDelta(currentValue, previewValue, out string rangeDelta))
+        {
+            label.text = rangeDelta;
+            label.color = positiveDeltaColor;
+            return;
+        }
+
+        if (TryFormatPercentDelta(currentValue, previewValue, out string percentDelta))
+        {
+            label.text = percentDelta;
+            label.color = positiveDeltaColor;
+            return;
+        }
+
+        if (int.TryParse(currentValue, out int currentInt) && int.TryParse(previewValue, out int previewInt))
+        {
+            ApplyDeltaText(label, previewInt - currentInt);
+            return;
+        }
+
+        label.text = "NEW";
+        label.color = positiveDeltaColor;
+    }
+
+    private static bool TryFormatPercentDelta(string currentValue, string previewValue, out string formattedDelta)
+    {
+        formattedDelta = string.Empty;
+        string currentTrimmed = currentValue?.Replace("%", string.Empty).Trim();
+        string previewTrimmed = previewValue?.Replace("%", string.Empty).Trim();
+        if (!float.TryParse(currentTrimmed, out float currentPercent) || !float.TryParse(previewTrimmed, out float previewPercent))
+        {
+            return false;
+        }
+
+        float delta = previewPercent - currentPercent;
+        if (Mathf.Approximately(delta, 0f))
+        {
+            return true;
+        }
+
+        formattedDelta = delta > 0f ? $"+{delta:0.#}%" : $"{delta:0.#}%";
+        return true;
+    }
+
+    private static bool TryFormatRangeDelta(string currentValue, string previewValue, out string formattedDelta)
+    {
+        formattedDelta = string.Empty;
+        string[] currentTokens = currentValue?.Split('-') ?? Array.Empty<string>();
+        string[] previewTokens = previewValue?.Split('-') ?? Array.Empty<string>();
+        if (currentTokens.Length != 2 || previewTokens.Length != 2)
+        {
+            return false;
+        }
+
+        if (!int.TryParse(currentTokens[0].Trim(), out int currentMin) ||
+            !int.TryParse(currentTokens[1].Trim(), out int currentMax) ||
+            !int.TryParse(previewTokens[0].Trim(), out int previewMin) ||
+            !int.TryParse(previewTokens[1].Trim(), out int previewMax))
+        {
+            return false;
+        }
+
+        int minDelta = previewMin - currentMin;
+        int maxDelta = previewMax - currentMax;
+        if (minDelta == 0 && maxDelta == 0)
+        {
+            return true;
+        }
+
+        formattedDelta = $"{FormatSignedNumber(minDelta)}/{FormatSignedNumber(maxDelta)}";
+        return true;
+    }
+
+    private static string FormatSignedNumber(int value)
+    {
+        return value > 0 ? $"+{value}" : value.ToString();
     }
 
     private static void StretchTop(RectTransform rect, float bottom, float top)
@@ -526,15 +907,35 @@ public sealed class TacticsCharacterMenuView : MonoBehaviour
 
     private readonly struct StatRowWidgets
     {
-        public StatRowWidgets(Text value, Text bonus, Button increaseButton)
+        public StatRowWidgets(Text currentValue, Text previewValue, Text deltaValue, Button decreaseButton, Button increaseButton)
         {
-            Value = value;
-            Bonus = bonus;
+            CurrentValue = currentValue;
+            PreviewValue = previewValue;
+            DeltaValue = deltaValue;
+            DecreaseButton = decreaseButton;
             IncreaseButton = increaseButton;
         }
 
-        public Text Value { get; }
-        public Text Bonus { get; }
+        public Text CurrentValue { get; }
+        public Text PreviewValue { get; }
+        public Text DeltaValue { get; }
+        public Button DecreaseButton { get; }
         public Button IncreaseButton { get; }
+    }
+
+    private sealed class DerivedRowWidgets
+    {
+        public DerivedRowWidgets(string label, Text currentValue, Text previewValue, Text deltaValue)
+        {
+            Label = label;
+            CurrentValue = currentValue;
+            PreviewValue = previewValue;
+            DeltaValue = deltaValue;
+        }
+
+        public string Label { get; }
+        public Text CurrentValue { get; }
+        public Text PreviewValue { get; }
+        public Text DeltaValue { get; }
     }
 }

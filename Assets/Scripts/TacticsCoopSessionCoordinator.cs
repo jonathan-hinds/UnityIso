@@ -26,8 +26,8 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
     private const string AbilityCommandMessageName = "tactics.command.ability.execute";
     private const string EndTurnRequestMessageName = "tactics.command.endturn.request";
     private const string EndTurnCommandMessageName = "tactics.command.endturn.execute";
-    private const string AllocateAttributeRequestMessageName = "tactics.command.attribute.request";
-    private const string AllocateAttributeCommandMessageName = "tactics.command.attribute.execute";
+    private const string CommitProgressionRequestMessageName = "tactics.command.progression.request";
+    private const string CommitProgressionCommandMessageName = "tactics.command.progression.execute";
     private const string ExitSessionRequestMessageName = "tactics.session.exit.request";
     private const string ExitSessionCommandMessageName = "tactics.session.exit.command";
 
@@ -247,36 +247,36 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         return true;
     }
 
-    public bool RequestAllocateAttributePoint(TacticsCharacterController character, TacticsAbilityScalingStat stat)
+    public bool RequestCommitProgression(TacticsCharacterController character, TacticsCharacterProgressionSnapshot snapshot)
     {
         if (character == null || !CanInitiateCommandForCharacter(character))
         {
             return false;
         }
 
-        AllocateAttributeCommandMessage message = new AllocateAttributeCommandMessage
+        CommitProgressionCommandMessage message = new CommitProgressionCommandMessage
         {
             runtimeCharacterId = character.RuntimeCharacterId,
-            stat = stat
+            snapshot = snapshot.Sanitize()
         };
 
         if (!IsOnlineSession)
         {
-            return ExecuteAllocateAttributeCommand(message);
+            return ExecuteCommitProgressionCommand(message);
         }
 
         if (IsHostAuthority)
         {
-            if (!ExecuteAllocateAttributeCommand(message))
+            if (!ExecuteCommitProgressionCommand(message))
             {
                 return false;
             }
 
-            BroadcastMessage(AllocateAttributeCommandMessageName, JsonUtility.ToJson(message), includeHost: false);
+            BroadcastMessage(CommitProgressionCommandMessageName, JsonUtility.ToJson(message), includeHost: false);
             return true;
         }
 
-        SendMessageToServer(AllocateAttributeRequestMessageName, JsonUtility.ToJson(message));
+        SendMessageToServer(CommitProgressionRequestMessageName, JsonUtility.ToJson(message));
         return true;
     }
 
@@ -368,8 +368,8 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         messaging.RegisterNamedMessageHandler(AbilityCommandMessageName, HandleAbilityCommandMessage);
         messaging.RegisterNamedMessageHandler(EndTurnRequestMessageName, HandleEndTurnRequestMessage);
         messaging.RegisterNamedMessageHandler(EndTurnCommandMessageName, HandleEndTurnCommandMessage);
-        messaging.RegisterNamedMessageHandler(AllocateAttributeRequestMessageName, HandleAllocateAttributeRequestMessage);
-        messaging.RegisterNamedMessageHandler(AllocateAttributeCommandMessageName, HandleAllocateAttributeCommandMessage);
+        messaging.RegisterNamedMessageHandler(CommitProgressionRequestMessageName, HandleCommitProgressionRequestMessage);
+        messaging.RegisterNamedMessageHandler(CommitProgressionCommandMessageName, HandleCommitProgressionCommandMessage);
         messaging.RegisterNamedMessageHandler(ExitSessionRequestMessageName, HandleExitSessionRequestMessage);
         messaging.RegisterNamedMessageHandler(ExitSessionCommandMessageName, HandleExitSessionCommandMessage);
         handlersRegistered = true;
@@ -396,8 +396,8 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
             messaging.UnregisterNamedMessageHandler(AbilityCommandMessageName);
             messaging.UnregisterNamedMessageHandler(EndTurnRequestMessageName);
             messaging.UnregisterNamedMessageHandler(EndTurnCommandMessageName);
-            messaging.UnregisterNamedMessageHandler(AllocateAttributeRequestMessageName);
-            messaging.UnregisterNamedMessageHandler(AllocateAttributeCommandMessageName);
+            messaging.UnregisterNamedMessageHandler(CommitProgressionRequestMessageName);
+            messaging.UnregisterNamedMessageHandler(CommitProgressionCommandMessageName);
             messaging.UnregisterNamedMessageHandler(ExitSessionRequestMessageName);
             messaging.UnregisterNamedMessageHandler(ExitSessionCommandMessageName);
         }
@@ -558,7 +558,7 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         EnqueueReplicatedCommand(ReplicatedCommandType.EndTurn, ReadPayload(ref reader));
     }
 
-    private void HandleAllocateAttributeRequestMessage(ulong senderClientId, FastBufferReader reader)
+    private void HandleCommitProgressionRequestMessage(ulong senderClientId, FastBufferReader reader)
     {
         if (!IsHostAuthority)
         {
@@ -566,26 +566,26 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         }
 
         string payload = ReadPayload(ref reader);
-        AllocateAttributeCommandMessage message = JsonUtility.FromJson<AllocateAttributeCommandMessage>(payload);
+        CommitProgressionCommandMessage message = JsonUtility.FromJson<CommitProgressionCommandMessage>(payload);
         if (!CanClientControlCharacter(senderClientId, message.runtimeCharacterId))
         {
             return;
         }
 
-        if (ExecuteAllocateAttributeCommand(message))
+        if (ExecuteCommitProgressionCommand(message))
         {
-            BroadcastMessage(AllocateAttributeCommandMessageName, payload, includeHost: false);
+            BroadcastMessage(CommitProgressionCommandMessageName, payload, includeHost: false);
         }
     }
 
-    private void HandleAllocateAttributeCommandMessage(ulong senderClientId, FastBufferReader reader)
+    private void HandleCommitProgressionCommandMessage(ulong senderClientId, FastBufferReader reader)
     {
         if (IsHostAuthority)
         {
             return;
         }
 
-        EnqueueReplicatedCommand(ReplicatedCommandType.AllocateAttribute, ReadPayload(ref reader));
+        EnqueueReplicatedCommand(ReplicatedCommandType.CommitProgression, ReadPayload(ref reader));
     }
 
     private void HandleExitSessionRequestMessage(ulong senderClientId, FastBufferReader reader)
@@ -660,10 +660,10 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
             : character.ApplyReplicatedEndTurn();
     }
 
-    private bool ExecuteAllocateAttributeCommand(AllocateAttributeCommandMessage message)
+    private bool ExecuteCommitProgressionCommand(CommitProgressionCommandMessage message)
     {
         TacticsCharacterController character = FindCharacterByRuntimeId(message.runtimeCharacterId);
-        return character != null && character.TryAllocateAttributePoint(message.stat);
+        return character != null && character.TryCommitProgression(message.snapshot);
     }
 
     private void TryStartBattleIfReady()
@@ -1021,8 +1021,8 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
             ReplicatedCommandType.EndTurn => ExecuteEndTurnCommand(
                 JsonUtility.FromJson<EndTurnCommandMessage>(command.Payload),
                 requireLocalAuthorityState: false),
-            ReplicatedCommandType.AllocateAttribute => ExecuteAllocateAttributeCommand(
-                JsonUtility.FromJson<AllocateAttributeCommandMessage>(command.Payload)),
+            ReplicatedCommandType.CommitProgression => ExecuteCommitProgressionCommand(
+                JsonUtility.FromJson<CommitProgressionCommandMessage>(command.Payload)),
             _ => false
         };
     }
@@ -1084,10 +1084,10 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
     }
 
     [Serializable]
-    private struct AllocateAttributeCommandMessage
+    private struct CommitProgressionCommandMessage
     {
         public string runtimeCharacterId;
-        public TacticsAbilityScalingStat stat;
+        public TacticsCharacterProgressionSnapshot snapshot;
     }
 
     [Serializable]
@@ -1113,6 +1113,6 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         Move = 0,
         Ability = 1,
         EndTurn = 2,
-        AllocateAttribute = 3
+        CommitProgression = 3
     }
 }
