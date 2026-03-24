@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.Events;
 using UnityEngine.UI;
 
@@ -37,6 +38,7 @@ public class TacticsActionMenuView : MonoBehaviour
     private TacticsCharacterController displayedCharacter;
     private IReadOnlyList<TacticsActionMenuAbilityOption> displayedAbilityOptions = Array.Empty<TacticsActionMenuAbilityOption>();
     private bool isFlyoutOpen;
+    private TacticsAbilityTooltipView tooltipView;
 
     public event Action<TacticsHudActionType> ActionSelected;
     public event Action<TacticsAbilityDefinition> AbilitySelected;
@@ -86,6 +88,7 @@ public class TacticsActionMenuView : MonoBehaviour
         {
             isFlyoutOpen = false;
             flyoutRoot.SetActive(false);
+            tooltipView?.Hide();
         }
 
         RebuildAbilityEntries();
@@ -99,6 +102,7 @@ public class TacticsActionMenuView : MonoBehaviour
         displayedCharacter = null;
         displayedAbilityOptions = Array.Empty<TacticsActionMenuAbilityOption>();
         isFlyoutOpen = false;
+        tooltipView?.Hide();
     }
 
     private void EnsureBuilt()
@@ -131,6 +135,12 @@ public class TacticsActionMenuView : MonoBehaviour
         if (GetComponent<GraphicRaycaster>() == null)
         {
             gameObject.AddComponent<GraphicRaycaster>();
+        }
+
+        tooltipView = GetComponent<TacticsAbilityTooltipView>();
+        if (tooltipView == null)
+        {
+            tooltipView = gameObject.AddComponent<TacticsAbilityTooltipView>();
         }
 
         sharedFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
@@ -278,6 +288,10 @@ public class TacticsActionMenuView : MonoBehaviour
         {
             RebuildAbilityEntries();
         }
+        else
+        {
+            tooltipView?.Hide();
+        }
     }
 
     private void HandleEndTurnClicked()
@@ -406,9 +420,17 @@ public class TacticsActionMenuView : MonoBehaviour
         slidingAreaRect.offsetMax = new Vector2(-2f, -2f);
 
         GameObject handleObject = CreateUiObject("Handle", handleSlideArea.transform);
+        RectTransform handleRect = handleObject.GetComponent<RectTransform>();
+        handleRect.anchorMin = new Vector2(0f, 0f);
+        handleRect.anchorMax = new Vector2(1f, 0f);
+        handleRect.pivot = new Vector2(0.5f, 0f);
+        handleRect.sizeDelta = new Vector2(0f, 48f);
+        handleRect.anchoredPosition = Vector2.zero;
+
         Image handleImage = handleObject.AddComponent<Image>();
         handleImage.color = accentColor;
-        scrollbar.handleRect = handleObject.GetComponent<RectTransform>();
+        scrollbar.handleRect = handleRect;
+        scrollbar.targetGraphic = handleImage;
 
         scrollRect.verticalScrollbar = scrollbar;
         scrollRect.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.AutoHideAndExpandViewport;
@@ -467,8 +489,8 @@ public class TacticsActionMenuView : MonoBehaviour
     {
         GameObject entryRoot = CreateUiObject($"AbilityEntry_{index}", abilityContentRoot);
         LayoutElement layoutElement = entryRoot.AddComponent<LayoutElement>();
-        layoutElement.preferredHeight = 68f;
-        layoutElement.minHeight = 68f;
+        layoutElement.preferredHeight = 58f;
+        layoutElement.minHeight = 58f;
 
         Image entryImage = entryRoot.AddComponent<Image>();
         entryImage.color = buttonColor;
@@ -489,13 +511,15 @@ public class TacticsActionMenuView : MonoBehaviour
         entryOutline.effectColor = panelBorderColor;
         entryOutline.effectDistance = new Vector2(1f, -1f);
 
+        TacticsAbilityTooltipTrigger tooltipTrigger = entryRoot.AddComponent<TacticsAbilityTooltipTrigger>();
+
         Text nameText = CreateText("Name", entryRoot.transform, 18, FontStyle.Bold, primaryTextColor);
         RectTransform nameRect = nameText.rectTransform;
         nameRect.anchorMin = new Vector2(0f, 1f);
         nameRect.anchorMax = new Vector2(1f, 1f);
         nameRect.pivot = new Vector2(0.5f, 1f);
-        nameRect.offsetMin = new Vector2(14f, -30f);
-        nameRect.offsetMax = new Vector2(-14f, -6f);
+        nameRect.offsetMin = new Vector2(14f, -28f);
+        nameRect.offsetMax = new Vector2(-14f, -4f);
         nameText.alignment = TextAnchor.UpperLeft;
 
         Text detailText = CreateText("Detail", entryRoot.transform, 13, FontStyle.Normal, secondaryTextColor);
@@ -503,19 +527,19 @@ public class TacticsActionMenuView : MonoBehaviour
         detailRect.anchorMin = new Vector2(0f, 0f);
         detailRect.anchorMax = new Vector2(1f, 1f);
         detailRect.offsetMin = new Vector2(14f, 8f);
-        detailRect.offsetMax = new Vector2(-14f, -32f);
+        detailRect.offsetMax = new Vector2(-14f, -28f);
         detailText.alignment = TextAnchor.LowerLeft;
-        detailText.horizontalOverflow = HorizontalWrapMode.Wrap;
+        detailText.horizontalOverflow = HorizontalWrapMode.Overflow;
         detailText.verticalOverflow = VerticalWrapMode.Truncate;
 
-        return new AbilityEntryWidgets(entryRoot, entryButton, entryImage, nameText, detailText);
+        return new AbilityEntryWidgets(entryRoot, entryButton, entryImage, nameText, detailText, tooltipTrigger);
     }
 
     private void ApplyAbilityEntry(AbilityEntryWidgets widgets, TacticsActionMenuAbilityOption option)
     {
         TacticsAbilityDefinition ability = option.Ability;
         widgets.Name.text = ability != null ? ability.DisplayName.ToUpperInvariant() : "ABILITY";
-        widgets.Detail.text = BuildAbilityDetailText(ability, option.StatusText);
+        widgets.Detail.text = BuildAbilitySummaryText(ability);
         widgets.Button.interactable = option.IsInteractable;
 
         Color backgroundColor = option.IsSelected ? selectedAbilityColor : buttonColor;
@@ -524,60 +548,25 @@ public class TacticsActionMenuView : MonoBehaviour
         widgets.Detail.color = option.IsInteractable ? secondaryTextColor : disabledTextColor;
 
         widgets.Button.onClick.RemoveAllListeners();
+        widgets.TooltipTrigger.Initialize(null, null, null);
         if (ability != null)
         {
             widgets.Button.onClick.AddListener(() => HandleAbilityEntryClicked(ability));
+            widgets.TooltipTrigger.Initialize(
+                eventData => HandleAbilityPointerEnter(ability, option.StatusText, eventData),
+                _ => tooltipView?.Hide(),
+                eventData => HandleAbilityPointerMove(eventData));
         }
     }
 
-    private string BuildAbilityDetailText(TacticsAbilityDefinition ability, string statusText)
+    private static string BuildAbilitySummaryText(TacticsAbilityDefinition ability)
     {
         if (ability == null)
         {
             return "No data";
         }
 
-        string description = string.IsNullOrWhiteSpace(ability.Description)
-            ? "No description."
-            : ability.Description.Trim();
-
-        string costLabel = GetCostLabel(ability);
-        string availability = string.IsNullOrWhiteSpace(statusText) ? "Ready" : statusText.Trim();
-        return $"{GetRangeLabel(ability)}  |  {costLabel}  |  {availability}\n{description}";
-    }
-
-    private static string GetRangeLabel(TacticsAbilityDefinition ability)
-    {
-        if (ability == null)
-        {
-            return "RANGE ?";
-        }
-
-        return ability.RangeType switch
-        {
-            TacticsAbilityRangeType.Melee => "MELEE 1",
-            TacticsAbilityRangeType.Ranged => $"RANGED {ability.Range}",
-            TacticsAbilityRangeType.AbsoluteRanged => $"ABSOLUTE {ability.Range}",
-            TacticsAbilityRangeType.SurroundingAoE => $"SURROUND {ability.AreaOfEffectSize}x{ability.AreaOfEffectSize}",
-            TacticsAbilityRangeType.RangedAoE => $"AOE {ability.Range} / {ability.AreaOfEffectSize}x{ability.AreaOfEffectSize}",
-            TacticsAbilityRangeType.AbsoluteAoE => $"ABS AOE {ability.Range} / {ability.AreaOfEffectSize}x{ability.AreaOfEffectSize}",
-            _ => $"RANGE {ability.Range}"
-        };
-    }
-
-    private static string GetCostLabel(TacticsAbilityDefinition ability)
-    {
-        if (ability == null || !ability.HasResourceCost)
-        {
-            return "NO COST";
-        }
-
-        return ability.CostResourceType switch
-        {
-            TacticsAbilityResourceType.Stamina => $"ST {ability.CostAmount}",
-            TacticsAbilityResourceType.Mana => $"MP {ability.CostAmount}",
-            _ => "NO COST"
-        };
+        return $"{TacticsAbilityPreviewCalculator.BuildCostLabel(ability)}  |  {TacticsAbilityPreviewCalculator.BuildRangeLabel(ability)}";
     }
 
     private void HandleFlyoutBackgroundClicked()
@@ -589,13 +578,40 @@ public class TacticsActionMenuView : MonoBehaviour
 
         isFlyoutOpen = false;
         flyoutRoot.SetActive(false);
+        tooltipView?.Hide();
     }
 
     private void HandleAbilityEntryClicked(TacticsAbilityDefinition ability)
     {
         isFlyoutOpen = false;
         flyoutRoot.SetActive(false);
+        tooltipView?.Hide();
         AbilitySelected?.Invoke(ability);
+    }
+
+    private void HandleAbilityPointerEnter(TacticsAbilityDefinition ability, string statusText, PointerEventData eventData)
+    {
+        if (ability == null || tooltipView == null)
+        {
+            return;
+        }
+
+        Vector2 pointerPosition = eventData != null ? eventData.position : Input.mousePosition;
+        tooltipView.Show(
+            TacticsAbilityPreviewCalculator.BuildTooltipContent(displayedCharacter, ability, statusText),
+            pointerPosition,
+            rootCanvas);
+    }
+
+    private void HandleAbilityPointerMove(PointerEventData eventData)
+    {
+        if (tooltipView == null)
+        {
+            return;
+        }
+
+        Vector2 pointerPosition = eventData != null ? eventData.position : Input.mousePosition;
+        tooltipView.UpdatePosition(pointerPosition);
     }
 
     private void RefreshFlyoutPosition()
@@ -618,13 +634,15 @@ public class TacticsActionMenuView : MonoBehaviour
             Button button,
             Image background,
             Text name,
-            Text detail)
+            Text detail,
+            TacticsAbilityTooltipTrigger tooltipTrigger)
         {
             Root = root;
             Button = button;
             Background = background;
             Name = name;
             Detail = detail;
+            TooltipTrigger = tooltipTrigger;
         }
 
         public GameObject Root { get; }
@@ -632,6 +650,7 @@ public class TacticsActionMenuView : MonoBehaviour
         public Image Background { get; }
         public Text Name { get; }
         public Text Detail { get; }
+        public TacticsAbilityTooltipTrigger TooltipTrigger { get; }
     }
 }
 
