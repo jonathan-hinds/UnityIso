@@ -44,6 +44,7 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
     private bool isMatchStarting;
     private bool pendingClientPartySubmission;
     private string activeRelayJoinCode = string.Empty;
+    private TacticsMatchGenerationSettings pendingHostMatchSettings;
 
     public event Action<string> StatusChanged;
     public event Action<TacticsCoopBattleSetup> BattleSetupReady;
@@ -52,6 +53,7 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
     public bool IsOnlineSession => networkManager != null && networkManager.IsListening;
     public bool IsHostAuthority => networkManager != null && (networkManager.IsHost || networkManager.IsServer);
     public bool CanRunAutomatedTurns => !IsOnlineSession || IsHostAuthority;
+    public string ActiveRelayJoinCode => activeRelayJoinCode;
     public int LocalPartyIndex
     {
         get
@@ -85,11 +87,13 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         progressionService = service;
     }
 
-    public async Task<bool> StartHostAsync()
+    public async Task<bool> StartHostAsync(TacticsMatchGenerationSettings matchSettings)
     {
         EnsureNetworkStack();
         StopActiveSession();
         ResetSessionState();
+        pendingHostMatchSettings = matchSettings?.Clone() ?? new TacticsMatchGenerationSettings();
+        pendingHostMatchSettings.Sanitize();
         if (!await TryConfigureHostTransportAsync())
         {
             return false;
@@ -340,6 +344,7 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         isMatchStarting = false;
         pendingClientPartySubmission = false;
         activeRelayJoinCode = string.Empty;
+        pendingHostMatchSettings = null;
     }
 
     private void StopActiveSession()
@@ -708,7 +713,8 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
             hostPartyMembers = new List<TacticsCoopCharacterLoadout>(partySelectionsByClientId[hostClientId]),
             clientPartyMembers = remoteClientId != 0 && partySelectionsByClientId.TryGetValue(remoteClientId, out List<TacticsCoopCharacterLoadout> remoteParty)
                 ? new List<TacticsCoopCharacterLoadout>(remoteParty)
-                : new List<TacticsCoopCharacterLoadout>()
+                : new List<TacticsCoopCharacterLoadout>(),
+            matchSettings = pendingHostMatchSettings?.Clone()
         };
 
         isMatchStarting = true;

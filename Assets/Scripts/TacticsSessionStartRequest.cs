@@ -10,14 +10,16 @@ public enum TacticsSessionStartMode
 
 public readonly struct TacticsSessionStartRequest
 {
-    public TacticsSessionStartRequest(TacticsSessionStartMode mode, string address)
+    public TacticsSessionStartRequest(TacticsSessionStartMode mode, string address, TacticsMatchGenerationSettings matchSettings = null)
     {
         Mode = mode;
         Address = string.IsNullOrWhiteSpace(address) ? string.Empty : address.Trim();
+        MatchSettings = matchSettings?.Clone();
     }
 
     public TacticsSessionStartMode Mode { get; }
     public string Address { get; }
+    public TacticsMatchGenerationSettings MatchSettings { get; }
     public bool IsOnlineCoop => Mode is TacticsSessionStartMode.HostCoop or TacticsSessionStartMode.JoinCoop;
 }
 
@@ -26,6 +28,7 @@ public sealed class TacticsCoopBattleSetup
 {
     public List<TacticsCoopCharacterLoadout> hostPartyMembers = new();
     public List<TacticsCoopCharacterLoadout> clientPartyMembers = new();
+    public TacticsMatchGenerationSettings matchSettings;
 }
 
 [Serializable]

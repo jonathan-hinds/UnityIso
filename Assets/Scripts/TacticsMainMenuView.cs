@@ -11,6 +11,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     private const string VisualTreeResourcePath = "UI/TacticsMainMenu";
     private const string RootElementName = "main-menu-root";
     private const string MainPageName = "main-page";
+    private const string HostSetupPageName = "host-setup-page";
     private const string EditPageName = "edit-team-page";
     private const string PlayButtonName = "play-button";
     private const string HostOnlineButtonName = "host-online-button";
@@ -24,6 +25,22 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     private const string EditorBackButtonName = "editor-back-button";
     private const string EditorSaveButtonName = "editor-save-button";
     private const string EditorStatusLabelName = "editor-status-label";
+    private const string HostSetupBackButtonName = "host-setup-back-button";
+    private const string HostSetupConfirmButtonName = "host-setup-confirm-button";
+    private const string HostSetupStatusLabelName = "host-setup-status-label";
+    private const string SeedFieldName = "host-seed-field";
+    private const string WidthFieldName = "host-width-field";
+    private const string LengthFieldName = "host-length-field";
+    private const string NoiseScaleFieldName = "host-noise-scale-field";
+    private const string NoiseOctavesSliderName = "host-noise-octaves-slider";
+    private const string NoiseOctavesValueLabelName = "host-noise-octaves-value-label";
+    private const string MinElevationFieldName = "host-min-elevation-field";
+    private const string MaxElevationFieldName = "host-max-elevation-field";
+    private const string EnemyEntryContainerName = "host-enemy-entry-container";
+    private const string AddEnemyButtonName = "host-add-enemy-button";
+    private const string RelayCodeContainerName = "relay-code-container";
+    private const string RelayCodeLabelName = "relay-code-label";
+    private const string CopyRelayCodeButtonName = "copy-relay-code-button";
     private const string DragGhostName = "drag-ghost";
 
     [Header("Assets")]
@@ -37,6 +54,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     private UIDocument uiDocument;
     private VisualElement rootElement;
     private VisualElement mainPage;
+    private VisualElement hostSetupPage;
     private VisualElement editTeamPage;
     private Button playButton;
     private Button hostOnlineButton;
@@ -50,19 +68,45 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     private Button editorBackButton;
     private Button editorSaveButton;
     private Label editorStatusLabel;
+    private Button hostSetupBackButton;
+    private Button hostSetupConfirmButton;
+    private Label hostSetupStatusLabel;
+    private IntegerField seedField;
+    private IntegerField widthField;
+    private IntegerField lengthField;
+    private FloatField noiseScaleField;
+    private SliderInt noiseOctavesSlider;
+    private Label noiseOctavesValueLabel;
+    private IntegerField minElevationField;
+    private IntegerField maxElevationField;
+    private VisualElement enemyEntryContainer;
+    private Button addEnemyButton;
+    private VisualElement relayCodeContainer;
+    private Label relayCodeLabel;
+    private Button copyRelayCodeButton;
     private Label dragGhost;
 
     private ProceduralIsometricMapGenerator sourceMapGenerator;
     private TacticsPartySelectionService partySelectionService;
+    private TacticsEnemyTable enemyTable;
     private TacticsCharacterRoster roster;
     private Dictionary<string, TacticsCharacterDefinition> definitionsById = new(StringComparer.OrdinalIgnoreCase);
     private TacticsPartySelection savedSelection;
     private TacticsPartySelection workingSelection;
     private readonly List<SlotWidget> slotWidgets = new();
     private readonly List<RosterCardWidget> rosterCardWidgets = new();
+    private readonly List<HostEnemyEntryWidget> hostEnemyEntryWidgets = new();
+    private readonly List<EnemyCatalogOption> enemyCatalogOptions = new();
     private readonly List<TacticsCharacterCardPreview> previews = new();
+    private TacticsMatchGenerationSettings workingMatchSettings;
     private bool isEditPageVisible;
+    private bool isHostSetupPageVisible;
+    private bool isHostSessionStarted;
+    private bool suppressHostFieldCallbacks;
+    private bool hostFieldCallbacksRegistered;
+    private bool isMenuInteractable = true;
     private bool isDragging;
+    private string hostRelayJoinCode = string.Empty;
     private string dragCharacterId = string.Empty;
     private int dragSourceSlotIndex = -1;
     private int previewCounter;
@@ -105,15 +149,18 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         }
     }
 
-    public void AssignDependencies(ProceduralIsometricMapGenerator mapGenerator, TacticsPartySelectionService selectionService)
+    public void AssignDependencies(ProceduralIsometricMapGenerator mapGenerator, TacticsPartySelectionService selectionService, TacticsEnemyTable availableEnemyTable)
     {
         EnsurePreviewSettingsInitialized();
         sourceMapGenerator = mapGenerator;
         partySelectionService = selectionService ?? new TacticsPartySelectionService();
+        enemyTable = availableEnemyTable;
         roster = partySelectionService.LoadRoster();
         definitionsById = roster != null ? roster.BuildLookupById() : new Dictionary<string, TacticsCharacterDefinition>(StringComparer.OrdinalIgnoreCase);
         savedSelection = partySelectionService.LoadSelection();
         workingSelection = savedSelection;
+        BuildEnemyCatalog();
+        ResetHostSetupState();
         RebuildEditor();
         RefreshAllUi();
     }
@@ -147,6 +194,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     public void SetInteractable(bool interactable)
     {
         CacheElements();
+        isMenuInteractable = interactable;
         playButton?.SetEnabled(interactable);
         hostOnlineButton?.SetEnabled(interactable);
         joinOnlineButton?.SetEnabled(interactable);
@@ -154,20 +202,23 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         editTeamButton?.SetEnabled(interactable);
         editorBackButton?.SetEnabled(interactable);
         editorSaveButton?.SetEnabled(interactable && CanSaveWorkingSelection());
+        RefreshHostSetupUi();
     }
 
     public void SetStatusText(string text)
     {
         CacheElements();
-        if (statusLabel == null)
-        {
-            return;
-        }
+        SetLabelText(statusLabel, text);
+        SetLabelText(hostSetupStatusLabel, text);
+    }
 
-        statusLabel.text = text ?? string.Empty;
-        statusLabel.style.display = string.IsNullOrWhiteSpace(statusLabel.text)
-            ? DisplayStyle.None
-            : DisplayStyle.Flex;
+    public void HandleHostStarted(string relayJoinCode)
+    {
+        hostRelayJoinCode = string.IsNullOrWhiteSpace(relayJoinCode)
+            ? string.Empty
+            : relayJoinCode.Trim().ToUpperInvariant();
+        isHostSessionStarted = !string.IsNullOrWhiteSpace(hostRelayJoinCode);
+        RefreshHostSetupUi();
     }
 
     private void ResolveAssets()
@@ -203,6 +254,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
 
         rootElement = uiDocument.rootVisualElement.Q<VisualElement>(RootElementName) ?? uiDocument.rootVisualElement;
         mainPage = rootElement.Q<VisualElement>(MainPageName);
+        hostSetupPage = rootElement.Q<VisualElement>(HostSetupPageName);
         editTeamPage = rootElement.Q<VisualElement>(EditPageName);
         playButton = rootElement.Q<Button>(PlayButtonName);
         hostOnlineButton = rootElement.Q<Button>(HostOnlineButtonName);
@@ -216,6 +268,22 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         editorBackButton = rootElement.Q<Button>(EditorBackButtonName);
         editorSaveButton = rootElement.Q<Button>(EditorSaveButtonName);
         editorStatusLabel = rootElement.Q<Label>(EditorStatusLabelName);
+        hostSetupBackButton = rootElement.Q<Button>(HostSetupBackButtonName);
+        hostSetupConfirmButton = rootElement.Q<Button>(HostSetupConfirmButtonName);
+        hostSetupStatusLabel = rootElement.Q<Label>(HostSetupStatusLabelName);
+        seedField = rootElement.Q<IntegerField>(SeedFieldName);
+        widthField = rootElement.Q<IntegerField>(WidthFieldName);
+        lengthField = rootElement.Q<IntegerField>(LengthFieldName);
+        noiseScaleField = rootElement.Q<FloatField>(NoiseScaleFieldName);
+        noiseOctavesSlider = rootElement.Q<SliderInt>(NoiseOctavesSliderName);
+        noiseOctavesValueLabel = rootElement.Q<Label>(NoiseOctavesValueLabelName);
+        minElevationField = rootElement.Q<IntegerField>(MinElevationFieldName);
+        maxElevationField = rootElement.Q<IntegerField>(MaxElevationFieldName);
+        enemyEntryContainer = rootElement.Q<VisualElement>(EnemyEntryContainerName);
+        addEnemyButton = rootElement.Q<Button>(AddEnemyButtonName);
+        relayCodeContainer = rootElement.Q<VisualElement>(RelayCodeContainerName);
+        relayCodeLabel = rootElement.Q<Label>(RelayCodeLabelName);
+        copyRelayCodeButton = rootElement.Q<Button>(CopyRelayCodeButtonName);
         dragGhost = rootElement.Q<Label>(DragGhostName);
     }
 
@@ -256,6 +324,140 @@ public sealed class TacticsMainMenuView : MonoBehaviour
             editorSaveButton.clicked -= HandleEditorSaveButtonClicked;
             editorSaveButton.clicked += HandleEditorSaveButtonClicked;
         }
+
+        if (hostSetupBackButton != null)
+        {
+            hostSetupBackButton.clicked -= HandleHostSetupBackButtonClicked;
+            hostSetupBackButton.clicked += HandleHostSetupBackButtonClicked;
+        }
+
+        if (hostSetupConfirmButton != null)
+        {
+            hostSetupConfirmButton.clicked -= HandleHostSetupConfirmButtonClicked;
+            hostSetupConfirmButton.clicked += HandleHostSetupConfirmButtonClicked;
+        }
+
+        if (addEnemyButton != null)
+        {
+            addEnemyButton.clicked -= HandleAddEnemyButtonClicked;
+            addEnemyButton.clicked += HandleAddEnemyButtonClicked;
+        }
+
+        if (copyRelayCodeButton != null)
+        {
+            copyRelayCodeButton.clicked -= HandleCopyRelayCodeButtonClicked;
+            copyRelayCodeButton.clicked += HandleCopyRelayCodeButtonClicked;
+        }
+
+        RegisterHostFieldCallbacks();
+    }
+
+    private void RegisterHostFieldCallbacks()
+    {
+        if (hostFieldCallbacksRegistered)
+        {
+            return;
+        }
+
+        hostFieldCallbacksRegistered = true;
+
+        if (seedField != null)
+        {
+            seedField.RegisterValueChangedCallback(evt =>
+            {
+                if (suppressHostFieldCallbacks || workingMatchSettings == null)
+                {
+                    return;
+                }
+
+                workingMatchSettings.seed = evt.newValue;
+                RefreshHostSetupUi();
+            });
+        }
+
+        if (widthField != null)
+        {
+            widthField.RegisterValueChangedCallback(evt =>
+            {
+                if (suppressHostFieldCallbacks || workingMatchSettings == null)
+                {
+                    return;
+                }
+
+                workingMatchSettings.width = evt.newValue;
+                RefreshHostSetupUi();
+            });
+        }
+
+        if (lengthField != null)
+        {
+            lengthField.RegisterValueChangedCallback(evt =>
+            {
+                if (suppressHostFieldCallbacks || workingMatchSettings == null)
+                {
+                    return;
+                }
+
+                workingMatchSettings.length = evt.newValue;
+                RefreshHostSetupUi();
+            });
+        }
+
+        if (noiseScaleField != null)
+        {
+            noiseScaleField.RegisterValueChangedCallback(evt =>
+            {
+                if (suppressHostFieldCallbacks || workingMatchSettings == null)
+                {
+                    return;
+                }
+
+                workingMatchSettings.noiseScale = evt.newValue;
+                RefreshHostSetupUi();
+            });
+        }
+
+        if (noiseOctavesSlider != null)
+        {
+            noiseOctavesSlider.RegisterValueChangedCallback(evt =>
+            {
+                if (suppressHostFieldCallbacks || workingMatchSettings == null)
+                {
+                    return;
+                }
+
+                workingMatchSettings.noiseOctaves = evt.newValue;
+                RefreshHostSetupUi();
+            });
+        }
+
+        if (minElevationField != null)
+        {
+            minElevationField.RegisterValueChangedCallback(evt =>
+            {
+                if (suppressHostFieldCallbacks || workingMatchSettings == null)
+                {
+                    return;
+                }
+
+                workingMatchSettings.minElevation = evt.newValue;
+                RefreshHostSetupUi();
+            });
+        }
+
+        if (maxElevationField != null)
+        {
+            maxElevationField.RegisterValueChangedCallback(evt =>
+            {
+                if (suppressHostFieldCallbacks || workingMatchSettings == null)
+                {
+                    return;
+                }
+
+                workingMatchSettings.maxElevation = evt.newValue;
+                RefreshHostSetupUi();
+            });
+        }
     }
 
     private void UnregisterCallbacks()
@@ -288,6 +490,26 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         if (editorSaveButton != null)
         {
             editorSaveButton.clicked -= HandleEditorSaveButtonClicked;
+        }
+
+        if (hostSetupBackButton != null)
+        {
+            hostSetupBackButton.clicked -= HandleHostSetupBackButtonClicked;
+        }
+
+        if (hostSetupConfirmButton != null)
+        {
+            hostSetupConfirmButton.clicked -= HandleHostSetupConfirmButtonClicked;
+        }
+
+        if (addEnemyButton != null)
+        {
+            addEnemyButton.clicked -= HandleAddEnemyButtonClicked;
+        }
+
+        if (copyRelayCodeButton != null)
+        {
+            copyRelayCodeButton.clicked -= HandleCopyRelayCodeButtonClicked;
         }
     }
 
@@ -329,15 +551,22 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     {
         savedSelection ??= partySelectionService != null ? partySelectionService.LoadSelection() : TacticsPartySelection.CreateDefault(roster);
         workingSelection ??= savedSelection;
+        workingMatchSettings ??= sourceMapGenerator != null ? sourceMapGenerator.CreateMatchGenerationSettings() : new TacticsMatchGenerationSettings();
 
         RefreshTeamSummary();
         RefreshSlotWidgets();
         RefreshRosterWidgets();
         RefreshEditorStatus();
+        RefreshHostSetupUi();
 
         if (mainPage != null)
         {
-            mainPage.style.display = isEditPageVisible ? DisplayStyle.None : DisplayStyle.Flex;
+            mainPage.style.display = isEditPageVisible || isHostSetupPageVisible ? DisplayStyle.None : DisplayStyle.Flex;
+        }
+
+        if (hostSetupPage != null)
+        {
+            hostSetupPage.style.display = isHostSetupPageVisible ? DisplayStyle.Flex : DisplayStyle.None;
         }
 
         if (editTeamPage != null)
@@ -722,6 +951,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     private void ShowMainPage()
     {
         isEditPageVisible = false;
+        isHostSetupPageVisible = false;
         RefreshAllUi();
     }
 
@@ -729,6 +959,15 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     {
         workingSelection = savedSelection ?? TacticsPartySelection.CreateDefault(roster);
         isEditPageVisible = true;
+        isHostSetupPageVisible = false;
+        RefreshAllUi();
+    }
+
+    private void ShowHostSetupPage()
+    {
+        ResetHostSetupState();
+        isEditPageVisible = false;
+        isHostSetupPageVisible = true;
         RefreshAllUi();
     }
 
@@ -741,9 +980,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
 
     private void HandleHostOnlineButtonClicked()
     {
-        SessionStartRequested?.Invoke(new TacticsSessionStartRequest(
-            TacticsSessionStartMode.HostCoop,
-            string.Empty));
+        ShowHostSetupPage();
     }
 
     private void HandleJoinOnlineButtonClicked()
@@ -775,6 +1012,391 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         partySelectionService?.SaveSelection(savedSelection);
         SetStatusText("Team formation saved.");
         ShowMainPage();
+    }
+
+    private void HandleHostSetupBackButtonClicked()
+    {
+        ShowMainPage();
+    }
+
+    private void HandleHostSetupConfirmButtonClicked()
+    {
+        if (!TryBuildHostRequest(out TacticsSessionStartRequest request, out string validationMessage))
+        {
+            SetStatusText(validationMessage);
+            RefreshHostSetupUi();
+            return;
+        }
+
+        SessionStartRequested?.Invoke(request);
+    }
+
+    private void HandleAddEnemyButtonClicked()
+    {
+        if (workingMatchSettings == null || !CanAddMoreEnemies())
+        {
+            return;
+        }
+
+        string nextEnemyId = GetFirstUnusedEnemyId();
+        if (string.IsNullOrWhiteSpace(nextEnemyId))
+        {
+            SetStatusText("All enemy types are already listed.");
+            RefreshHostSetupUi();
+            return;
+        }
+
+        workingMatchSettings.enemies.Add(new TacticsMatchEnemySettings
+        {
+            enemyId = nextEnemyId,
+            count = 1
+        });
+        RefreshHostSetupUi();
+    }
+
+    private void HandleCopyRelayCodeButtonClicked()
+    {
+        if (string.IsNullOrWhiteSpace(hostRelayJoinCode))
+        {
+            return;
+        }
+
+        GUIUtility.systemCopyBuffer = hostRelayJoinCode;
+        SetStatusText($"Relay code {hostRelayJoinCode} copied to clipboard.");
+        RefreshHostSetupUi();
+    }
+
+    private void BuildEnemyCatalog()
+    {
+        enemyCatalogOptions.Clear();
+
+        IReadOnlyList<TacticsEnemyTableEntry> enemyEntries = enemyTable?.Enemies ?? Array.Empty<TacticsEnemyTableEntry>();
+        for (int i = 0; i < enemyEntries.Count; i++)
+        {
+            TacticsEnemyTableEntry entry = enemyEntries[i];
+            if (entry == null || string.IsNullOrWhiteSpace(entry.EnemyId))
+            {
+                continue;
+            }
+
+            enemyCatalogOptions.Add(new EnemyCatalogOption(entry.EnemyId, entry.DisplayName));
+        }
+    }
+
+    private void ResetHostSetupState()
+    {
+        workingMatchSettings = sourceMapGenerator != null
+            ? sourceMapGenerator.CreateMatchGenerationSettings()
+            : new TacticsMatchGenerationSettings();
+        workingMatchSettings.Sanitize();
+        hostRelayJoinCode = string.Empty;
+        isHostSessionStarted = false;
+    }
+
+    private void RefreshHostSetupUi()
+    {
+        CacheElements();
+        if (workingMatchSettings == null)
+        {
+            return;
+        }
+
+        NormalizeEditableMatchSettings(workingMatchSettings);
+        suppressHostFieldCallbacks = true;
+
+        seedField?.SetValueWithoutNotify(workingMatchSettings.seed);
+        widthField?.SetValueWithoutNotify(workingMatchSettings.width);
+        lengthField?.SetValueWithoutNotify(workingMatchSettings.length);
+        noiseScaleField?.SetValueWithoutNotify(workingMatchSettings.noiseScale);
+        noiseOctavesSlider?.SetValueWithoutNotify(workingMatchSettings.noiseOctaves);
+        minElevationField?.SetValueWithoutNotify(workingMatchSettings.minElevation);
+        maxElevationField?.SetValueWithoutNotify(workingMatchSettings.maxElevation);
+
+        if (noiseOctavesValueLabel != null)
+        {
+            noiseOctavesValueLabel.text = workingMatchSettings.noiseOctaves.ToString();
+        }
+
+        suppressHostFieldCallbacks = false;
+
+        RebuildHostEnemyEntries();
+        if (relayCodeLabel != null)
+        {
+            relayCodeLabel.text = string.IsNullOrWhiteSpace(hostRelayJoinCode) ? "---- ----" : hostRelayJoinCode;
+        }
+
+        if (relayCodeContainer != null)
+        {
+            relayCodeContainer.style.display = isHostSessionStarted ? DisplayStyle.Flex : DisplayStyle.None;
+        }
+
+        bool canHost = ValidateHostMatchSettings(workingMatchSettings, out string validationMessage);
+        if (!isHostSessionStarted)
+        {
+            SetLabelText(hostSetupStatusLabel, validationMessage);
+        }
+
+        hostSetupBackButton?.SetEnabled(isMenuInteractable && !isHostSessionStarted);
+        seedField?.SetEnabled(isMenuInteractable && !isHostSessionStarted);
+        widthField?.SetEnabled(isMenuInteractable && !isHostSessionStarted);
+        lengthField?.SetEnabled(isMenuInteractable && !isHostSessionStarted);
+        noiseScaleField?.SetEnabled(isMenuInteractable && !isHostSessionStarted);
+        noiseOctavesSlider?.SetEnabled(isMenuInteractable && !isHostSessionStarted);
+        minElevationField?.SetEnabled(isMenuInteractable && !isHostSessionStarted);
+        maxElevationField?.SetEnabled(isMenuInteractable && !isHostSessionStarted);
+        hostSetupConfirmButton?.SetEnabled(isMenuInteractable && !isHostSessionStarted && canHost);
+        addEnemyButton?.SetEnabled(isMenuInteractable && !isHostSessionStarted && CanAddMoreEnemies());
+        copyRelayCodeButton?.SetEnabled(isMenuInteractable && isHostSessionStarted && !string.IsNullOrWhiteSpace(hostRelayJoinCode));
+    }
+
+    private void RebuildHostEnemyEntries()
+    {
+        if (enemyEntryContainer == null)
+        {
+            return;
+        }
+
+        hostEnemyEntryWidgets.Clear();
+        enemyEntryContainer.Clear();
+
+        for (int i = 0; i < workingMatchSettings.enemies.Count; i++)
+        {
+            TacticsMatchEnemySettings enemySettings = workingMatchSettings.enemies[i];
+            if (enemySettings == null)
+            {
+                continue;
+            }
+
+            hostEnemyEntryWidgets.Add(CreateHostEnemyEntryWidget(i, enemySettings));
+        }
+    }
+
+    private HostEnemyEntryWidget CreateHostEnemyEntryWidget(int index, TacticsMatchEnemySettings enemySettings)
+    {
+        VisualElement row = new VisualElement();
+        row.AddToClassList("host-enemy-row");
+
+        List<string> enemyDisplayNames = GetEnemyDisplayNames();
+        DropdownField dropdown = new DropdownField("Enemy", enemyDisplayNames, 0);
+        dropdown.AddToClassList("host-enemy-dropdown");
+        dropdown.SetValueWithoutNotify(GetEnemyDisplayName(enemySettings.enemyId));
+        dropdown.SetEnabled(isMenuInteractable && !isHostSessionStarted);
+        dropdown.RegisterValueChangedCallback(evt =>
+        {
+            if (suppressHostFieldCallbacks || index < 0 || index >= workingMatchSettings.enemies.Count)
+            {
+                return;
+            }
+
+            workingMatchSettings.enemies[index].enemyId = GetEnemyIdFromDisplayName(evt.newValue);
+            RefreshHostSetupUi();
+        });
+
+        IntegerField countField = new IntegerField("Count");
+        countField.AddToClassList("host-enemy-count-field");
+        countField.SetValueWithoutNotify(enemySettings.count);
+        countField.SetEnabled(isMenuInteractable && !isHostSessionStarted);
+        countField.RegisterValueChangedCallback(evt =>
+        {
+            if (suppressHostFieldCallbacks || index < 0 || index >= workingMatchSettings.enemies.Count)
+            {
+                return;
+            }
+
+            workingMatchSettings.enemies[index].count = evt.newValue;
+            RefreshHostSetupUi();
+        });
+
+        Button removeButton = new Button(() =>
+        {
+            if (index < 0 || index >= workingMatchSettings.enemies.Count)
+            {
+                return;
+            }
+
+            workingMatchSettings.enemies.RemoveAt(index);
+            RefreshHostSetupUi();
+        })
+        {
+            text = "Remove"
+        };
+        removeButton.AddToClassList("host-enemy-remove-button");
+        removeButton.SetEnabled(isMenuInteractable && !isHostSessionStarted);
+
+        row.Add(dropdown);
+        row.Add(countField);
+        row.Add(removeButton);
+        enemyEntryContainer.Add(row);
+
+        return new HostEnemyEntryWidget
+        {
+            Root = row,
+            EnemyDropdown = dropdown,
+            CountField = countField,
+            RemoveButton = removeButton
+        };
+    }
+
+    private bool TryBuildHostRequest(out TacticsSessionStartRequest request, out string validationMessage)
+    {
+        request = default;
+        if (workingMatchSettings == null)
+        {
+            validationMessage = "Match settings are unavailable.";
+            return false;
+        }
+
+        TacticsMatchGenerationSettings settings = workingMatchSettings.Clone();
+        NormalizeEditableMatchSettings(settings);
+        if (!ValidateHostMatchSettings(settings, out validationMessage))
+        {
+            return false;
+        }
+
+        settings.Sanitize();
+
+        request = new TacticsSessionStartRequest(TacticsSessionStartMode.HostCoop, string.Empty, settings);
+        return true;
+    }
+
+    private bool ValidateHostMatchSettings(TacticsMatchGenerationSettings settings, out string message)
+    {
+        message = "Tune the battlefield, then host your co-op match.";
+        if (settings == null)
+        {
+            message = "Match settings are unavailable.";
+            return false;
+        }
+
+        HashSet<string> uniqueEnemyIds = new(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < settings.enemies.Count; i++)
+        {
+            TacticsMatchEnemySettings entry = settings.enemies[i];
+            if (entry == null || !entry.IsValid)
+            {
+                message = "Every enemy entry needs a valid enemy type and count.";
+                return false;
+            }
+
+            if (!uniqueEnemyIds.Add(entry.enemyId))
+            {
+                message = "Each enemy row must use a different enemy type.";
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private bool CanAddMoreEnemies()
+    {
+        return workingMatchSettings != null &&
+               enemyCatalogOptions.Count > 0 &&
+               workingMatchSettings.enemies.Count < TacticsMatchGenerationSettings.MaxEnemyKinds &&
+               workingMatchSettings.enemies.Count < enemyCatalogOptions.Count;
+    }
+
+    private List<string> GetEnemyDisplayNames()
+    {
+        List<string> names = new(enemyCatalogOptions.Count);
+        for (int i = 0; i < enemyCatalogOptions.Count; i++)
+        {
+            names.Add(enemyCatalogOptions[i].DisplayName);
+        }
+
+        return names;
+    }
+
+    private string GetEnemyDisplayName(string enemyId)
+    {
+        for (int i = 0; i < enemyCatalogOptions.Count; i++)
+        {
+            if (string.Equals(enemyCatalogOptions[i].EnemyId, enemyId, StringComparison.OrdinalIgnoreCase))
+            {
+                return enemyCatalogOptions[i].DisplayName;
+            }
+        }
+
+        return enemyCatalogOptions.Count > 0 ? enemyCatalogOptions[0].DisplayName : string.Empty;
+    }
+
+    private string GetEnemyIdFromDisplayName(string displayName)
+    {
+        for (int i = 0; i < enemyCatalogOptions.Count; i++)
+        {
+            if (string.Equals(enemyCatalogOptions[i].DisplayName, displayName, StringComparison.OrdinalIgnoreCase))
+            {
+                return enemyCatalogOptions[i].EnemyId;
+            }
+        }
+
+        return enemyCatalogOptions.Count > 0 ? enemyCatalogOptions[0].EnemyId : string.Empty;
+    }
+
+    private string GetFirstUnusedEnemyId()
+    {
+        HashSet<string> usedEnemyIds = new(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < workingMatchSettings.enemies.Count; i++)
+        {
+            TacticsMatchEnemySettings entry = workingMatchSettings.enemies[i];
+            if (entry == null || string.IsNullOrWhiteSpace(entry.enemyId))
+            {
+                continue;
+            }
+
+            usedEnemyIds.Add(entry.enemyId);
+        }
+
+        for (int i = 0; i < enemyCatalogOptions.Count; i++)
+        {
+            if (!usedEnemyIds.Contains(enemyCatalogOptions[i].EnemyId))
+            {
+                return enemyCatalogOptions[i].EnemyId;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static void NormalizeEditableMatchSettings(TacticsMatchGenerationSettings settings)
+    {
+        if (settings == null)
+        {
+            return;
+        }
+
+        settings.width = Mathf.Max(1, settings.width);
+        settings.length = Mathf.Max(1, settings.length);
+        settings.noiseScale = Mathf.Max(0.01f, settings.noiseScale);
+        settings.noiseOctaves = Mathf.Clamp(settings.noiseOctaves, 1, 6);
+        settings.minElevation = Mathf.Max(0, settings.minElevation);
+        settings.maxElevation = Mathf.Max(settings.minElevation, settings.maxElevation);
+        settings.enemies ??= new List<TacticsMatchEnemySettings>();
+
+        for (int i = 0; i < settings.enemies.Count; i++)
+        {
+            TacticsMatchEnemySettings entry = settings.enemies[i];
+            if (entry == null)
+            {
+                continue;
+            }
+
+            entry.enemyId = string.IsNullOrWhiteSpace(entry.enemyId) ? string.Empty : entry.enemyId.Trim();
+            entry.count = Mathf.Max(1, entry.count);
+        }
+    }
+
+    private static void SetLabelText(Label label, string text)
+    {
+        if (label == null)
+        {
+            return;
+        }
+
+        label.text = text ?? string.Empty;
+        label.style.display = string.IsNullOrWhiteSpace(label.text)
+            ? DisplayStyle.None
+            : DisplayStyle.Flex;
     }
 
     private string GetJoinCode()
@@ -893,5 +1515,25 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         public Image PreviewImage;
         public Label StatusLabel;
         public TacticsCharacterCardPreview Preview;
+    }
+
+    private sealed class HostEnemyEntryWidget
+    {
+        public VisualElement Root;
+        public DropdownField EnemyDropdown;
+        public IntegerField CountField;
+        public Button RemoveButton;
+    }
+
+    private readonly struct EnemyCatalogOption
+    {
+        public EnemyCatalogOption(string enemyId, string displayName)
+        {
+            EnemyId = enemyId;
+            DisplayName = displayName;
+        }
+
+        public string EnemyId { get; }
+        public string DisplayName { get; }
     }
 }

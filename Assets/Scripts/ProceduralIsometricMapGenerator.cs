@@ -110,6 +110,70 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
     public IReadOnlyList<TacticsEnemySpawnEntry> EnemySpawnEntries => enemySpawnEntries;
     public IReadOnlyList<OcclusionVolume> OcclusionVolumes => occlusionVolumes;
 
+    public TacticsMatchGenerationSettings CreateMatchGenerationSettings()
+    {
+        TacticsMatchGenerationSettings settings = new TacticsMatchGenerationSettings
+        {
+            seed = seed,
+            width = width,
+            length = length,
+            noiseScale = noiseScale,
+            noiseOctaves = noiseOctaves,
+            minElevation = minElevation,
+            maxElevation = maxElevation,
+            enemies = new List<TacticsMatchEnemySettings>(enemySpawnEntries.Count)
+        };
+
+        for (int i = 0; i < enemySpawnEntries.Count; i++)
+        {
+            TacticsEnemySpawnEntry entry = enemySpawnEntries[i];
+            if (!entry.IsValid)
+            {
+                continue;
+            }
+
+            settings.enemies.Add(new TacticsMatchEnemySettings
+            {
+                enemyId = entry.EnemyId,
+                count = entry.Count
+            });
+        }
+
+        settings.Sanitize();
+        return settings;
+    }
+
+    public void ApplyMatchGenerationSettings(TacticsMatchGenerationSettings settings)
+    {
+        if (settings == null)
+        {
+            return;
+        }
+
+        TacticsMatchGenerationSettings sanitized = settings.Clone();
+        sanitized.Sanitize();
+
+        seed = sanitized.seed;
+        width = sanitized.width;
+        length = sanitized.length;
+        noiseScale = sanitized.noiseScale;
+        noiseOctaves = sanitized.noiseOctaves;
+        minElevation = sanitized.minElevation;
+        maxElevation = sanitized.maxElevation;
+
+        enemySpawnEntries = new List<TacticsEnemySpawnEntry>(sanitized.enemies.Count);
+        for (int i = 0; i < sanitized.enemies.Count; i++)
+        {
+            TacticsMatchEnemySettings enemy = sanitized.enemies[i];
+            if (enemy == null || !enemy.IsValid)
+            {
+                continue;
+            }
+
+            enemySpawnEntries.Add(new TacticsEnemySpawnEntry(enemy.enemyId, enemy.count));
+        }
+    }
+
     public TileVisualProfile CreateTileVisualProfile()
     {
         return new TileVisualProfile

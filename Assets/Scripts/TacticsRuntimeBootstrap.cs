@@ -30,6 +30,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
     private TacticsPartySelectionService partySelectionService;
     private TacticsCharacterProgressionService progressionService;
     private TacticsCoopSessionCoordinator coopSessionCoordinator;
+    private TacticsEnemyTable enemyTable;
     private TacticsCoopBattleSetup pendingCoopBattleSetup;
     private bool sceneSetupComplete;
     private bool gameplayStartInProgress;
@@ -48,6 +49,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
         partySelectionService = new TacticsPartySelectionService();
         progressionService = new TacticsCharacterProgressionService();
+        enemyTable = Resources.Load<TacticsEnemyTable>(EnemyTableResourcePath);
         coopSessionCoordinator = EnsureCoopSessionCoordinator();
         coopSessionCoordinator.AssignPartySelectionService(partySelectionService);
         coopSessionCoordinator.AssignCharacterProgressionService(progressionService);
@@ -58,7 +60,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         coopSessionCoordinator.SessionEnded -= HandleSessionEnded;
         coopSessionCoordinator.SessionEnded += HandleSessionEnded;
         mainMenuView = EnsureMainMenuView();
-        mainMenuView.AssignDependencies(mapGenerator, partySelectionService);
+        mainMenuView.AssignDependencies(mapGenerator, partySelectionService, enemyTable);
         ShowMainMenu();
     }
 
@@ -123,9 +125,14 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
                 break;
 
             case TacticsSessionStartMode.HostCoop:
-                if (!await coopSessionCoordinator.StartHostAsync())
+                if (!await coopSessionCoordinator.StartHostAsync(request.MatchSettings))
                 {
                     mainMenuView.SetInteractable(true);
+                }
+                else
+                {
+                    mainMenuView.SetInteractable(true);
+                    mainMenuView.HandleHostStarted(coopSessionCoordinator.ActiveRelayJoinCode);
                 }
 
                 break;
@@ -189,6 +196,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
     private void HandleCoopBattleSetupReady(TacticsCoopBattleSetup battleSetup)
     {
         pendingCoopBattleSetup = battleSetup;
+        mapGenerator?.ApplyMatchGenerationSettings(battleSetup?.matchSettings);
         BeginGameplayStartup("Synchronizing co-op battle...");
     }
 
@@ -672,7 +680,6 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         }
 
         IReadOnlyList<TacticsEnemySpawnEntry> enemySpawnEntries = mapGenerator.EnemySpawnEntries;
-        TacticsEnemyTable enemyTable = Resources.Load<TacticsEnemyTable>(EnemyTableResourcePath);
         for (int i = 0; i < enemySpawnEntries.Count; i++)
         {
             TacticsEnemySpawnEntry spawnEntry = enemySpawnEntries[i];

@@ -27,6 +27,67 @@
                 </ui:VisualElement>
             </ui:VisualElement>
 
+            <ui:VisualElement name="host-setup-page" class="menu-shell host-setup-shell" style="display: none;">
+                <ui:VisualElement class="host-setup-header">
+                    <ui:VisualElement name="relay-code-container" class="relay-code-header" style="display: none;">
+                        <ui:Label class="relay-code-header-caption" text="Relay Code" />
+                        <ui:Label name="relay-code-label" class="relay-code-header-label" text="---- ----" />
+                        <ui:Button name="copy-relay-code-button" class="menu-button menu-button--secondary menu-button--compact relay-copy-button" text="Copy" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="editor-button-row">
+                        <ui:Button name="host-setup-back-button" class="menu-button menu-button--secondary menu-button--compact editor-button" text="Back" />
+                        <ui:Button name="host-setup-confirm-button" class="menu-button menu-button--primary menu-button--compact editor-button editor-button-save" text="Host Match" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <ui:VisualElement class="host-setup-content">
+                    <ui:VisualElement class="host-intro-panel">
+                        <ui:Label class="section-label" text="Co-op Match Configuration" />
+                        <ui:Label class="section-copy" text="Shape the battlefield before the relay opens. Every field defaults to the current procedural map generator so the host can quickly tweak, lock in, and publish a single authoritative battle setup." />
+                    </ui:VisualElement>
+
+                    <ui:VisualElement class="host-grid">
+                        <ui:VisualElement class="editor-section host-section host-section--half host-section--left">
+                            <ui:Label class="section-label" text="General" />
+                            <ui:VisualElement class="host-field-row">
+                                <ui:IntegerField name="host-seed-field" class="host-number-field" label="Seed" value="1222" />
+                                <ui:IntegerField name="host-width-field" class="host-number-field" label="Width" value="15" />
+                                <ui:IntegerField name="host-length-field" class="host-number-field" label="Length" value="10" />
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+
+                        <ui:VisualElement class="editor-section host-section host-section--half">
+                            <ui:Label class="section-label" text="Elevation" />
+                            <ui:VisualElement class="host-field-stack">
+                                <ui:FloatField name="host-noise-scale-field" class="host-number-field host-number-field--wide" label="Noise Scale" value="5" />
+                                <ui:VisualElement class="host-slider-row">
+                                    <ui:Label class="host-slider-label" text="Noise Octaves" />
+                                    <ui:SliderInt name="host-noise-octaves-slider" class="host-slider" low-value="1" high-value="6" value="3" />
+                                    <ui:Label name="host-noise-octaves-value-label" class="host-slider-value" text="3" />
+                                </ui:VisualElement>
+                                <ui:VisualElement class="host-field-row">
+                                    <ui:IntegerField name="host-min-elevation-field" class="host-number-field" label="Min Elevation" value="1" />
+                                    <ui:IntegerField name="host-max-elevation-field" class="host-number-field" label="Max Elevation" value="8" />
+                                </ui:VisualElement>
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+
+                        <ui:VisualElement class="editor-section host-section host-section--enemies">
+                            <ui:VisualElement class="host-section-header">
+                                <ui:Label class="section-label" text="Enemies" />
+                                <ui:Button name="host-add-enemy-button" class="menu-button menu-button--secondary menu-button--compact host-add-enemy-button" text="Add Enemy" />
+                            </ui:VisualElement>
+                            <ui:Label class="section-copy" text="Add up to ten unique enemy types. Each row lets the host pick a unit from the enemy table and set how many spawn into the match." />
+                            <ui:ScrollView class="host-enemy-scroll-view" mode="Vertical">
+                                <ui:VisualElement name="host-enemy-entry-container" class="host-enemy-entry-container" />
+                            </ui:ScrollView>
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <ui:Label name="host-setup-status-label" class="editor-status-label host-setup-status-label" text="" />
+            </ui:VisualElement>
+
             <ui:VisualElement name="edit-team-page" class="menu-shell editor-shell" style="display: none;">
                 <ui:VisualElement name="editor-header" class="editor-header">
                     <ui:VisualElement class="editor-button-row">
