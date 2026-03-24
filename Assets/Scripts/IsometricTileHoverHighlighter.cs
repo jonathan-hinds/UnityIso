@@ -95,6 +95,13 @@ public class IsometricTileHoverHighlighter : MonoBehaviour
         }
 
         Vector2 screenPosition = mouse.position.ReadValue();
+        if (!IsFinite(screenPosition))
+        {
+            currentTile = null;
+            lineRenderer.enabled = false;
+            return;
+        }
+
         Vector3 worldPosition = targetCamera.ScreenToWorldPoint(new Vector3(screenPosition.x, screenPosition.y, 0f));
         Vector2 point = new Vector2(worldPosition.x, worldPosition.y);
 
@@ -180,6 +187,14 @@ public class IsometricTileHoverHighlighter : MonoBehaviour
 
         texture.Apply();
         return texture;
+    }
+
+    private static bool IsFinite(Vector2 value)
+    {
+        return !float.IsNaN(value.x) &&
+               !float.IsNaN(value.y) &&
+               !float.IsInfinity(value.x) &&
+               !float.IsInfinity(value.y);
     }
 
     private void OnDestroy()
