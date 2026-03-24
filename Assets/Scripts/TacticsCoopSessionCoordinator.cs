@@ -4,6 +4,9 @@ using Unity.Collections;
 using Unity.Netcode;
 using Unity.Netcode.Transports.UTP;
 using UnityEngine;
+#if UNITY_EDITOR
+using Unity.Burst;
+#endif
 
 [DisallowMultipleComponent]
 public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
@@ -56,6 +59,7 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         EnsureNetworkStack();
         ResetSessionState();
         ConfigureHostTransport();
+        ApplyEditorBurstWorkaround();
 
         if (!networkManager.StartHost())
         {
@@ -75,6 +79,7 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         EnsureNetworkStack();
         ResetSessionState();
         ConfigureClientTransport(address);
+        ApplyEditorBurstWorkaround();
 
         if (!networkManager.StartClient())
         {
@@ -212,7 +217,6 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         }
 
         GameObject runtimeObject = new GameObject("Tactics Coop Network Runtime");
-        runtimeObject.transform.SetParent(transform, false);
         DontDestroyOnLoad(runtimeObject);
 
         transport = runtimeObject.AddComponent<UnityTransport>();
@@ -222,6 +226,18 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
             EnableSceneManagement = false
         };
         networkManager.NetworkConfig.NetworkTransport = transport;
+    }
+
+    [System.Diagnostics.Conditional("UNITY_EDITOR")]
+    private void ApplyEditorBurstWorkaround()
+    {
+#if UNITY_EDITOR
+        if (BurstCompiler.Options.EnableBurstCompilation)
+        {
+            BurstCompiler.Options.EnableBurstCompilation = false;
+            EmitStatus("Editor multiplayer test mode: Burst disabled for transport startup stability.");
+        }
+#endif
     }
 
     private void ResetSessionState()
