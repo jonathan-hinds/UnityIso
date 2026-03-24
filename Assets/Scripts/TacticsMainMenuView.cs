@@ -15,7 +15,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     private const string PlayButtonName = "play-button";
     private const string HostOnlineButtonName = "host-online-button";
     private const string JoinOnlineButtonName = "join-online-button";
-    private const string JoinAddressFieldName = "join-address-field";
+    private const string JoinCodeFieldName = "join-address-field";
     private const string EditTeamButtonName = "edit-team-button";
     private const string StatusLabelName = "status-label";
     private const string TeamSummaryLabelName = "team-summary-label";
@@ -41,7 +41,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     private Button playButton;
     private Button hostOnlineButton;
     private Button joinOnlineButton;
-    private TextField joinAddressField;
+    private TextField joinCodeField;
     private Button editTeamButton;
     private Label statusLabel;
     private Label teamSummaryLabel;
@@ -150,7 +150,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         playButton?.SetEnabled(interactable);
         hostOnlineButton?.SetEnabled(interactable);
         joinOnlineButton?.SetEnabled(interactable);
-        joinAddressField?.SetEnabled(interactable);
+        joinCodeField?.SetEnabled(interactable);
         editTeamButton?.SetEnabled(interactable);
         editorBackButton?.SetEnabled(interactable);
         editorSaveButton?.SetEnabled(interactable && CanSaveWorkingSelection());
@@ -207,7 +207,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         playButton = rootElement.Q<Button>(PlayButtonName);
         hostOnlineButton = rootElement.Q<Button>(HostOnlineButtonName);
         joinOnlineButton = rootElement.Q<Button>(JoinOnlineButtonName);
-        joinAddressField = rootElement.Q<TextField>(JoinAddressFieldName);
+        joinCodeField = rootElement.Q<TextField>(JoinCodeFieldName);
         editTeamButton = rootElement.Q<Button>(EditTeamButtonName);
         statusLabel = rootElement.Q<Label>(StatusLabelName);
         teamSummaryLabel = rootElement.Q<Label>(TeamSummaryLabelName);
@@ -743,14 +743,14 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     {
         SessionStartRequested?.Invoke(new TacticsSessionStartRequest(
             TacticsSessionStartMode.HostCoop,
-            GetJoinAddress()));
+            string.Empty));
     }
 
     private void HandleJoinOnlineButtonClicked()
     {
         SessionStartRequested?.Invoke(new TacticsSessionStartRequest(
             TacticsSessionStartMode.JoinCoop,
-            GetJoinAddress()));
+            GetJoinCode()));
     }
 
     private void HandleEditTeamButtonClicked()
@@ -777,11 +777,11 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         ShowMainPage();
     }
 
-    private string GetJoinAddress()
+    private string GetJoinCode()
     {
-        return string.IsNullOrWhiteSpace(joinAddressField?.value)
-            ? "127.0.0.1"
-            : joinAddressField.value.Trim();
+        return string.IsNullOrWhiteSpace(joinCodeField?.value)
+            ? string.Empty
+            : joinCodeField.value.Trim().ToUpperInvariant();
     }
 
     private bool CanSaveWorkingSelection()

@@ -106,7 +106,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         SetCameraInputEnabled(false);
     }
 
-    private void HandleSessionStartRequested(TacticsSessionStartRequest request)
+    private async void HandleSessionStartRequested(TacticsSessionStartRequest request)
     {
         if (gameplayStartInProgress || sceneSetupComplete || mainMenuView == null)
         {
@@ -123,7 +123,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
                 break;
 
             case TacticsSessionStartMode.HostCoop:
-                if (!coopSessionCoordinator.StartHost(request.Address))
+                if (!await coopSessionCoordinator.StartHostAsync())
                 {
                     mainMenuView.SetInteractable(true);
                 }
@@ -131,7 +131,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
                 break;
 
             case TacticsSessionStartMode.JoinCoop:
-                if (!coopSessionCoordinator.StartClient(request.Address))
+                if (!await coopSessionCoordinator.StartClientAsync(request.Address))
                 {
                     mainMenuView.SetInteractable(true);
                 }

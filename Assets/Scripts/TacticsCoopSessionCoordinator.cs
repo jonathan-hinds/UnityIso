@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Unity.Collections;
 using Unity.Netcode;
 using Unity.Netcode.Transports.UTP;
+using Unity.Services.Relay;
+using Unity.Services.Relay.Models;
 using UnityEngine;
 #if UNITY_EDITOR
 using Unity.Burst;
@@ -11,12 +14,11 @@ using Unity.Burst;
 [DisallowMultipleComponent]
 public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
 {
-    private const string DefaultAddress = "127.0.0.1";
-    private const ushort DefaultPort = 7777;
     private const int ExpectedPlayerCount = 2;
     private const int HostPartyIndex = 0;
     private const int ClientPartyIndex = 1;
     private const NetworkDelivery NamedMessageDelivery = NetworkDelivery.ReliableFragmentedSequenced;
+    private const string RelayConnectionType = "dtls";
 
     private const string PartySelectionMessageName = "tactics.party.selection";
     private const string BattleStartMessageName = "tactics.battle.start";
@@ -41,6 +43,7 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
     private bool handlersRegistered;
     private bool isMatchStarting;
     private bool pendingClientPartySubmission;
+    private string activeRelayJoinCode = string.Empty;
 
     public event Action<string> StatusChanged;
     public event Action<TacticsCoopBattleSetup> BattleSetupReady;
@@ -82,12 +85,12 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         progressionService = service;
     }
 
-    public bool StartHost(string address)
+    public async Task<bool> StartHostAsync()
     {
         EnsureNetworkStack();
         StopActiveSession();
         ResetSessionState();
-        if (!TryConfigureHostTransport(address, out string hostAddress, out ushort port))
+        if (!await TryConfigureHostTransportAsync())
         {
             return false;
         }
@@ -96,23 +99,23 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
 
         if (!networkManager.StartHost())
         {
-            EmitStatus($"Failed to start host on {hostAddress}:{port}. Check whether another Unity session is already using that port.");
+            EmitStatus("Failed to start Relay host.");
             return false;
         }
 
         RegisterNetworkCallbacks();
         partySelectionsByClientId[networkManager.LocalClientId] = GetLocalPartyLoadout();
-        EmitStatus($"Hosting co-op on {hostAddress}:{port}. Waiting for a second player...");
+        EmitStatus($"Relay host ready. Share join code {activeRelayJoinCode}. Waiting for a second player...");
         TryStartBattleIfReady();
         return true;
     }
 
-    public bool StartClient(string address)
+    public async Task<bool> StartClientAsync(string joinCode)
     {
         EnsureNetworkStack();
         StopActiveSession();
         ResetSessionState();
-        if (!TryConfigureClientTransport(address, out string hostAddress, out ushort port))
+        if (!await TryConfigureClientTransportAsync(joinCode))
         {
             return false;
         }
@@ -121,13 +124,13 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
 
         if (!networkManager.StartClient())
         {
-            EmitStatus($"Failed to start client for {hostAddress}:{port}.");
+            EmitStatus("Failed to start Relay client.");
             return false;
         }
 
         RegisterNetworkCallbacks();
         pendingClientPartySubmission = true;
-        EmitStatus($"Joining co-op at {hostAddress}:{port}...");
+        EmitStatus($"Joining Relay session with code {activeRelayJoinCode}...");
         return true;
     }
 
@@ -336,6 +339,7 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         pendingReplicatedCommands.Clear();
         isMatchStarting = false;
         pendingClientPartySubmission = false;
+        activeRelayJoinCode = string.Empty;
     }
 
     private void StopActiveSession()
@@ -740,73 +744,64 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         return result;
     }
 
-    private bool TryConfigureHostTransport(string address, out string hostAddress, out ushort port)
+    private async Task<bool> TryConfigureHostTransportAsync()
     {
-        hostAddress = DefaultAddress;
-        port = DefaultPort;
         if (transport == null)
         {
             EmitStatus("Network transport is unavailable.");
             return false;
         }
 
-        if (!TryParseEndpoint(address, out hostAddress, out port))
+        try
         {
-            EmitStatus("Invalid host address. Use `address` or `address:port`.");
-            return false;
-        }
-
-        transport.SetConnectionData(hostAddress, port, "0.0.0.0");
-        return true;
-    }
-
-    private bool TryConfigureClientTransport(string address, out string hostAddress, out ushort port)
-    {
-        hostAddress = DefaultAddress;
-        port = DefaultPort;
-        if (transport == null)
-        {
-            EmitStatus("Network transport is unavailable.");
-            return false;
-        }
-
-        if (!TryParseEndpoint(address, out hostAddress, out port))
-        {
-            EmitStatus("Invalid join address. Use `address` or `address:port`.");
-            return false;
-        }
-
-        transport.SetConnectionData(hostAddress, port);
-        return true;
-    }
-
-    private static string ResolveAddress(string address)
-    {
-        return string.IsNullOrWhiteSpace(address) ? DefaultAddress : address.Trim();
-    }
-
-    private static bool TryParseEndpoint(string rawAddress, out string address, out ushort port)
-    {
-        address = DefaultAddress;
-        port = DefaultPort;
-
-        string candidate = ResolveAddress(rawAddress);
-        int colonIndex = candidate.LastIndexOf(':');
-        if (colonIndex < 0 || colonIndex != candidate.IndexOf(':'))
-        {
-            address = candidate;
+            await TacticsUnityServicesBootstrap.EnsureInitializedAsync();
+            Allocation allocation = await RelayService.Instance.CreateAllocationAsync(Mathf.Max(1, ExpectedPlayerCount - 1));
+            activeRelayJoinCode = await RelayService.Instance.GetJoinCodeAsync(allocation.AllocationId);
+            transport.SetRelayServerData(allocation.ToRelayServerData(RelayConnectionType));
             return true;
         }
-
-        string parsedAddress = candidate[..colonIndex].Trim();
-        string parsedPort = candidate[(colonIndex + 1)..].Trim();
-        if (string.IsNullOrWhiteSpace(parsedPort) || !ushort.TryParse(parsedPort, out port) || port == 0)
+        catch (Exception exception)
         {
+            Debug.LogException(exception);
+            EmitStatus($"Relay host setup failed: {exception.Message}");
+            return false;
+        }
+    }
+
+    private async Task<bool> TryConfigureClientTransportAsync(string joinCode)
+    {
+        if (transport == null)
+        {
+            EmitStatus("Network transport is unavailable.");
             return false;
         }
 
-        address = string.IsNullOrWhiteSpace(parsedAddress) ? DefaultAddress : parsedAddress;
-        return true;
+        string normalizedJoinCode = ResolveJoinCode(joinCode);
+        if (string.IsNullOrWhiteSpace(normalizedJoinCode))
+        {
+            EmitStatus("Enter a Relay join code.");
+            return false;
+        }
+
+        try
+        {
+            await TacticsUnityServicesBootstrap.EnsureInitializedAsync();
+            JoinAllocation allocation = await RelayService.Instance.JoinAllocationAsync(normalizedJoinCode);
+            activeRelayJoinCode = normalizedJoinCode;
+            transport.SetRelayServerData(allocation.ToRelayServerData(RelayConnectionType));
+            return true;
+        }
+        catch (Exception exception)
+        {
+            Debug.LogException(exception);
+            EmitStatus($"Relay join failed: {exception.Message}");
+            return false;
+        }
+    }
+
+    private static string ResolveJoinCode(string joinCode)
+    {
+        return string.IsNullOrWhiteSpace(joinCode) ? string.Empty : joinCode.Trim().ToUpperInvariant();
     }
 
     public bool CanLocalPlayerControlCharacter(TacticsCharacterController character)
