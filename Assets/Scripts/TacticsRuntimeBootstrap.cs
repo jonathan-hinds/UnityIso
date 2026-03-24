@@ -4,6 +4,9 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.Rendering;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 [DefaultExecutionOrder(1000)]
 public class TacticsRuntimeBootstrap : MonoBehaviour
@@ -74,6 +77,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         if (mainMenuView != null)
         {
             mainMenuView.SessionStartRequested -= HandleSessionStartRequested;
+            mainMenuView.QuitRequested -= HandleApplicationQuitRequested;
         }
 
         if (coopSessionCoordinator != null)
@@ -103,6 +107,8 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
         mainMenuView.SessionStartRequested -= HandleSessionStartRequested;
         mainMenuView.SessionStartRequested += HandleSessionStartRequested;
+        mainMenuView.QuitRequested -= HandleApplicationQuitRequested;
+        mainMenuView.QuitRequested += HandleApplicationQuitRequested;
         mainMenuView.SetStatusText(string.Empty);
         mainMenuView.Show();
         SetCameraInputEnabled(false);
@@ -576,6 +582,15 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
     private void HandleQuitRequested()
     {
         coopSessionCoordinator?.RequestReturnToHome();
+    }
+
+    private void HandleApplicationQuitRequested()
+    {
+#if UNITY_EDITOR
+        EditorApplication.isPlaying = false;
+#else
+        Application.Quit();
+#endif
     }
 
     private void ReturnToHomeScreen()

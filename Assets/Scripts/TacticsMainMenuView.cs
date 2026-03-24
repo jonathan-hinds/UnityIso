@@ -16,6 +16,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     private const string PlayButtonName = "play-button";
     private const string HostOnlineButtonName = "host-online-button";
     private const string JoinOnlineButtonName = "join-online-button";
+    private const string QuitButtonName = "quit-button";
     private const string JoinCodeFieldName = "join-address-field";
     private const string EditTeamButtonName = "edit-team-button";
     private const string StatusLabelName = "status-label";
@@ -59,6 +60,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     private Button playButton;
     private Button hostOnlineButton;
     private Button joinOnlineButton;
+    private Button quitButton;
     private TextField joinCodeField;
     private Button editTeamButton;
     private Label statusLabel;
@@ -112,6 +114,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     private int previewCounter;
 
     public event Action<TacticsSessionStartRequest> SessionStartRequested;
+    public event Action QuitRequested;
 
     public bool IsVisible => gameObject.activeSelf;
 
@@ -198,6 +201,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         playButton?.SetEnabled(interactable);
         hostOnlineButton?.SetEnabled(interactable);
         joinOnlineButton?.SetEnabled(interactable);
+        quitButton?.SetEnabled(interactable);
         joinCodeField?.SetEnabled(interactable);
         editTeamButton?.SetEnabled(interactable);
         editorBackButton?.SetEnabled(interactable);
@@ -259,6 +263,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         playButton = rootElement.Q<Button>(PlayButtonName);
         hostOnlineButton = rootElement.Q<Button>(HostOnlineButtonName);
         joinOnlineButton = rootElement.Q<Button>(JoinOnlineButtonName);
+        quitButton = rootElement.Q<Button>(QuitButtonName);
         joinCodeField = rootElement.Q<TextField>(JoinCodeFieldName);
         editTeamButton = rootElement.Q<Button>(EditTeamButtonName);
         statusLabel = rootElement.Q<Label>(StatusLabelName);
@@ -305,6 +310,12 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         {
             joinOnlineButton.clicked -= HandleJoinOnlineButtonClicked;
             joinOnlineButton.clicked += HandleJoinOnlineButtonClicked;
+        }
+
+        if (quitButton != null)
+        {
+            quitButton.clicked -= HandleQuitButtonClicked;
+            quitButton.clicked += HandleQuitButtonClicked;
         }
 
         if (editTeamButton != null)
@@ -475,6 +486,11 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         if (joinOnlineButton != null)
         {
             joinOnlineButton.clicked -= HandleJoinOnlineButtonClicked;
+        }
+
+        if (quitButton != null)
+        {
+            quitButton.clicked -= HandleQuitButtonClicked;
         }
 
         if (editTeamButton != null)
@@ -993,6 +1009,11 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     private void HandleEditTeamButtonClicked()
     {
         ShowEditPage();
+    }
+
+    private void HandleQuitButtonClicked()
+    {
+        QuitRequested?.Invoke();
     }
 
     private void HandleEditorBackButtonClicked()

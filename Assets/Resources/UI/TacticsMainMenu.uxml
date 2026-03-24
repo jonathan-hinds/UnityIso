@@ -23,6 +23,7 @@
                     <ui:TextField name="join-address-field" class="join-address-field" label="Relay Join Code" value="" />
                     <ui:Button name="host-online-button" class="menu-button menu-button--primary" text="Host Online Co-op" />
                     <ui:Button name="join-online-button" class="menu-button menu-button--secondary" text="Join Online Co-op" />
+                    <ui:Button name="quit-button" class="menu-button menu-button--secondary" text="Quit Game" />
                     <ui:Label name="status-label" class="status-label" text="" />
                 </ui:VisualElement>
             </ui:VisualElement>
