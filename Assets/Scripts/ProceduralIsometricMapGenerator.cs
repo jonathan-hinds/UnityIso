@@ -38,6 +38,39 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         public int SortingLayerId { get; }
     }
 
+    [Serializable]
+    public struct ChestSpawnSettings
+    {
+        [Range(0f, 1f)] public float spawnChance;
+        [Min(0)] public int maxChestCount;
+        [Min(0)] public int minGoldReward;
+        [Min(0)] public int maxGoldReward;
+
+        public bool IsEnabled => spawnChance > 0f && maxChestCount > 0 && maxGoldReward > 0;
+
+        public void Sanitize()
+        {
+            spawnChance = Mathf.Clamp01(spawnChance);
+            maxChestCount = Mathf.Max(0, maxChestCount);
+            minGoldReward = Mathf.Max(0, minGoldReward);
+            maxGoldReward = Mathf.Max(minGoldReward, maxGoldReward);
+        }
+    }
+
+    public readonly struct ChestSpawnPlan
+    {
+        public ChestSpawnPlan(string runtimeChestId, Vector2Int tile, TacticsChestController.ChestFacing facing)
+        {
+            RuntimeChestId = runtimeChestId;
+            Tile = tile;
+            Facing = facing;
+        }
+
+        public string RuntimeChestId { get; }
+        public Vector2Int Tile { get; }
+        public TacticsChestController.ChestFacing Facing { get; }
+    }
+
     public event Action MapGenerated;
 
     [Header("Generation")]
@@ -82,7 +115,17 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
     [Header("Enemy Spawns")]
     [SerializeField] private List<TacticsEnemySpawnEntry> enemySpawnEntries = new();
 
+    [Header("Chest Spawns")]
+    [SerializeField] private ChestSpawnSettings chestSpawnSettings = new ChestSpawnSettings
+    {
+        spawnChance = 0.08f,
+        maxChestCount = 4,
+        minGoldReward = 5,
+        maxGoldReward = 100
+    };
+
     private const string GeneratedRootName = "Generated Isometric Map";
+    private const string GeneratedAttachmentRootPrefix = "Generated Runtime - ";
     private const int DefaultSpritePixels = 128;
     private const float DefaultPixelsPerUnit = 128f;
 
@@ -109,6 +152,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
     public int MaximumElevation => maximumGeneratedElevation;
     public IReadOnlyList<TacticsEnemySpawnEntry> EnemySpawnEntries => enemySpawnEntries;
     public IReadOnlyList<OcclusionVolume> OcclusionVolumes => occlusionVolumes;
+    public ChestSpawnSettings ChestSettings => chestSpawnSettings;
 
     public TacticsMatchGenerationSettings CreateMatchGenerationSettings()
     {
@@ -234,6 +278,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         cameraPadding = 0f;
         mapOffset = Vector3.zero;
         enemySpawnEntries.Clear();
+        chestSpawnSettings = new ChestSpawnSettings();
     }
 
     private void Start()
@@ -463,6 +508,8 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         {
             maxElevation = minElevation;
         }
+
+        chestSpawnSettings.Sanitize();
     }
 
     private Transform CreateGeneratedRoot()
@@ -476,18 +523,38 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
     private void ClearGeneratedMap()
     {
         Transform existingRoot = transform.Find(GeneratedRootName);
-        if (existingRoot == null)
+        if (existingRoot != null)
         {
-            return;
+            if (Application.isPlaying)
+            {
+                Destroy(existingRoot.gameObject);
+            }
+            else
+            {
+                DestroyImmediate(existingRoot.gameObject);
+            }
         }
 
-        if (Application.isPlaying)
+        List<Transform> attachmentRoots = new List<Transform>();
+        for (int i = 0; i < transform.childCount; i++)
         {
-            Destroy(existingRoot.gameObject);
+            Transform child = transform.GetChild(i);
+            if (child != null && child.name.StartsWith(GeneratedAttachmentRootPrefix, StringComparison.Ordinal))
+            {
+                attachmentRoots.Add(child);
+            }
         }
-        else
+
+        for (int i = 0; i < attachmentRoots.Count; i++)
         {
-            DestroyImmediate(existingRoot.gameObject);
+            if (Application.isPlaying)
+            {
+                Destroy(attachmentRoots[i].gameObject);
+            }
+            else
+            {
+                DestroyImmediate(attachmentRoots[i].gameObject);
+            }
         }
     }
 
@@ -608,6 +675,22 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         return GetTileElevation(x, y) > 0;
     }
 
+    public Transform GetOrCreateGeneratedAttachmentRoot(string rootName)
+    {
+        string normalizedRootName = string.IsNullOrWhiteSpace(rootName) ? "Objects" : rootName.Trim();
+        string objectName = $"{GeneratedAttachmentRootPrefix}{normalizedRootName}";
+        Transform root = transform.Find(objectName);
+        if (root != null)
+        {
+            return root;
+        }
+
+        GameObject rootObject = new GameObject(objectName);
+        rootObject.transform.SetParent(transform, false);
+        rootObject.transform.localPosition = Vector3.zero;
+        return rootObject.transform;
+    }
+
     public bool TryGetTileWorldPosition(int x, int y, out Vector3 worldPosition)
     {
         int elevation = GetTileElevation(x, y);
@@ -665,7 +748,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
             }
         }
 
-        ShuffleCandidates(candidates);
+        ShuffleCandidates(candidates, spawnPlacementRandom);
 
         int spawnCount = Mathf.Min(count, candidates.Count);
         for (int i = 0; i < spawnCount; i++)
@@ -674,6 +757,71 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         }
 
         return spawnTiles;
+    }
+
+    public List<ChestSpawnPlan> CreateChestSpawnPlans(IReadOnlyCollection<Vector2Int> blockedTiles = null)
+    {
+        List<ChestSpawnPlan> results = new List<ChestSpawnPlan>();
+        if (!HasGeneratedMap)
+        {
+            return results;
+        }
+
+        ChestSpawnSettings settings = chestSpawnSettings;
+        settings.Sanitize();
+        if (!settings.IsEnabled)
+        {
+            return results;
+        }
+
+        HashSet<Vector2Int> blocked = blockedTiles != null
+            ? new HashSet<Vector2Int>(blockedTiles)
+            : new HashSet<Vector2Int>();
+
+        List<Vector2Int> candidates = new List<Vector2Int>();
+        for (int x = 0; x < width; x++)
+        {
+            for (int y = 0; y < length; y++)
+            {
+                Vector2Int tile = new Vector2Int(x, y);
+                if (IsTraversable(x, y) && !blocked.Contains(tile))
+                {
+                    candidates.Add(tile);
+                }
+            }
+        }
+
+        System.Random random = CreateChestPlacementRandom();
+        ShuffleCandidates(candidates, random);
+
+        for (int i = 0; i < candidates.Count && results.Count < settings.maxChestCount; i++)
+        {
+            if (random.NextDouble() > settings.spawnChance)
+            {
+                continue;
+            }
+
+            Vector2Int tile = candidates[i];
+            blocked.Add(tile);
+            results.Add(new ChestSpawnPlan(
+                runtimeChestId: $"chest_{tile.x}_{tile.y}_{results.Count}",
+                tile: tile,
+                facing: (TacticsChestController.ChestFacing)random.Next(0, 4)));
+        }
+
+        return results;
+    }
+
+    public int RollChestGoldReward()
+    {
+        ChestSpawnSettings settings = chestSpawnSettings;
+        settings.Sanitize();
+        if (settings.maxGoldReward <= 0)
+        {
+            return 0;
+        }
+
+        return UnityEngine.Random.Range(settings.minGoldReward, settings.maxGoldReward + 1);
     }
 
     private int GetHeight(int[,] heights, int x, int y)
@@ -1171,11 +1319,31 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         return new System.Random(mapHash);
     }
 
-    private void ShuffleCandidates(List<Vector2Int> candidates)
+    private System.Random CreateChestPlacementRandom()
     {
+        ChestSpawnSettings settings = chestSpawnSettings;
+        settings.Sanitize();
+
+        int chestHash = seed;
+        chestHash = (chestHash * 397) ^ width;
+        chestHash = (chestHash * 397) ^ length;
+        chestHash = (chestHash * 397) ^ Mathf.RoundToInt(settings.spawnChance * 1000f);
+        chestHash = (chestHash * 397) ^ settings.maxChestCount;
+        chestHash = (chestHash * 397) ^ settings.minGoldReward;
+        chestHash = (chestHash * 397) ^ settings.maxGoldReward;
+        return new System.Random(chestHash);
+    }
+
+    private static void ShuffleCandidates(List<Vector2Int> candidates, System.Random random)
+    {
+        if (candidates == null || random == null)
+        {
+            return;
+        }
+
         for (int i = candidates.Count - 1; i > 0; i--)
         {
-            int swapIndex = spawnPlacementRandom.Next(i + 1);
+            int swapIndex = random.Next(i + 1);
             (candidates[i], candidates[swapIndex]) = (candidates[swapIndex], candidates[i]);
         }
     }

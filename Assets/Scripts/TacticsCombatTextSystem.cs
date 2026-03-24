@@ -48,7 +48,7 @@ public sealed class TacticsCombatTextSystem : MonoBehaviour
         }
     }
 
-    public static void ShowDamage(TacticsCharacterController target, int amount, bool isCriticalHit = false)
+    public static void ShowDamage(ITacticsCombatTextAnchor target, int amount, bool isCriticalHit = false)
     {
         if (target == null || amount <= 0)
         {
@@ -58,7 +58,7 @@ public sealed class TacticsCombatTextSystem : MonoBehaviour
         Instance.SpawnDamageNumber(target, amount, isCriticalHit);
     }
 
-    public static void ShowHealing(TacticsCharacterController target, int amount)
+    public static void ShowHealing(ITacticsCombatTextAnchor target, int amount)
     {
         if (target == null || amount <= 0)
         {
@@ -68,7 +68,7 @@ public sealed class TacticsCombatTextSystem : MonoBehaviour
         Instance.SpawnHealingNumber(target, amount);
     }
 
-    public static void ShowExperienceReward(TacticsCharacterController target, int amount)
+    public static void ShowExperienceReward(ITacticsCombatTextAnchor target, int amount)
     {
         if (target == null || amount <= 0)
         {
@@ -78,17 +78,32 @@ public sealed class TacticsCombatTextSystem : MonoBehaviour
         Instance.SpawnText(target, $"+EXP: {amount}", Color.white, Color.black);
     }
 
-    private void SpawnDamageNumber(TacticsCharacterController target, int amount, bool isCriticalHit)
+    public static void ShowGoldReward(ITacticsCombatTextAnchor target, int amount)
+    {
+        if (target == null || amount <= 0)
+        {
+            return;
+        }
+
+        Instance.SpawnText(target, $"+{amount}G", new Color(0.98f, 0.86f, 0.28f, 1f), new Color(0.32f, 0.21f, 0.02f, 1f), useExperienceMotion: true);
+    }
+
+    private void SpawnDamageNumber(ITacticsCombatTextAnchor target, int amount, bool isCriticalHit)
     {
         SpawnText(target, isCriticalHit ? $"-{amount}!" : $"-{amount}", Color.white, Color.black);
     }
 
-    private void SpawnHealingNumber(TacticsCharacterController target, int amount)
+    private void SpawnHealingNumber(ITacticsCombatTextAnchor target, int amount)
     {
         SpawnText(target, $"+{amount}", new Color(0.54f, 0.9f, 0.5f, 1f), new Color(0.08f, 0.25f, 0.08f, 1f));
     }
 
-    private void SpawnText(TacticsCharacterController target, string text, Color fillColor, Color outlineColor)
+    private void SpawnText(
+        ITacticsCombatTextAnchor target,
+        string text,
+        Color fillColor,
+        Color outlineColor,
+        bool useExperienceMotion = false)
     {
         Vector3 spawnPosition = target.GetCombatTextSpawnPosition(verticalSpawnPadding);
         int sortingLayerId = target.GetCombatTextSortingLayerId();
@@ -102,6 +117,6 @@ public sealed class TacticsCombatTextSystem : MonoBehaviour
             sortingOrder: sortingOrder,
             fillColor: fillColor,
             outlineColor: outlineColor,
-            isExperienceText: text.StartsWith("+EXP: "));
+            isExperienceText: useExperienceMotion || text.StartsWith("+EXP: "));
     }
 }

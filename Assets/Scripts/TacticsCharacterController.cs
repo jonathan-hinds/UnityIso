@@ -4,7 +4,7 @@ using System;
 using UnityEngine;
 
 [DisallowMultipleComponent]
-public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTarget, ITacticsTurnParticipant
+public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTarget, ITacticsTurnParticipant, ITacticsCombatTextAnchor
 {
     [Header("References")]
     [SerializeField] private ProceduralIsometricMapGenerator mapGenerator;
@@ -81,6 +81,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     public bool CanReceiveCommands => mapGenerator != null && mapGenerator.HasGeneratedMap && !IsMoving && !IsPerformingAction;
     public bool CanMoveThisTurn => IsTurnActive && !HasMovedThisTurn && CanReceiveCommands;
     public bool CanUseAbilitiesThisTurn => IsTurnActive && !HasActedThisTurn && CanReceiveCommands && IsAlive;
+    public bool CanInteractThisTurn => IsTurnActive && !HasActedThisTurn && CanReceiveCommands && IsAlive;
     public bool CanEndTurn => IsTurnActive && !IsMoving && !IsPerformingAction;
     public bool IsTurnEligible => isActiveAndEnabled && IsAlive;
     public Vector3 TurnFocusPoint => transform.position;
@@ -293,6 +294,30 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         return TryGetPathTo(destination, out path, enforceMoveRange: true);
     }
 
+    public bool TryConsumeInteraction()
+    {
+        if (!CanInteractThisTurn)
+        {
+            return false;
+        }
+
+        HasActedThisTurn = true;
+        NotifyTurnStateChanged();
+        return true;
+    }
+
+    public bool ApplyReplicatedInteraction()
+    {
+        if (!IsAlive || IsMoving || IsPerformingAction || !IsTurnActive || HasActedThisTurn)
+        {
+            return false;
+        }
+
+        HasActedThisTurn = true;
+        NotifyTurnStateChanged();
+        return true;
+    }
+
     public TacticsAbilityDefinition GetPrimaryActionAbility()
     {
         return abilities.Count > 0 ? abilities[0] : null;
@@ -498,13 +523,18 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
             return false;
         }
 
+        if (TacticsChestController.IsBlockingTile(destination))
+        {
+            return false;
+        }
+
         path = IsometricAStarPathfinder.FindPath(
             mapGenerator,
             GridPosition,
             destination,
             maxStepUp,
             maxStepDown,
-            IsTileOccupiedByAnotherCharacter);
+            IsTileBlockedForMovement);
 
         if (path == null || path.Count <= 1)
         {
@@ -622,8 +652,13 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         characterAnimator.SetSorting(sortingLayerId, sortingOrder);
     }
 
-    private bool IsTileOccupiedByAnotherCharacter(Vector2Int tile)
+    private bool IsTileBlockedForMovement(Vector2Int tile)
     {
+        if (TacticsChestController.IsBlockingTile(tile))
+        {
+            return true;
+        }
+
         TacticsCharacterController[] characters = FindObjectsByType<TacticsCharacterController>(FindObjectsSortMode.None);
         for (int i = 0; i < characters.Length; i++)
         {

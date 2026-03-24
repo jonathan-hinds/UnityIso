@@ -559,6 +559,11 @@ MonoBehaviour:
     count: 4
   - enemyId: shaman
     count: 4
+  chestSpawnSettings:
+    spawnChance: 1
+    maxChestCount: 4
+    minGoldReward: 5
+    maxGoldReward: 100
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

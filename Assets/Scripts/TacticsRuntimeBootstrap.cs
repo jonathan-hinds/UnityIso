@@ -32,6 +32,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
     private TacticsMainMenuView mainMenuView;
     private TacticsPartySelectionService partySelectionService;
     private TacticsCharacterProgressionService progressionService;
+    private TacticsPlayerCurrencyService currencyService;
     private TacticsCoopSessionCoordinator coopSessionCoordinator;
     private TacticsEnemyTable enemyTable;
     private TacticsCoopBattleSetup pendingCoopBattleSetup;
@@ -52,10 +53,12 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
         partySelectionService = new TacticsPartySelectionService();
         progressionService = new TacticsCharacterProgressionService();
+        currencyService = new TacticsPlayerCurrencyService();
         enemyTable = Resources.Load<TacticsEnemyTable>(EnemyTableResourcePath);
         coopSessionCoordinator = EnsureCoopSessionCoordinator();
         coopSessionCoordinator.AssignPartySelectionService(partySelectionService);
         coopSessionCoordinator.AssignCharacterProgressionService(progressionService);
+        coopSessionCoordinator.AssignCurrencyService(currencyService);
         coopSessionCoordinator.StatusChanged -= HandleCoopStatusChanged;
         coopSessionCoordinator.StatusChanged += HandleCoopStatusChanged;
         coopSessionCoordinator.BattleSetupReady -= HandleCoopBattleSetupReady;
@@ -248,6 +251,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         TacticsTurnManager turnManager = EnsureTurnManager();
         TacticsCombatSystem combatSystem = EnsureCombatSystem();
         EnsurePlayerController();
+        EnsureChests();
         EnsureCharacters();
         BindHud(
             actionMenuView,
@@ -418,7 +422,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
         if (characterMenuView != null)
         {
-            characterMenuView.AssignDependencies(progressionService, coopSessionCoordinator);
+            characterMenuView.AssignDependencies(progressionService, currencyService, coopSessionCoordinator);
             characterMenuView.ProgressionCommitRequested -= HandleProgressionCommitRequested;
             characterMenuView.ProgressionCommitRequested += HandleProgressionCommitRequested;
             BindCharacterProgressionPersistence(characterMenuView);
@@ -606,6 +610,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
     private void CleanupGameplayObjects()
     {
         DestroyAllOfType<TacticsCharacterController>();
+        DestroyAllOfType<TacticsChestController>();
         DestroyAllOfType<TacticsPlayerController>();
         DestroyAllOfType<TacticsTurnManager>();
         DestroyAllOfType<TacticsCombatSystem>();
@@ -654,6 +659,38 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         }
     }
 
+    private void EnsureChests()
+    {
+        if (mapGenerator == null || !mapGenerator.HasGeneratedMap)
+        {
+            return;
+        }
+
+        TacticsChestController[] existingChests = FindObjectsByType<TacticsChestController>(FindObjectsSortMode.None);
+        if (existingChests.Length > 0)
+        {
+            return;
+        }
+
+        List<ProceduralIsometricMapGenerator.ChestSpawnPlan> chestPlans = mapGenerator.CreateChestSpawnPlans();
+        if (chestPlans.Count == 0)
+        {
+            return;
+        }
+
+        Transform chestRoot = mapGenerator.GetOrCreateGeneratedAttachmentRoot("Chests");
+        for (int i = 0; i < chestPlans.Count; i++)
+        {
+            ProceduralIsometricMapGenerator.ChestSpawnPlan chestPlan = chestPlans[i];
+            GameObject chestObject = new GameObject($"Chest_{i}");
+            chestObject.transform.SetParent(chestRoot, false);
+
+            TacticsChestController chest = chestObject.AddComponent<TacticsChestController>();
+            chest.Initialize(mapGenerator, chestPlan.RuntimeChestId, chestPlan.Tile, chestPlan.Facing, opened: false);
+            chestObject.AddComponent<TacticsChestElevationVisibility>();
+        }
+    }
+
     private void EnsureCharacters()
     {
         TacticsCharacterController[] existingCharacters = FindObjectsByType<TacticsCharacterController>(FindObjectsSortMode.None);
@@ -678,6 +715,16 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             else if (existingCharacter.Team == TacticsUnitTeam.Enemy)
             {
                 hasEnemyCharacters = true;
+            }
+        }
+
+        TacticsChestController[] existingChests = FindObjectsByType<TacticsChestController>(FindObjectsSortMode.None);
+        for (int i = 0; i < existingChests.Length; i++)
+        {
+            TacticsChestController chest = existingChests[i];
+            if (chest != null)
+            {
+                occupiedTiles.Add(chest.GridPosition);
             }
         }
 

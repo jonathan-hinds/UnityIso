@@ -30,11 +30,13 @@ public sealed class TacticsCharacterMenuView : MonoBehaviour
     private Text progressionText;
     private Text resourcesText;
     private Text statusText;
+    private Text goldText;
     private Text primaryEditHeaderLabel;
     private Button saveButton;
     private Text saveButtonLabel;
     private Font sharedFont;
     private TacticsCharacterController selectedCharacter;
+    private TacticsPlayerCurrencyService currencyService;
     private TacticsCoopSessionCoordinator coopSessionCoordinator;
 
     public event Action<TacticsCharacterController, TacticsCharacterProgressionSnapshot> ProgressionCommitRequested;
@@ -63,9 +65,33 @@ public sealed class TacticsCharacterMenuView : MonoBehaviour
         RefreshSelectedCharacterDetails();
     }
 
-    public void AssignDependencies(TacticsCharacterProgressionService service, TacticsCoopSessionCoordinator coordinator)
+    private void OnDisable()
     {
+        if (currencyService != null)
+        {
+            currencyService.GoldChanged -= HandleGoldChanged;
+        }
+    }
+
+    public void AssignDependencies(
+        TacticsCharacterProgressionService service,
+        TacticsPlayerCurrencyService playerCurrencyService,
+        TacticsCoopSessionCoordinator coordinator)
+    {
+        if (currencyService != null)
+        {
+            currencyService.GoldChanged -= HandleGoldChanged;
+        }
+
+        currencyService = playerCurrencyService;
         coopSessionCoordinator = coordinator;
+
+        if (currencyService != null)
+        {
+            currencyService.GoldChanged -= HandleGoldChanged;
+            currencyService.GoldChanged += HandleGoldChanged;
+        }
+
         RefreshCharacterList();
     }
 
@@ -183,6 +209,13 @@ public sealed class TacticsCharacterMenuView : MonoBehaviour
 
         resourcesText = CreateText("Resources", panelRoot.transform, 16, FontStyle.Normal, secondaryTextColor, TextAnchor.UpperLeft);
         StretchTop(resourcesText.rectTransform, -136f, -104f);
+
+        goldText = CreateText("Gold", panelRoot.transform, 18, FontStyle.Bold, accentColor, TextAnchor.UpperRight);
+        RectTransform goldRect = goldText.rectTransform;
+        goldRect.anchorMin = new Vector2(0f, 1f);
+        goldRect.anchorMax = new Vector2(1f, 1f);
+        goldRect.offsetMin = new Vector2(28f, -72f);
+        goldRect.offsetMax = new Vector2(-190f, -34f);
 
         statusText = CreateText("Status", panelRoot.transform, 14, FontStyle.Bold, accentColor, TextAnchor.UpperRight);
         RectTransform statusRect = statusText.rectTransform;
@@ -437,6 +470,10 @@ public sealed class TacticsCharacterMenuView : MonoBehaviour
     private void RefreshSelectedCharacterDetails()
     {
         UpdateCharacterButtonStates();
+        if (goldText != null)
+        {
+            goldText.text = $"PLAYER GOLD   {Mathf.Max(0, currencyService != null ? currencyService.Gold : 0)}G";
+        }
 
         if (selectedCharacter == null)
         {
@@ -686,6 +723,14 @@ public sealed class TacticsCharacterMenuView : MonoBehaviour
     {
         return selectedCharacter != null &&
                (coopSessionCoordinator == null || coopSessionCoordinator.CanLocalPlayerControlCharacter(selectedCharacter));
+    }
+
+    private void HandleGoldChanged(int _)
+    {
+        if (IsPanelVisible)
+        {
+            RefreshSelectedCharacterDetails();
+        }
     }
 
     private Button CreateSlimButton(string objectName, Transform parent, string labelText)

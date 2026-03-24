@@ -25,6 +25,7 @@ public class TacticsActionMenuView : MonoBehaviour
     private RectTransform panelRect;
     private Text characterNameText;
     private Button moveButton;
+    private Button openChestButton;
     private Button abilitiesButton;
     private Button endTurnButton;
     private LayoutElement footerSpacer;
@@ -54,6 +55,7 @@ public class TacticsActionMenuView : MonoBehaviour
         IReadOnlyList<TacticsActionMenuAbilityOption> abilityOptions,
         bool awaitingMoveTarget,
         bool awaitingAbilityTarget,
+        bool canOpenChest,
         int roundNumber,
         int turnNumber,
         int participantCount)
@@ -79,6 +81,8 @@ public class TacticsActionMenuView : MonoBehaviour
         displayedAbilityOptions = abilityOptions ?? Array.Empty<TacticsActionMenuAbilityOption>();
         characterNameText.text = character.DisplayName.ToUpperInvariant();
         moveButton.interactable = character.CanMoveThisTurn && !awaitingMoveTarget && !awaitingAbilityTarget;
+        openChestButton.gameObject.SetActive(canOpenChest);
+        openChestButton.interactable = canOpenChest && character.CanInteractThisTurn && !awaitingMoveTarget && !awaitingAbilityTarget;
         abilitiesButton.interactable = displayedAbilityOptions.Count > 0 &&
                                        character.CanUseAbilitiesThisTurn &&
                                        !awaitingMoveTarget;
@@ -203,8 +207,10 @@ public class TacticsActionMenuView : MonoBehaviour
         actionsLayout.childForceExpandHeight = false;
 
         moveButton = CreateButton("MoveButton", "MOVE", actionsRoot.transform, HandleMoveClicked);
+        openChestButton = CreateButton("OpenChestButton", "OPEN CHEST", actionsRoot.transform, HandleOpenChestClicked);
         abilitiesButton = CreateButton("AbilitiesButton", "ABILITIES", actionsRoot.transform, HandleAbilitiesClicked);
         endTurnButton = CreateButton("EndTurnButton", "END TURN", actionsRoot.transform, HandleEndTurnClicked);
+        openChestButton.gameObject.SetActive(false);
 
         GameObject footerSpacerObject = CreateUiObject("FooterSpacer", panelRoot.transform);
         footerSpacer = footerSpacerObject.AddComponent<LayoutElement>();
@@ -292,6 +298,11 @@ public class TacticsActionMenuView : MonoBehaviour
         {
             tooltipView?.Hide();
         }
+    }
+
+    private void HandleOpenChestClicked()
+    {
+        ActionSelected?.Invoke(TacticsHudActionType.OpenChest);
     }
 
     private void HandleEndTurnClicked()

@@ -30,6 +30,8 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
     private const string EndTurnCommandMessageName = "tactics.command.endturn.execute";
     private const string CommitProgressionRequestMessageName = "tactics.command.progression.request";
     private const string CommitProgressionCommandMessageName = "tactics.command.progression.execute";
+    private const string OpenChestRequestMessageName = "tactics.command.chest.request";
+    private const string OpenChestCommandMessageName = "tactics.command.chest.execute";
     private const string ExitSessionRequestMessageName = "tactics.session.exit.request";
     private const string ExitSessionCommandMessageName = "tactics.session.exit.command";
 
@@ -40,6 +42,7 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
     private UnityTransport transport;
     private TacticsPartySelectionService partySelectionService;
     private TacticsCharacterProgressionService progressionService;
+    private TacticsPlayerCurrencyService currencyService;
     private bool handlersRegistered;
     private bool isMatchStarting;
     private bool pendingClientPartySubmission;
@@ -85,6 +88,11 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
     public void AssignCharacterProgressionService(TacticsCharacterProgressionService service)
     {
         progressionService = service;
+    }
+
+    public void AssignCurrencyService(TacticsPlayerCurrencyService service)
+    {
+        currencyService = service;
     }
 
     public async Task<bool> StartHostAsync(TacticsMatchGenerationSettings matchSettings)
@@ -287,6 +295,42 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         return true;
     }
 
+    public bool RequestOpenChest(TacticsCharacterController character, TacticsChestController chest)
+    {
+        if (character == null || chest == null || !CanInitiateCommandForCharacter(character))
+        {
+            return false;
+        }
+
+        OpenChestCommandMessage message = new OpenChestCommandMessage
+        {
+            runtimeCharacterId = character.RuntimeCharacterId,
+            runtimeChestId = chest.RuntimeChestId,
+            goldReward = 0
+        };
+
+        if (!IsOnlineSession)
+        {
+            message.goldReward = RollChestReward();
+            return ExecuteOpenChestCommand(message);
+        }
+
+        if (IsHostAuthority)
+        {
+            message.goldReward = RollChestReward();
+            if (!ExecuteOpenChestCommand(message))
+            {
+                return false;
+            }
+
+            BroadcastMessage(OpenChestCommandMessageName, JsonUtility.ToJson(message), includeHost: false);
+            return true;
+        }
+
+        SendMessageToServer(OpenChestRequestMessageName, JsonUtility.ToJson(message));
+        return true;
+    }
+
     public bool RequestReturnToHome()
     {
         if (!IsOnlineSession)
@@ -379,6 +423,8 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         messaging.RegisterNamedMessageHandler(EndTurnCommandMessageName, HandleEndTurnCommandMessage);
         messaging.RegisterNamedMessageHandler(CommitProgressionRequestMessageName, HandleCommitProgressionRequestMessage);
         messaging.RegisterNamedMessageHandler(CommitProgressionCommandMessageName, HandleCommitProgressionCommandMessage);
+        messaging.RegisterNamedMessageHandler(OpenChestRequestMessageName, HandleOpenChestRequestMessage);
+        messaging.RegisterNamedMessageHandler(OpenChestCommandMessageName, HandleOpenChestCommandMessage);
         messaging.RegisterNamedMessageHandler(ExitSessionRequestMessageName, HandleExitSessionRequestMessage);
         messaging.RegisterNamedMessageHandler(ExitSessionCommandMessageName, HandleExitSessionCommandMessage);
         handlersRegistered = true;
@@ -407,6 +453,8 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
             messaging.UnregisterNamedMessageHandler(EndTurnCommandMessageName);
             messaging.UnregisterNamedMessageHandler(CommitProgressionRequestMessageName);
             messaging.UnregisterNamedMessageHandler(CommitProgressionCommandMessageName);
+            messaging.UnregisterNamedMessageHandler(OpenChestRequestMessageName);
+            messaging.UnregisterNamedMessageHandler(OpenChestCommandMessageName);
             messaging.UnregisterNamedMessageHandler(ExitSessionRequestMessageName);
             messaging.UnregisterNamedMessageHandler(ExitSessionCommandMessageName);
         }
@@ -597,6 +645,38 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         EnqueueReplicatedCommand(ReplicatedCommandType.CommitProgression, ReadPayload(ref reader));
     }
 
+    private void HandleOpenChestRequestMessage(ulong senderClientId, FastBufferReader reader)
+    {
+        if (!IsHostAuthority)
+        {
+            return;
+        }
+
+        string payload = ReadPayload(ref reader);
+        OpenChestCommandMessage message = JsonUtility.FromJson<OpenChestCommandMessage>(payload);
+        if (!CanClientControlCharacter(senderClientId, message.runtimeCharacterId))
+        {
+            return;
+        }
+
+        message.goldReward = RollChestReward();
+        string resolvedPayload = JsonUtility.ToJson(message);
+        if (ExecuteOpenChestCommand(message))
+        {
+            BroadcastMessage(OpenChestCommandMessageName, resolvedPayload, includeHost: false);
+        }
+    }
+
+    private void HandleOpenChestCommandMessage(ulong senderClientId, FastBufferReader reader)
+    {
+        if (IsHostAuthority)
+        {
+            return;
+        }
+
+        EnqueueReplicatedCommand(ReplicatedCommandType.OpenChest, ReadPayload(ref reader));
+    }
+
     private void HandleExitSessionRequestMessage(ulong senderClientId, FastBufferReader reader)
     {
         if (!IsHostAuthority)
@@ -673,6 +753,39 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
     {
         TacticsCharacterController character = FindCharacterByRuntimeId(message.runtimeCharacterId);
         return character != null && character.TryCommitProgression(message.snapshot);
+    }
+
+    private bool ExecuteOpenChestCommand(OpenChestCommandMessage message, bool requireLocalAuthorityState = true)
+    {
+        TacticsCharacterController character = FindCharacterByRuntimeId(message.runtimeCharacterId);
+        TacticsChestController chest = TacticsChestController.FindByRuntimeId(message.runtimeChestId);
+        if (character == null || chest == null || !character.CanInteractThisTurn || !chest.IsAdjacentAndInteractable(character))
+        {
+            return false;
+        }
+
+        if (!chest.TryOpen(character, Mathf.Max(0, message.goldReward)))
+        {
+            return false;
+        }
+
+        bool consumed = requireLocalAuthorityState
+            ? character.TryConsumeInteraction()
+            : character.ApplyReplicatedInteraction();
+        if (!consumed)
+        {
+            return false;
+        }
+
+        if (currencyService != null &&
+            message.goldReward > 0 &&
+            character.IsPlayerControlled &&
+            CanLocalPlayerControlCharacter(character))
+        {
+            currencyService.AddGold(message.goldReward);
+        }
+
+        return true;
     }
 
     private void TryStartBattleIfReady()
@@ -955,6 +1068,12 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         return null;
     }
 
+    private int RollChestReward()
+    {
+        ProceduralIsometricMapGenerator generator = FindFirstObjectByType<ProceduralIsometricMapGenerator>();
+        return generator != null ? generator.RollChestGoldReward() : 0;
+    }
+
     private static string SerializeRandomState(UnityEngine.Random.State state)
     {
         return JsonUtility.ToJson(new RandomStatePayload
@@ -1024,6 +1143,9 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
                 requireLocalAuthorityState: false),
             ReplicatedCommandType.CommitProgression => ExecuteCommitProgressionCommand(
                 JsonUtility.FromJson<CommitProgressionCommandMessage>(command.Payload)),
+            ReplicatedCommandType.OpenChest => ExecuteOpenChestCommand(
+                JsonUtility.FromJson<OpenChestCommandMessage>(command.Payload),
+                requireLocalAuthorityState: false),
             _ => false
         };
     }
@@ -1092,6 +1214,14 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
     }
 
     [Serializable]
+    private struct OpenChestCommandMessage
+    {
+        public string runtimeCharacterId;
+        public string runtimeChestId;
+        public int goldReward;
+    }
+
+    [Serializable]
     private struct RandomStatePayload
     {
         public UnityEngine.Random.State state;
@@ -1114,6 +1244,7 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         Move = 0,
         Ability = 1,
         EndTurn = 2,
-        CommitProgression = 3
+        CommitProgression = 3,
+        OpenChest = 4
     }
 }

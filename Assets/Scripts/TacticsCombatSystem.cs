@@ -553,6 +553,11 @@ public sealed class TacticsCombatSystem : MonoBehaviour
                 return false;
             }
 
+            if (TacticsChestController.IsBlockingTile(tile))
+            {
+                return false;
+            }
+
             TacticsCharacterController blockingCharacter = FindCharacterAt(tile);
             if (blockingCharacter != null &&
                 blockingCharacter.isActiveAndEnabled &&

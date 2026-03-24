@@ -29,6 +29,7 @@ public class TacticsPlayerController : MonoBehaviour
     private readonly List<TacticsActionMenuAbilityOption> reusableAbilityOptions = new();
     private readonly List<TacticsCharacterController> hoveredAbilityPreviewTargets = new();
     private readonly List<Vector2Int> reusableOverlayTiles = new();
+    private bool? lastCanOpenChest;
 
     private void Awake()
     {
@@ -150,6 +151,7 @@ public class TacticsPlayerController : MonoBehaviour
             return;
         }
 
+        RefreshChestActionAvailabilityIfNeeded();
         HandleCancelInput();
         RefreshHoveredAbilityTarget();
 
@@ -436,6 +438,15 @@ public class TacticsPlayerController : MonoBehaviour
                 }
 
                 break;
+            case TacticsHudActionType.OpenChest:
+                combatSystem?.CancelTargeting();
+                if (RequestOpenAdjacentChest(activePlayerCharacter))
+                {
+                    selectionState = SelectionState.CharacterSelected;
+                    RefreshHud();
+                }
+
+                break;
             case TacticsHudActionType.Attack:
                 break;
             case TacticsHudActionType.EndTurn:
@@ -529,18 +540,22 @@ public class TacticsPlayerController : MonoBehaviour
             if (showActionMenu)
             {
                 BuildAbilityOptions(activePlayerCharacter, reusableAbilityOptions);
+                bool canOpenChest = FindAdjacentOpenableChest(activePlayerCharacter) != null;
+                lastCanOpenChest = canOpenChest;
 
                 actionMenuView.ShowForCharacter(
                     activePlayerCharacter,
                     reusableAbilityOptions,
                     selectionState == SelectionState.AwaitingMoveTarget,
                     selectionState == SelectionState.AwaitingAbilityTarget,
+                    canOpenChest,
                     turnManager != null ? turnManager.RoundNumber : 1,
                     turnManager != null ? turnManager.TurnNumber : 1,
                     turnManager != null ? turnManager.ParticipantCount : 1);
             }
             else
             {
+                lastCanOpenChest = null;
                 actionMenuView.Hide();
             }
         }
@@ -965,6 +980,24 @@ public class TacticsPlayerController : MonoBehaviour
                !float.IsInfinity(value.y);
     }
 
+    private void RefreshChestActionAvailabilityIfNeeded()
+    {
+        TacticsCharacterController activePlayerCharacter = GetActiveOwnedPlayerCharacter();
+        if (activePlayerCharacter == null || !activePlayerCharacter.IsTurnActive)
+        {
+            lastCanOpenChest = null;
+            return;
+        }
+
+        bool canOpenChest = FindAdjacentOpenableChest(activePlayerCharacter) != null;
+        if (!lastCanOpenChest.HasValue || lastCanOpenChest.Value == canOpenChest)
+        {
+            return;
+        }
+
+        RefreshHud();
+    }
+
     private bool RequestMove(TacticsCharacterController character, Vector2Int destination)
     {
         if (character == null)
@@ -1002,5 +1035,28 @@ public class TacticsPlayerController : MonoBehaviour
         return coopSessionCoordinator != null
             ? coopSessionCoordinator.RequestEndTurn(character)
             : turnManager != null && turnManager.TryEndActiveTurn();
+    }
+
+    private bool RequestOpenAdjacentChest(TacticsCharacterController character)
+    {
+        if (character == null)
+        {
+            return false;
+        }
+
+        TacticsChestController chest = FindAdjacentOpenableChest(character);
+        if (chest == null)
+        {
+            return false;
+        }
+
+        return coopSessionCoordinator != null
+            ? coopSessionCoordinator.RequestOpenChest(character, chest)
+            : false;
+    }
+
+    private static TacticsChestController FindAdjacentOpenableChest(TacticsCharacterController character)
+    {
+        return TacticsChestController.FindBestAdjacentClosedChest(character);
     }
 }
