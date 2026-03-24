@@ -4,20 +4,53 @@
         <ui:VisualElement name="menu-backdrop" class="menu-backdrop">
             <ui:VisualElement name="ambient-glow-top" class="ambient-glow ambient-glow--top" />
             <ui:VisualElement name="ambient-glow-bottom" class="ambient-glow ambient-glow--bottom" />
-            <ui:VisualElement name="menu-shell" class="menu-shell">
+
+            <ui:VisualElement name="main-page" class="menu-shell menu-shell--main">
                 <ui:VisualElement name="crest-column" class="crest-column">
                     <ui:Label name="chapter-label" class="chapter-label" text="TACTICAL CHRONICLE" />
                     <ui:VisualElement name="crest-line" class="crest-line" />
                     <ui:Label name="title-label" class="title-label" text="ISOMETRIC RPG" />
                     <ui:Label name="subtitle-label" class="subtitle-label" text="A slim, luminous battlefield overture" />
                 </ui:VisualElement>
+
                 <ui:VisualElement name="command-panel" class="command-panel">
                     <ui:Label name="command-heading" class="command-heading" text="Main Menu" />
-                    <ui:Label name="command-copy" class="command-copy" text="Enter the encounter when you are ready. The existing tactical flow will begin exactly from its current runtime bootstrap." />
-                    <ui:Button name="play-button" class="play-button" text="Play" />
+                    <ui:Label name="command-copy" class="command-copy" text="Assemble your vanguard, then launch straight into the current tactical runtime." />
+                    <ui:Label name="team-summary-label" class="team-summary-label" text="Current Team:" />
+                    <ui:Button name="edit-team-button" class="menu-button menu-button--secondary" text="Edit Team" />
+                    <ui:Button name="play-button" class="menu-button menu-button--primary" text="Play" />
                     <ui:Label name="status-label" class="status-label" text="" />
                 </ui:VisualElement>
             </ui:VisualElement>
+
+            <ui:VisualElement name="edit-team-page" class="menu-shell editor-shell" style="display: none;">
+                <ui:VisualElement name="editor-header" class="editor-header">
+                    <ui:VisualElement class="editor-button-row">
+                        <ui:Button name="editor-back-button" class="menu-button menu-button--secondary menu-button--compact editor-button" text="Back" />
+                        <ui:Button name="editor-save-button" class="menu-button menu-button--primary menu-button--compact editor-button editor-button-save" text="Save Team" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <ui:VisualElement name="editor-content" class="editor-content">
+                    <ui:VisualElement class="editor-section editor-section--slots">
+                        <ui:Label class="section-label" text="Deployment Slots" />
+                        <ui:Label class="section-copy" text="Drag a playable character into one of three active squad positions. Dropping an assigned unit back into the roster clears that slot." />
+                        <ui:VisualElement name="team-slot-container" class="team-slot-container" />
+                    </ui:VisualElement>
+
+                    <ui:VisualElement class="editor-section editor-section--roster">
+                        <ui:Label class="section-label" text="Available Operatives" />
+                        <ui:Label class="section-copy" text="Hover any operative to preview a southwest run cycle on the same isometric tile language used by the map generator." />
+                        <ui:ScrollView name="roster-scroll-view" class="roster-scroll-view" mode="Vertical">
+                            <ui:VisualElement name="character-grid-container" class="character-grid-container" />
+                        </ui:ScrollView>
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <ui:Label name="editor-status-label" class="editor-status-label" text="" />
+            </ui:VisualElement>
+
+            <ui:Label name="drag-ghost" class="drag-ghost" text="" style="display: none;" />
             <ui:VisualElement name="frame-top" class="frame-line frame-line--top" />
             <ui:VisualElement name="frame-bottom" class="frame-line frame-line--bottom" />
         </ui:VisualElement>

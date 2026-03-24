@@ -307,6 +307,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   panelSettings: {fileID: 0}
   visualTreeAsset: {fileID: 0}
+  previewSettings:
+    textureSize: 320
+    orthographicSize: 0.32
+    cameraVerticalOffset: -0.08
+  previewWindowSize: {x: 225, y: 256}
 --- !u!114 &568086582
 MonoBehaviour:
   m_ObjectHideFlags: 0

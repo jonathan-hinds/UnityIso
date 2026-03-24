@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -26,6 +27,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
     private ProceduralIsometricMapGenerator mapGenerator;
     private TacticsMainMenuView mainMenuView;
+    private TacticsPartySelectionService partySelectionService;
     private bool sceneSetupComplete;
     private bool gameplayStartInProgress;
 
@@ -41,7 +43,9 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             return;
         }
 
+        partySelectionService = new TacticsPartySelectionService();
         mainMenuView = EnsureMainMenuView();
+        mainMenuView.AssignDependencies(mapGenerator, partySelectionService);
         ShowMainMenu();
     }
 
@@ -460,16 +464,18 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
         if (!hasPlayerCharacters)
         {
-            TacticsCharacterRoster roster = Resources.Load<TacticsCharacterRoster>(CharacterRosterResourcePath);
-            if (roster == null || roster.PlayableCharacters.Count == 0)
+            IReadOnlyList<TacticsCharacterDefinition> selectedParty = partySelectionService != null
+                ? partySelectionService.ResolveSelectedParty()
+                : Array.Empty<TacticsCharacterDefinition>();
+            if (selectedParty == null || selectedParty.Count == 0)
             {
-                Debug.LogWarning($"Tactics bootstrap could not find a playable roster at Resources/{CharacterRosterResourcePath}.");
+                Debug.LogWarning($"Tactics bootstrap could not resolve a playable party from Resources/{CharacterRosterResourcePath}.");
                 return;
             }
 
-            for (int i = 0; i < roster.PlayableCharacters.Count; i++)
+            for (int i = 0; i < selectedParty.Count; i++)
             {
-                TacticsCharacterDefinition definition = roster.PlayableCharacters[i];
+                TacticsCharacterDefinition definition = selectedParty[i];
                 if (definition == null)
                 {
                     continue;

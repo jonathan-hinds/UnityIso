@@ -6,6 +6,24 @@ using UnityEngine.Rendering;
 [DisallowMultipleComponent]
 public class ProceduralIsometricMapGenerator : MonoBehaviour
 {
+    [Serializable]
+    public struct TileVisualProfile
+    {
+        public Sprite topSprite;
+        public Sprite leftSideSprite;
+        public Sprite rightSideSprite;
+        public Color defaultTopColor;
+        public Color defaultLeftSideColor;
+        public Color defaultRightSideColor;
+        public Color defaultOutlineColor;
+        public bool addCliffEdgeShadows;
+        public float cliffShadowWidth;
+        public Color cliffShadowColor;
+        public float tileWidth;
+        public float tileHeight;
+        public float elevationStep;
+    }
+
     public readonly struct OcclusionVolume
     {
         public OcclusionVolume(Bounds bounds, int sortingOrder, int sortingLayerId)
@@ -91,6 +109,68 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
     public int MaximumElevation => maximumGeneratedElevation;
     public IReadOnlyList<TacticsEnemySpawnEntry> EnemySpawnEntries => enemySpawnEntries;
     public IReadOnlyList<OcclusionVolume> OcclusionVolumes => occlusionVolumes;
+
+    public TileVisualProfile CreateTileVisualProfile()
+    {
+        return new TileVisualProfile
+        {
+            topSprite = topSprite,
+            leftSideSprite = leftSideSprite,
+            rightSideSprite = rightSideSprite,
+            defaultTopColor = defaultTopColor,
+            defaultLeftSideColor = defaultLeftSideColor,
+            defaultRightSideColor = defaultRightSideColor,
+            defaultOutlineColor = defaultOutlineColor,
+            addCliffEdgeShadows = addCliffEdgeShadows,
+            cliffShadowWidth = cliffShadowWidth,
+            cliffShadowColor = cliffShadowColor,
+            tileWidth = tileWidth,
+            tileHeight = tileHeight,
+            elevationStep = elevationStep
+        };
+    }
+
+    public void ApplyTileVisualProfile(TileVisualProfile profile)
+    {
+        topSprite = profile.topSprite;
+        leftSideSprite = profile.leftSideSprite;
+        rightSideSprite = profile.rightSideSprite;
+        defaultTopColor = profile.defaultTopColor;
+        defaultLeftSideColor = profile.defaultLeftSideColor;
+        defaultRightSideColor = profile.defaultRightSideColor;
+        defaultOutlineColor = profile.defaultOutlineColor;
+        addCliffEdgeShadows = profile.addCliffEdgeShadows;
+        cliffShadowWidth = Mathf.Max(0.05f, profile.cliffShadowWidth);
+        cliffShadowColor = profile.cliffShadowColor;
+        tileWidth = Mathf.Max(0.1f, profile.tileWidth);
+        tileHeight = Mathf.Max(0.1f, profile.tileHeight);
+        elevationStep = Mathf.Max(0.05f, profile.elevationStep);
+    }
+
+    public void ConfigureSingleTilePreview(TileVisualProfile profile)
+    {
+        ApplyTileVisualProfile(profile);
+        ConfigureSingleTilePreview();
+    }
+
+    public void ConfigureSingleTilePreview()
+    {
+        generateOnStart = false;
+        seed = 0;
+        length = 1;
+        width = 1;
+        minElevation = 1;
+        maxElevation = 1;
+        noiseScale = 1f;
+        noiseOctaves = 1;
+        persistence = 0.5f;
+        lacunarity = 2f;
+        smoothingPasses = 0;
+        autoFrameCamera = false;
+        cameraPadding = 0f;
+        mapOffset = Vector3.zero;
+        enemySpawnEntries.Clear();
+    }
 
     private void Start()
     {

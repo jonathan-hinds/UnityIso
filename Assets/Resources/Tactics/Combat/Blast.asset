@@ -30,5 +30,10 @@ MonoBehaviour:
       scaling:
       - stat: 4
         rank: 5
+    restoreHitPoints:
+      healingFormula: 0
+      flatAmount: 0
+      bonusMultiplier: 1
+      scaling: []
   costResourceType: 2
   costAmount: 15
