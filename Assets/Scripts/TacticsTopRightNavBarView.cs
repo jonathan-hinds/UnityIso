@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -16,8 +17,15 @@ public sealed class TacticsTopRightNavBarView : MonoBehaviour
     private GameObject navRoot;
     private Button elevationButton;
     private Text elevationButtonText;
+    private Button menuButton;
+    private Text menuButtonText;
+    private GameObject pauseMenuRoot;
+    private Button quitButton;
     private Font sharedFont;
     private TacticsElevationSliderView elevationSliderView;
+    private bool isPauseMenuVisible;
+
+    public event Action QuitRequested;
 
     private void Awake()
     {
@@ -29,6 +37,16 @@ public sealed class TacticsTopRightNavBarView : MonoBehaviour
         if (elevationButton != null)
         {
             elevationButton.onClick.RemoveListener(HandleElevationButtonClicked);
+        }
+
+        if (menuButton != null)
+        {
+            menuButton.onClick.RemoveListener(HandleMenuButtonClicked);
+        }
+
+        if (quitButton != null)
+        {
+            quitButton.onClick.RemoveListener(HandleQuitButtonClicked);
         }
     }
 
@@ -45,8 +63,28 @@ public sealed class TacticsTopRightNavBarView : MonoBehaviour
             return;
         }
 
+        isPauseMenuVisible = false;
         elevationSliderView.TogglePanelVisibility();
         RefreshButtonState();
+    }
+
+    private void HandleMenuButtonClicked()
+    {
+        isPauseMenuVisible = !isPauseMenuVisible;
+
+        if (isPauseMenuVisible && elevationSliderView != null)
+        {
+            elevationSliderView.SetPanelVisible(false);
+        }
+
+        RefreshButtonState();
+    }
+
+    private void HandleQuitButtonClicked()
+    {
+        isPauseMenuVisible = false;
+        RefreshButtonState();
+        QuitRequested?.Invoke();
     }
 
     private void EnsureBuilt()
@@ -93,7 +131,7 @@ public sealed class TacticsTopRightNavBarView : MonoBehaviour
         navRect.anchorMax = new Vector2(1f, 1f);
         navRect.pivot = new Vector2(1f, 1f);
         navRect.anchoredPosition = new Vector2(-36f, -36f);
-        navRect.sizeDelta = new Vector2(76f, 76f);
+        navRect.sizeDelta = new Vector2(152f, 76f);
 
         Image navImage = navRoot.AddComponent<Image>();
         navImage.color = barColor;
@@ -106,57 +144,149 @@ public sealed class TacticsTopRightNavBarView : MonoBehaviour
         navShadow.effectColor = shadowColor;
         navShadow.effectDistance = new Vector2(0f, -4f);
 
-        GameObject buttonObject = CreateUiObject("ElevationToggleButton", navRoot.transform);
+        CreateNavButton(
+            "ElevationToggleButton",
+            navRoot.transform,
+            new Vector2(-36f, 0f),
+            "EL",
+            HandleElevationButtonClicked,
+            out elevationButton,
+            out elevationButtonText);
+        CreateNavButton(
+            "MenuToggleButton",
+            navRoot.transform,
+            new Vector2(36f, 0f),
+            "II",
+            HandleMenuButtonClicked,
+            out menuButton,
+            out menuButtonText);
+
+        pauseMenuRoot = CreateUiObject("PauseMenu", navRoot.transform);
+        RectTransform pauseMenuRect = pauseMenuRoot.GetComponent<RectTransform>();
+        pauseMenuRect.anchorMin = new Vector2(1f, 1f);
+        pauseMenuRect.anchorMax = new Vector2(1f, 1f);
+        pauseMenuRect.pivot = new Vector2(1f, 1f);
+        pauseMenuRect.anchoredPosition = new Vector2(0f, -88f);
+        pauseMenuRect.sizeDelta = new Vector2(196f, 96f);
+
+        Image pauseMenuImage = pauseMenuRoot.AddComponent<Image>();
+        pauseMenuImage.color = barColor;
+
+        Outline pauseMenuOutline = pauseMenuRoot.AddComponent<Outline>();
+        pauseMenuOutline.effectColor = edgeColor;
+        pauseMenuOutline.effectDistance = new Vector2(1f, -1f);
+
+        Shadow pauseMenuShadow = pauseMenuRoot.AddComponent<Shadow>();
+        pauseMenuShadow.effectColor = shadowColor;
+        pauseMenuShadow.effectDistance = new Vector2(0f, -4f);
+
+        GameObject quitButtonObject = CreateUiObject("QuitButton", pauseMenuRoot.transform);
+        RectTransform quitButtonRect = quitButtonObject.GetComponent<RectTransform>();
+        quitButtonRect.anchorMin = new Vector2(0.5f, 0.5f);
+        quitButtonRect.anchorMax = new Vector2(0.5f, 0.5f);
+        quitButtonRect.pivot = new Vector2(0.5f, 0.5f);
+        quitButtonRect.sizeDelta = new Vector2(156f, 44f);
+        quitButtonRect.anchoredPosition = Vector2.zero;
+
+        Image quitButtonImage = quitButtonObject.AddComponent<Image>();
+        quitButtonImage.color = buttonColor;
+
+        quitButton = quitButtonObject.AddComponent<Button>();
+        quitButton.targetGraphic = quitButtonImage;
+        quitButton.colors = CreateButtonColors();
+        quitButton.onClick.AddListener(HandleQuitButtonClicked);
+
+        Outline quitButtonOutline = quitButtonObject.AddComponent<Outline>();
+        quitButtonOutline.effectColor = edgeColor;
+        quitButtonOutline.effectDistance = new Vector2(1f, -1f);
+
+        Text quitButtonText = CreateText("Label", quitButtonObject.transform, 18, FontStyle.Bold, textColor);
+        RectTransform quitLabelRect = quitButtonText.rectTransform;
+        quitLabelRect.anchorMin = Vector2.zero;
+        quitLabelRect.anchorMax = Vector2.one;
+        quitLabelRect.offsetMin = Vector2.zero;
+        quitLabelRect.offsetMax = Vector2.zero;
+        quitButtonText.alignment = TextAnchor.MiddleCenter;
+        quitButtonText.text = "Quit Match";
+
+        pauseMenuRoot.SetActive(false);
+    }
+
+    private void RefreshButtonState()
+    {
+        if (elevationButtonText == null || menuButtonText == null)
+        {
+            return;
+        }
+
+        bool isElevationVisible = elevationSliderView != null && elevationSliderView.IsPanelVisible;
+
+        Image elevationImage = elevationButton != null ? elevationButton.targetGraphic as Image : null;
+        if (elevationImage != null)
+        {
+            elevationImage.color = isElevationVisible ? buttonHighlightColor : buttonColor;
+        }
+
+        Image menuImage = menuButton != null ? menuButton.targetGraphic as Image : null;
+        if (menuImage != null)
+        {
+            menuImage.color = isPauseMenuVisible ? buttonHighlightColor : buttonColor;
+        }
+
+        if (pauseMenuRoot != null)
+        {
+            pauseMenuRoot.SetActive(isPauseMenuVisible);
+        }
+    }
+
+    private void CreateNavButton(
+        string objectName,
+        Transform parent,
+        Vector2 anchoredPosition,
+        string labelText,
+        UnityEngine.Events.UnityAction onClick,
+        out Button button,
+        out Text label)
+    {
+        GameObject buttonObject = CreateUiObject(objectName, parent);
         RectTransform buttonRect = buttonObject.GetComponent<RectTransform>();
         buttonRect.anchorMin = new Vector2(0.5f, 0.5f);
         buttonRect.anchorMax = new Vector2(0.5f, 0.5f);
         buttonRect.pivot = new Vector2(0.5f, 0.5f);
         buttonRect.sizeDelta = new Vector2(56f, 56f);
-        buttonRect.anchoredPosition = Vector2.zero;
+        buttonRect.anchoredPosition = anchoredPosition;
 
         Image buttonImage = buttonObject.AddComponent<Image>();
         buttonImage.color = buttonColor;
 
-        elevationButton = buttonObject.AddComponent<Button>();
-        elevationButton.targetGraphic = buttonImage;
-        ColorBlock colors = elevationButton.colors;
-        colors.normalColor = buttonColor;
-        colors.highlightedColor = new Color(buttonHighlightColor.r, buttonHighlightColor.g, buttonHighlightColor.b, 0.95f);
-        colors.pressedColor = new Color(buttonHighlightColor.r, buttonHighlightColor.g, buttonHighlightColor.b, 0.82f);
-        colors.selectedColor = colors.highlightedColor;
-        colors.disabledColor = new Color(buttonColor.r, buttonColor.g, buttonColor.b, 0.45f);
-        elevationButton.colors = colors;
-        elevationButton.onClick.AddListener(HandleElevationButtonClicked);
+        button = buttonObject.AddComponent<Button>();
+        button.targetGraphic = buttonImage;
+        button.colors = CreateButtonColors();
+        button.onClick.AddListener(onClick);
 
         Outline buttonOutline = buttonObject.AddComponent<Outline>();
         buttonOutline.effectColor = edgeColor;
         buttonOutline.effectDistance = new Vector2(1f, -1f);
 
-        elevationButtonText = CreateText("Label", buttonObject.transform, 20, FontStyle.Bold, textColor);
-        RectTransform labelRect = elevationButtonText.rectTransform;
+        label = CreateText("Label", buttonObject.transform, 20, FontStyle.Bold, textColor);
+        RectTransform labelRect = label.rectTransform;
         labelRect.anchorMin = Vector2.zero;
         labelRect.anchorMax = Vector2.one;
         labelRect.offsetMin = Vector2.zero;
         labelRect.offsetMax = Vector2.zero;
-        elevationButtonText.alignment = TextAnchor.MiddleCenter;
-        elevationButtonText.text = "EL";
+        label.alignment = TextAnchor.MiddleCenter;
+        label.text = labelText;
     }
 
-    private void RefreshButtonState()
+    private ColorBlock CreateButtonColors()
     {
-        if (elevationButtonText == null)
-        {
-            return;
-        }
-
-        bool isVisible = elevationSliderView != null && elevationSliderView.IsPanelVisible;
-        elevationButtonText.text = isVisible ? "EL" : "EL";
-
-        Image buttonImage = elevationButton != null ? elevationButton.targetGraphic as Image : null;
-        if (buttonImage != null)
-        {
-            buttonImage.color = isVisible ? buttonHighlightColor : buttonColor;
-        }
+        ColorBlock colors = ColorBlock.defaultColorBlock;
+        colors.normalColor = buttonColor;
+        colors.highlightedColor = new Color(buttonHighlightColor.r, buttonHighlightColor.g, buttonHighlightColor.b, 0.95f);
+        colors.pressedColor = new Color(buttonHighlightColor.r, buttonHighlightColor.g, buttonHighlightColor.b, 0.82f);
+        colors.selectedColor = colors.highlightedColor;
+        colors.disabledColor = new Color(buttonColor.r, buttonColor.g, buttonColor.b, 0.45f);
+        return colors;
     }
 
     private Text CreateText(string objectName, Transform parent, int fontSize, FontStyle fontStyle, Color labelColor)

@@ -52,6 +52,8 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         coopSessionCoordinator.StatusChanged += HandleCoopStatusChanged;
         coopSessionCoordinator.BattleSetupReady -= HandleCoopBattleSetupReady;
         coopSessionCoordinator.BattleSetupReady += HandleCoopBattleSetupReady;
+        coopSessionCoordinator.SessionEnded -= HandleSessionEnded;
+        coopSessionCoordinator.SessionEnded += HandleSessionEnded;
         mainMenuView = EnsureMainMenuView();
         mainMenuView.AssignDependencies(mapGenerator, partySelectionService);
         ShowMainMenu();
@@ -73,6 +75,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         {
             coopSessionCoordinator.StatusChanged -= HandleCoopStatusChanged;
             coopSessionCoordinator.BattleSetupReady -= HandleCoopBattleSetupReady;
+            coopSessionCoordinator.SessionEnded -= HandleSessionEnded;
         }
     }
 
@@ -184,6 +187,11 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
     {
         pendingCoopBattleSetup = battleSetup;
         BeginGameplayStartup("Synchronizing co-op battle...");
+    }
+
+    private void HandleSessionEnded()
+    {
+        ReturnToHomeScreen();
     }
 
     private void SetupScene()
@@ -381,6 +389,8 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         if (topRightNavBarView != null)
         {
             topRightNavBarView.AssignElevationSliderView(elevationSliderView);
+            topRightNavBarView.QuitRequested -= HandleQuitRequested;
+            topRightNavBarView.QuitRequested += HandleQuitRequested;
         }
 
         TacticsPlayerController playerController = FindFirstObjectByType<TacticsPlayerController>();
@@ -503,6 +513,71 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
     {
         MouseCameraController cameraController = FindFirstObjectByType<MouseCameraController>();
         cameraController?.SetInputEnabled(enabled);
+    }
+
+    private void HandleQuitRequested()
+    {
+        coopSessionCoordinator?.RequestReturnToHome();
+    }
+
+    private void ReturnToHomeScreen()
+    {
+        CleanupGameplayObjects();
+        pendingCoopBattleSetup = null;
+        sceneSetupComplete = false;
+        gameplayStartInProgress = false;
+        TacticsRuntimeStartupState.ResetGameplayStart();
+        ShowMainMenu();
+    }
+
+    private void CleanupGameplayObjects()
+    {
+        DestroyAllOfType<TacticsCharacterController>();
+        DestroyAllOfType<TacticsPlayerController>();
+        DestroyAllOfType<TacticsTurnManager>();
+        DestroyAllOfType<TacticsCombatSystem>();
+        DestroyAllOfType<TacticsTurnCameraDirector>();
+        DestroyAllOfType<TacticsTileTargetOverlay>();
+        DestroyAllOfType<TacticsActionMenuView>();
+        DestroyAllOfType<TacticsSelectionPanelView>();
+        DestroyAllOfType<IsometricMapLayerVisibilityController>();
+        DestroyAllOfType<TacticsElevationSliderView>();
+        DestroyAllOfType<TacticsTopRightNavBarView>();
+        DestroyAllOfType<TacticsCombatTextSystem>();
+        DestroyAllOfType<TacticsFloatingCombatText>();
+        DestroyAllOfType<TacticsOverheadHealthBar>();
+    }
+
+    private static void DestroyAllOfType<T>() where T : UnityEngine.Object
+    {
+        T[] objects = FindObjectsByType<T>(FindObjectsSortMode.None);
+        for (int i = 0; i < objects.Length; i++)
+        {
+            T instance = objects[i];
+            if (instance == null ||
+                instance is TacticsRuntimeBootstrap ||
+                instance is TacticsMainMenuView ||
+                instance is TacticsCoopSessionCoordinator)
+            {
+                continue;
+            }
+
+            if (instance is Component component)
+            {
+                if (component is TacticsTurnCameraDirector)
+                {
+                    Destroy(component);
+                }
+                else
+                {
+                    Destroy(component.gameObject);
+                }
+            }
+            else if (instance is GameObject gameObject)
+            {
+                Destroy(gameObject);
+            }
+        }
     }
 
     private void EnsureCharacters()

@@ -43,6 +43,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     public TacticsCharacterData CharacterData => characterData;
     public string DisplayName => characterData != null ? characterData.DisplayName : (characterDefinition != null ? characterDefinition.DisplayName : name);
     public string RuntimeCharacterId { get; private set; }
+    public string TurnOrderKey => BuildTurnOrderKey();
     public TacticsUnitTeam Team => characterData != null ? characterData.Team : (characterDefinition != null ? characterDefinition.Team : TacticsUnitTeam.Player);
     public bool IsPlayerControlled => Team == TacticsUnitTeam.Player;
     public TacticsCharacterDerivedStats DerivedStats => derivedStats;
@@ -210,10 +211,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
             return false;
         }
 
-        HasMovedThisTurn = true;
-        NotifyTurnStateChanged();
-        movementRoutine = StartCoroutine(FollowPath(path));
-        return true;
+        return BeginMovement(path, consumeTurnMovement: true);
     }
 
     public void BeginTurn()
@@ -234,6 +232,41 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     public bool TryEndTurn()
     {
         if (!CanEndTurn)
+        {
+            return false;
+        }
+
+        RestoreEndTurnResources();
+        IsTurnActive = false;
+        characterAnimator?.SetTurnHighlight(false);
+        NotifyTurnStateChanged();
+        TurnEnded?.Invoke(this);
+        return true;
+    }
+
+    public bool ApplyReplicatedMove(Vector2Int destination)
+    {
+        if (!IsAlive || IsMoving)
+        {
+            return false;
+        }
+
+        if (!TryGetPathTo(destination, out List<Vector2Int> path))
+        {
+            return false;
+        }
+
+        return BeginMovement(path, consumeTurnMovement: true);
+    }
+
+    public bool ApplyReplicatedEndTurn()
+    {
+        if (!IsAlive)
+        {
+            return false;
+        }
+
+        if (IsMoving || IsPerformingAction)
         {
             return false;
         }
@@ -447,6 +480,23 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         movementRoutine = null;
         characterAnimator?.SetIdle(currentDirection);
         NotifyTurnStateChanged();
+    }
+
+    private bool BeginMovement(IReadOnlyList<Vector2Int> path, bool consumeTurnMovement)
+    {
+        if (path == null || path.Count <= 1)
+        {
+            return false;
+        }
+
+        if (consumeTurnMovement)
+        {
+            HasMovedThisTurn = true;
+        }
+
+        NotifyTurnStateChanged();
+        movementRoutine = StartCoroutine(FollowPath(path));
+        return true;
     }
 
     private IEnumerator MoveBetweenTiles(Vector2Int from, Vector2Int to)
@@ -796,6 +846,26 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
             : (definition != null ? definition.CharacterId : name);
         baseId = string.IsNullOrWhiteSpace(baseId) ? "character" : baseId.Trim();
         return $"{baseId}_{GetInstanceID()}";
+    }
+
+    private string BuildTurnOrderKey()
+    {
+        if (!string.IsNullOrWhiteSpace(RuntimeCharacterId))
+        {
+            return RuntimeCharacterId;
+        }
+
+        string characterId = characterData != null
+            ? characterData.CharacterId
+            : characterDefinition != null
+                ? characterDefinition.CharacterId
+                : string.Empty;
+        if (!string.IsNullOrWhiteSpace(characterId))
+        {
+            return characterId.Trim();
+        }
+
+        return string.IsNullOrWhiteSpace(DisplayName) ? name : DisplayName.Trim();
     }
 
     private void HandleDefeat(TacticsCharacterController defeatingCharacter)

@@ -237,6 +237,11 @@ public class TacticsPlayerController : MonoBehaviour
 
     private void SelectCharacter(TacticsCharacterController character, SelectionState nextState)
     {
+        if (character != null && nextState != SelectionState.None && !CanIssueCommandsTo(character))
+        {
+            nextState = SelectionState.None;
+        }
+
         if (selectedCharacter == character && selectionState == nextState)
         {
             RefreshHud();
@@ -409,7 +414,7 @@ public class TacticsPlayerController : MonoBehaviour
 
     private void HandleActionSelected(TacticsHudActionType actionType)
     {
-        TacticsCharacterController activePlayerCharacter = GetActivePlayerCharacter();
+        TacticsCharacterController activePlayerCharacter = GetActiveOwnedPlayerCharacter();
         if (activePlayerCharacter == null)
         {
             return;
@@ -442,7 +447,7 @@ public class TacticsPlayerController : MonoBehaviour
 
     private void HandleAbilitySelected(TacticsAbilityDefinition ability)
     {
-        TacticsCharacterController activePlayerCharacter = GetActivePlayerCharacter();
+        TacticsCharacterController activePlayerCharacter = GetActiveOwnedPlayerCharacter();
         if (activePlayerCharacter == null || ability == null || combatSystem == null)
         {
             return;
@@ -496,7 +501,7 @@ public class TacticsPlayerController : MonoBehaviour
     private void RefreshHud()
     {
         TacticsCharacterController activeCharacter = turnManager != null ? turnManager.ActiveCharacter : null;
-        TacticsCharacterController activePlayerCharacter = GetActivePlayerCharacter();
+        TacticsCharacterController activePlayerCharacter = GetActiveOwnedPlayerCharacter();
         if (activeCharacter != null)
         {
             activeCharacterPanelView?.Show(activeCharacter);
@@ -616,11 +621,27 @@ public class TacticsPlayerController : MonoBehaviour
         return activeCharacter != null && activeCharacter.IsPlayerControlled ? activeCharacter : null;
     }
 
+    private TacticsCharacterController GetActiveOwnedPlayerCharacter()
+    {
+        TacticsCharacterController activeCharacter = GetActivePlayerCharacter();
+        return CanIssueCommandsTo(activeCharacter) ? activeCharacter : null;
+    }
+
     private SelectionState GetSelectionStateForCharacter(TacticsCharacterController character)
     {
-        return ReferenceEquals(character, GetActivePlayerCharacter())
+        return ReferenceEquals(character, GetActiveOwnedPlayerCharacter())
             ? SelectionState.CharacterSelected
             : SelectionState.None;
+    }
+
+    private bool CanIssueCommandsTo(TacticsCharacterController character)
+    {
+        if (character == null || !character.IsPlayerControlled)
+        {
+            return false;
+        }
+
+        return coopSessionCoordinator == null || coopSessionCoordinator.CanLocalPlayerControlCharacter(character);
     }
 
     private void CacheSelectionPanels()

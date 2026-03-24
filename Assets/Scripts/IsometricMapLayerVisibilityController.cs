@@ -91,7 +91,7 @@ public sealed class IsometricMapLayerVisibilityController : MonoBehaviour
         }
 
         maximumElevation = Mathf.Max(1, mapGenerator.MaximumElevation);
-        visibleElevation = Mathf.Clamp(visibleElevation <= 0 ? maximumElevation : visibleElevation, 1, maximumElevation);
+        visibleElevation = maximumElevation;
 
         IsometricMapElevationElement[] foundElements = mapGenerator.GetComponentsInChildren<IsometricMapElevationElement>(true);
         for (int i = 0; i < foundElements.Length; i++)
