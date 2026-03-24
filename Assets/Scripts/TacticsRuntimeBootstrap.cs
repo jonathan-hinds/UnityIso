@@ -250,6 +250,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         EnsureTurnCameraDirector();
         TacticsTurnManager turnManager = EnsureTurnManager();
         TacticsCombatSystem combatSystem = EnsureCombatSystem();
+        EnsureChestEncounterService(turnManager);
         EnsurePlayerController();
         EnsureChests();
         EnsureCharacters();
@@ -623,6 +624,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         DestroyAllOfType<TacticsTopRightNavBarView>();
         DestroyAllOfType<TacticsCharacterMenuView>();
         DestroyAllOfType<TacticsCombatTextSystem>();
+        DestroyAllOfType<TacticsChestEncounterService>();
         DestroyAllOfType<TacticsFloatingCombatText>();
         DestroyAllOfType<TacticsOverheadHealthBar>();
     }
@@ -686,9 +688,30 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             chestObject.transform.SetParent(chestRoot, false);
 
             TacticsChestController chest = chestObject.AddComponent<TacticsChestController>();
-            chest.Initialize(mapGenerator, chestPlan.RuntimeChestId, chestPlan.Tile, chestPlan.Facing, opened: false);
+            chest.Initialize(
+                mapGenerator,
+                chestPlan.RuntimeChestId,
+                chestPlan.Tile,
+                chestPlan.Facing,
+                opened: false,
+                containsMimic: chestPlan.ContainsMimic);
             chestObject.AddComponent<TacticsChestElevationVisibility>();
         }
+    }
+
+    private TacticsChestEncounterService EnsureChestEncounterService(TacticsTurnManager turnManager)
+    {
+        TacticsChestEncounterService existingService = FindFirstObjectByType<TacticsChestEncounterService>();
+        if (existingService != null)
+        {
+            existingService.AssignDependencies(mapGenerator, enemyTable, turnManager);
+            return existingService;
+        }
+
+        GameObject serviceObject = new GameObject("Tactics Chest Encounter Service");
+        TacticsChestEncounterService service = serviceObject.AddComponent<TacticsChestEncounterService>();
+        service.AssignDependencies(mapGenerator, enemyTable, turnManager);
+        return service;
     }
 
     private void EnsureCharacters()

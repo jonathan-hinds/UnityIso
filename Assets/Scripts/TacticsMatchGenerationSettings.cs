@@ -14,6 +14,7 @@ public sealed class TacticsMatchGenerationSettings
     [Range(1, 6)] public int noiseOctaves = 3;
     [Min(0)] public int minElevation = 0;
     [Min(0)] public int maxElevation = 4;
+    public ProceduralIsometricMapGenerator.ChestSpawnSettings chestSpawns;
     public List<TacticsMatchEnemySettings> enemies = new();
 
     public TacticsMatchGenerationSettings Clone()
@@ -27,6 +28,7 @@ public sealed class TacticsMatchGenerationSettings
             noiseOctaves = noiseOctaves,
             minElevation = minElevation,
             maxElevation = maxElevation,
+            chestSpawns = chestSpawns,
             enemies = new List<TacticsMatchEnemySettings>(enemies.Count)
         };
 
@@ -52,6 +54,7 @@ public sealed class TacticsMatchGenerationSettings
         noiseOctaves = Mathf.Clamp(noiseOctaves, 1, 6);
         minElevation = Mathf.Max(0, minElevation);
         maxElevation = Mathf.Max(minElevation, maxElevation);
+        chestSpawns.Sanitize();
         enemies ??= new List<TacticsMatchEnemySettings>();
 
         List<TacticsMatchEnemySettings> sanitized = new(Mathf.Min(enemies.Count, MaxEnemyKinds));

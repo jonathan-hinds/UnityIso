@@ -12,6 +12,7 @@ public sealed class TacticsTurnManager : MonoBehaviour
     private readonly List<ITacticsTurnParticipant> participants = new();
     private Coroutine turnTransitionRoutine;
     private int activeTurnIndex = -1;
+    private ITacticsTurnParticipant queuedPriorityParticipant;
 
     public event Action<ITacticsTurnParticipant> ActiveParticipantChanged;
     public event Action TurnStateChanged;
@@ -106,6 +107,28 @@ public sealed class TacticsTurnManager : MonoBehaviour
         }
     }
 
+    public bool QueuePriorityTurn(ITacticsTurnParticipant participant)
+    {
+        if (participant == null)
+        {
+            return false;
+        }
+
+        if (!participants.Contains(participant))
+        {
+            RegisterParticipant(participant);
+        }
+
+        if (!participants.Contains(participant) || !participant.IsTurnEligible)
+        {
+            return false;
+        }
+
+        queuedPriorityParticipant = participant;
+        NotifyTurnStateChanged();
+        return true;
+    }
+
     public bool TryEndActiveTurn()
     {
         if (ActiveParticipant == null)
@@ -192,6 +215,22 @@ public sealed class TacticsTurnManager : MonoBehaviour
 
     private ITacticsTurnParticipant GetNextEligibleParticipant()
     {
+        if (queuedPriorityParticipant != null)
+        {
+            ITacticsTurnParticipant priorityParticipant = queuedPriorityParticipant;
+            queuedPriorityParticipant = null;
+
+            if (priorityParticipant.IsTurnEligible)
+            {
+                int priorityIndex = participants.IndexOf(priorityParticipant);
+                if (priorityIndex >= 0)
+                {
+                    activeTurnIndex = priorityIndex;
+                    return priorityParticipant;
+                }
+            }
+        }
+
         int participantCount = participants.Count;
         for (int attempt = 0; attempt < participantCount; attempt++)
         {

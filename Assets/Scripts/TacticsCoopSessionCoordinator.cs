@@ -302,22 +302,15 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
             return false;
         }
 
-        OpenChestCommandMessage message = new OpenChestCommandMessage
-        {
-            runtimeCharacterId = character.RuntimeCharacterId,
-            runtimeChestId = chest.RuntimeChestId,
-            goldReward = 0
-        };
+        OpenChestCommandMessage message = BuildOpenChestCommandMessage(character, chest);
 
         if (!IsOnlineSession)
         {
-            message.goldReward = RollChestReward();
             return ExecuteOpenChestCommand(message);
         }
 
         if (IsHostAuthority)
         {
-            message.goldReward = RollChestReward();
             if (!ExecuteOpenChestCommand(message))
             {
                 return false;
@@ -654,12 +647,16 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
 
         string payload = ReadPayload(ref reader);
         OpenChestCommandMessage message = JsonUtility.FromJson<OpenChestCommandMessage>(payload);
-        if (!CanClientControlCharacter(senderClientId, message.runtimeCharacterId))
+        TacticsCharacterController character = FindCharacterByRuntimeId(message.runtimeCharacterId);
+        TacticsChestController chest = TacticsChestController.FindByRuntimeId(message.runtimeChestId);
+        if (!CanClientControlCharacter(senderClientId, message.runtimeCharacterId) ||
+            character == null ||
+            chest == null)
         {
             return;
         }
 
-        message.goldReward = RollChestReward();
+        message = BuildOpenChestCommandMessage(character, chest);
         string resolvedPayload = JsonUtility.ToJson(message);
         if (ExecuteOpenChestCommand(message))
         {
@@ -759,33 +756,58 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
     {
         TacticsCharacterController character = FindCharacterByRuntimeId(message.runtimeCharacterId);
         TacticsChestController chest = TacticsChestController.FindByRuntimeId(message.runtimeChestId);
-        if (character == null || chest == null || !character.CanInteractThisTurn || !chest.IsAdjacentAndInteractable(character))
+        TacticsChestEncounterService chestEncounterService = FindFirstObjectByType<TacticsChestEncounterService>();
+        if (character == null ||
+            chest == null ||
+            chestEncounterService == null ||
+            !character.CanInteractThisTurn ||
+            !chest.IsAdjacentAndInteractable(character))
         {
             return false;
         }
 
-        if (!chest.TryOpen(character, Mathf.Max(0, message.goldReward)))
+        if (!chestEncounterService.TryResolveChestOpen(
+                character,
+                chest,
+                Mathf.Max(0, message.goldReward),
+                message.mimicRuntimeCharacterId,
+                out TacticsChestResolutionResult result))
         {
             return false;
         }
 
-        bool consumed = requireLocalAuthorityState
-            ? character.TryConsumeInteraction()
-            : character.ApplyReplicatedInteraction();
+        bool consumed = result.RevealedMimic
+            ? (requireLocalAuthorityState ? character.TryEndTurn() : character.ApplyReplicatedEndTurn())
+            : (requireLocalAuthorityState ? character.TryConsumeInteraction() : character.ApplyReplicatedInteraction());
         if (!consumed)
         {
             return false;
         }
 
         if (currencyService != null &&
-            message.goldReward > 0 &&
+            result.GoldReward > 0 &&
             character.IsPlayerControlled &&
             CanLocalPlayerControlCharacter(character))
         {
-            currencyService.AddGold(message.goldReward);
+            currencyService.AddGold(result.GoldReward);
         }
 
         return true;
+    }
+
+    private OpenChestCommandMessage BuildOpenChestCommandMessage(
+        TacticsCharacterController character,
+        TacticsChestController chest)
+    {
+        bool containsMimic = chest != null && chest.ContainsMimic;
+        return new OpenChestCommandMessage
+        {
+            runtimeCharacterId = character != null ? character.RuntimeCharacterId : string.Empty,
+            runtimeChestId = chest != null ? chest.RuntimeChestId : string.Empty,
+            goldReward = containsMimic ? 0 : RollChestReward(),
+            containsMimic = containsMimic,
+            mimicRuntimeCharacterId = containsMimic ? BuildMimicRuntimeCharacterId(chest.RuntimeChestId) : string.Empty
+        };
     }
 
     private void TryStartBattleIfReady()
@@ -1074,6 +1096,12 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         return generator != null ? generator.RollChestGoldReward() : 0;
     }
 
+    private static string BuildMimicRuntimeCharacterId(string runtimeChestId)
+    {
+        string normalizedChestId = string.IsNullOrWhiteSpace(runtimeChestId) ? "chest" : runtimeChestId.Trim();
+        return $"enemy_mimic_{normalizedChestId}";
+    }
+
     private static string SerializeRandomState(UnityEngine.Random.State state)
     {
         return JsonUtility.ToJson(new RandomStatePayload
@@ -1219,6 +1247,8 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         public string runtimeCharacterId;
         public string runtimeChestId;
         public int goldReward;
+        public bool containsMimic;
+        public string mimicRuntimeCharacterId;
     }
 
     [Serializable]

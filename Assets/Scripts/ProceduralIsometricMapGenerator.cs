@@ -42,6 +42,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
     public struct ChestSpawnSettings
     {
         [Range(0f, 1f)] public float spawnChance;
+        [Range(0f, 1f)] public float mimicChance;
         [Min(0)] public int maxChestCount;
         [Min(0)] public int minGoldReward;
         [Min(0)] public int maxGoldReward;
@@ -51,6 +52,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         public void Sanitize()
         {
             spawnChance = Mathf.Clamp01(spawnChance);
+            mimicChance = Mathf.Clamp01(mimicChance);
             maxChestCount = Mathf.Max(0, maxChestCount);
             minGoldReward = Mathf.Max(0, minGoldReward);
             maxGoldReward = Mathf.Max(minGoldReward, maxGoldReward);
@@ -59,16 +61,22 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
 
     public readonly struct ChestSpawnPlan
     {
-        public ChestSpawnPlan(string runtimeChestId, Vector2Int tile, TacticsChestController.ChestFacing facing)
+        public ChestSpawnPlan(
+            string runtimeChestId,
+            Vector2Int tile,
+            TacticsChestController.ChestFacing facing,
+            bool containsMimic)
         {
             RuntimeChestId = runtimeChestId;
             Tile = tile;
             Facing = facing;
+            ContainsMimic = containsMimic;
         }
 
         public string RuntimeChestId { get; }
         public Vector2Int Tile { get; }
         public TacticsChestController.ChestFacing Facing { get; }
+        public bool ContainsMimic { get; }
     }
 
     public event Action MapGenerated;
@@ -119,6 +127,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
     [SerializeField] private ChestSpawnSettings chestSpawnSettings = new ChestSpawnSettings
     {
         spawnChance = 0.08f,
+        mimicChance = 0.2f,
         maxChestCount = 4,
         minGoldReward = 5,
         maxGoldReward = 100
@@ -165,6 +174,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
             noiseOctaves = noiseOctaves,
             minElevation = minElevation,
             maxElevation = maxElevation,
+            chestSpawns = chestSpawnSettings,
             enemies = new List<TacticsMatchEnemySettings>(enemySpawnEntries.Count)
         };
 
@@ -204,6 +214,8 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         noiseOctaves = sanitized.noiseOctaves;
         minElevation = sanitized.minElevation;
         maxElevation = sanitized.maxElevation;
+        chestSpawnSettings = sanitized.chestSpawns;
+        chestSpawnSettings.Sanitize();
 
         enemySpawnEntries = new List<TacticsEnemySpawnEntry>(sanitized.enemies.Count);
         for (int i = 0; i < sanitized.enemies.Count; i++)
@@ -806,7 +818,8 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
             results.Add(new ChestSpawnPlan(
                 runtimeChestId: $"chest_{tile.x}_{tile.y}_{results.Count}",
                 tile: tile,
-                facing: (TacticsChestController.ChestFacing)random.Next(0, 4)));
+                facing: (TacticsChestController.ChestFacing)random.Next(0, 4),
+                containsMimic: random.NextDouble() <= settings.mimicChance));
         }
 
         return results;
@@ -1328,6 +1341,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         chestHash = (chestHash * 397) ^ width;
         chestHash = (chestHash * 397) ^ length;
         chestHash = (chestHash * 397) ^ Mathf.RoundToInt(settings.spawnChance * 1000f);
+        chestHash = (chestHash * 397) ^ Mathf.RoundToInt(settings.mimicChance * 1000f);
         chestHash = (chestHash * 397) ^ settings.maxChestCount;
         chestHash = (chestHash * 397) ^ settings.minGoldReward;
         chestHash = (chestHash * 397) ^ settings.maxGoldReward;

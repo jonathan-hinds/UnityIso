@@ -67,3 +67,29 @@ MonoBehaviour:
     - {fileID: 11400000, guid: f6aecb6ac7328f34aa17eeb1085cda3c, type: 2}
     minExperienceReward: 75
     maxExperienceReward: 100
+  - enemyId: mimic
+    displayName: Mimic
+    spriteSheetResourcePath: Characters/guy10
+    walkFramesPerSecond: 5
+    baseColor: {r: 1, g: 0.82, b: 0.82, a: 1}
+    selectedColor: {r: 1, g: 0.58, b: 0.58, a: 1}
+    moveSpeed: 1.2
+    jumpDuration: 0.5
+    jumpArcHeight: 0.5
+    maxStepUp: 1
+    maxStepDown: 1
+    tileAnchorOffset: {x: 0.18, y: 0.17}
+    baseStats:
+      primaryStats:
+        stamina: 5
+        strength: 5
+        agility: 5
+        wisdom: 5
+        intelligence: 5
+      mobilityStats:
+        moveRange: 5
+        jumpHeight: 2
+    startingAbilities:
+    - {fileID: 11400000, guid: 02966f571ec461044ae5d59c00d435ea, type: 2}
+    minExperienceReward: 75
+    maxExperienceReward: 100

@@ -22,6 +22,7 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
     private Coroutine turnRoutine;
     private readonly List<TacticsCharacterController> reusableCandidateTargets = new();
     private readonly List<TacticsCharacterController> reusableAnchorTargets = new();
+    private string priorityTargetRuntimeCharacterId = string.Empty;
 
     private readonly struct EnemyAbilityPlan
     {
@@ -158,6 +159,11 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         turnRoutine = null;
     }
 
+    public void SetPriorityTarget(TacticsCharacterController target)
+    {
+        priorityTargetRuntimeCharacterId = target != null ? target.RuntimeCharacterId : string.Empty;
+    }
+
     private IEnumerator ExecuteTurnRoutine()
     {
         if (thinkDelay > 0f)
@@ -172,7 +178,12 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         }
 
         bool attemptedAction = false;
-        if (TryBuildBestAbilityPlan(out EnemyAbilityPlan abilityPlan))
+        if (TryBuildPriorityTargetAbilityPlan(out EnemyAbilityPlan priorityPlan))
+        {
+            attemptedAction = TryUseAbility(priorityPlan.Ability, priorityPlan.TargetTile);
+            priorityTargetRuntimeCharacterId = string.Empty;
+        }
+        else if (TryBuildBestAbilityPlan(out EnemyAbilityPlan abilityPlan))
         {
             if (abilityPlan.RequiresMovement && TryMove(abilityPlan.MoveDestination))
             {
@@ -206,6 +217,8 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         {
             TryUseBestAbilityFromCurrentPosition();
         }
+
+        priorityTargetRuntimeCharacterId = string.Empty;
 
         while (combatSystem != null && combatSystem.State == TacticsCombatState.ResolvingAbility)
         {
@@ -280,6 +293,74 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         return foundPlan;
     }
 
+    private bool TryBuildPriorityTargetAbilityPlan(out EnemyAbilityPlan bestPlan)
+    {
+        bestPlan = default;
+        TacticsCharacterController priorityTarget = FindPriorityTarget();
+        if (priorityTarget == null || character == null || combatSystem == null)
+        {
+            return false;
+        }
+
+        IReadOnlyList<TacticsAbilityDefinition> abilities = character.Abilities;
+        if (abilities == null || abilities.Count == 0)
+        {
+            return false;
+        }
+
+        bool foundPlan = false;
+        for (int i = 0; i < abilities.Count; i++)
+        {
+            TacticsAbilityDefinition ability = abilities[i];
+            if (ability == null || !character.HasResourcesForAbility(ability))
+            {
+                continue;
+            }
+
+            if (!combatSystem.CanTargetTileFromTile(character, character.GridPosition, ability, priorityTarget.GridPosition))
+            {
+                continue;
+            }
+
+            IReadOnlyList<TacticsCharacterController> affectedTargets = combatSystem.GetPreviewTargetsFromTile(
+                character,
+                character.GridPosition,
+                ability,
+                priorityTarget.GridPosition);
+            bool affectsPriorityTarget = false;
+            for (int targetIndex = 0; targetIndex < affectedTargets.Count; targetIndex++)
+            {
+                if (ReferenceEquals(affectedTargets[targetIndex], priorityTarget))
+                {
+                    affectsPriorityTarget = true;
+                    break;
+                }
+            }
+
+            if (affectedTargets.Count == 0 || !affectsPriorityTarget)
+            {
+                continue;
+            }
+
+            float score = ScoreAbilityPlan(ability, priorityTarget, character.GridPosition, requiresMovement: false, affectedTargets);
+            score += 1000f;
+            if (!foundPlan || score > bestPlan.Score)
+            {
+                foundPlan = true;
+                bestPlan = new EnemyAbilityPlan(
+                    ability,
+                    priorityTarget,
+                    character.GridPosition,
+                    priorityTarget.GridPosition,
+                    character.GridPosition,
+                    requiresMovement: false,
+                    score);
+            }
+        }
+
+        return foundPlan;
+    }
+
     private bool TryBuildBestMovementPlan(out EnemyMovementPlan bestPlan)
     {
         bestPlan = default;
@@ -331,6 +412,29 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
                immediatePlan.Target.isActiveAndEnabled &&
                immediatePlan.Target.IsAlive &&
                TryUseAbility(immediatePlan.Ability, immediatePlan.TargetTile);
+    }
+
+    private TacticsCharacterController FindPriorityTarget()
+    {
+        if (string.IsNullOrWhiteSpace(priorityTargetRuntimeCharacterId))
+        {
+            return null;
+        }
+
+        TacticsCharacterController[] characters = FindObjectsByType<TacticsCharacterController>(FindObjectsSortMode.None);
+        for (int i = 0; i < characters.Length; i++)
+        {
+            TacticsCharacterController candidate = characters[i];
+            if (candidate != null &&
+                candidate.IsAlive &&
+                candidate.isActiveAndEnabled &&
+                string.Equals(candidate.RuntimeCharacterId, priorityTargetRuntimeCharacterId, System.StringComparison.OrdinalIgnoreCase))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
     }
 
     private bool TryBuildBestImmediateAbilityPlan(out EnemyAbilityPlan bestPlan)

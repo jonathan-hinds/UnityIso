@@ -50,11 +50,14 @@ public sealed class TacticsChestController : MonoBehaviour, ITacticsCombatTextAn
     private float occlusionHideTimer;
     private int activeOcclusionSortingOrder;
     private Vector2 lastAppliedTileAnchorOffset;
+    private bool blocksTile = true;
 
     public string RuntimeChestId { get; private set; }
     public Vector2Int GridPosition { get; private set; }
     public ChestFacing Facing { get; private set; }
     public bool IsOpened { get; private set; }
+    public bool ContainsMimic { get; private set; }
+    public bool BlocksTile => blocksTile;
     public int CurrentElevation => mapGenerator != null ? mapGenerator.GetTileElevation(GridPosition.x, GridPosition.y) : 0;
     public int CurrentSortingOrder => sortingGroup != null ? sortingGroup.sortingOrder : (spriteRenderer != null ? spriteRenderer.sortingOrder : 0);
 
@@ -65,13 +68,16 @@ public sealed class TacticsChestController : MonoBehaviour, ITacticsCombatTextAn
         string runtimeChestId,
         Vector2Int gridPosition,
         ChestFacing facing,
-        bool opened)
+        bool opened,
+        bool containsMimic = false)
     {
         mapGenerator = generator;
         RuntimeChestId = string.IsNullOrWhiteSpace(runtimeChestId) ? $"chest_{gridPosition.x}_{gridPosition.y}" : runtimeChestId.Trim();
         GridPosition = gridPosition;
         Facing = facing;
         IsOpened = opened;
+        ContainsMimic = containsMimic;
+        blocksTile = !opened;
 
         EnsureComponents();
         ApplyVisualState();
@@ -194,6 +200,21 @@ public sealed class TacticsChestController : MonoBehaviour, ITacticsCombatTextAn
         return true;
     }
 
+    public bool TryRevealMimic(TacticsCharacterController opener)
+    {
+        if (!ContainsMimic || IsOpened || !IsAdjacentAndInteractable(opener))
+        {
+            return false;
+        }
+
+        IsOpened = true;
+        blocksTile = false;
+        ApplyVisualState();
+        ChestOpened?.Invoke(this);
+        SetPresentationVisible(false);
+        return true;
+    }
+
     public void SetPresentationVisible(bool isVisible)
     {
         isPresentationVisible = isVisible;
@@ -263,7 +284,7 @@ public sealed class TacticsChestController : MonoBehaviour, ITacticsCombatTextAn
         for (int i = 0; i < chests.Length; i++)
         {
             TacticsChestController chest = chests[i];
-            if (chest != null && chest.GridPosition == tile)
+            if (chest != null && chest.BlocksTile && chest.GridPosition == tile)
             {
                 return true;
             }
