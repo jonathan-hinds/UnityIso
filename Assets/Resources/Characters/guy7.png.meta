@@ -1,55 +1,55 @@
 fileFormatVersion: 2
-guid: e803bb7767a90b4478ddde1858ec63f2
+guid: 3409a3b561e5978478d5c5e8c4cb1a59
 TextureImporter:
   internalIDToNameTable:
   - first:
-      213: -3956608159875445104
-    second: sprite-sheet_export_8x4_48x64_0
+      213: -4983052052807966453
+    second: guy7_0
   - first:
-      213: 5396809483500176000
-    second: sprite-sheet_export_8x4_48x64_1
+      213: 5584186827271361087
+    second: guy7_1
   - first:
-      213: 3261082498787115490
-    second: sprite-sheet_export_8x4_48x64_2
+      213: -1624988527756031248
+    second: guy7_2
   - first:
-      213: 3051822500611891704
-    second: sprite-sheet_export_8x4_48x64_3
+      213: 2887339224422650869
+    second: guy7_3
   - first:
-      213: -7496885201841833258
-    second: sprite-sheet_export_8x4_48x64_4
+      213: 7151386432639424207
+    second: guy7_4
   - first:
-      213: -5377841498057512265
-    second: sprite-sheet_export_8x4_48x64_5
+      213: -2390425125862995507
+    second: guy7_5
   - first:
-      213: 7830062823370770237
-    second: sprite-sheet_export_8x4_48x64_6
+      213: 6384461575820515051
+    second: guy7_6
   - first:
-      213: 3195699878315955303
-    second: sprite-sheet_export_8x4_48x64_7
+      213: 6876373744851667662
+    second: guy7_7
   - first:
-      213: -2383540613212625273
-    second: sprite-sheet_export_8x4_48x64_8
+      213: -6506890386833484010
+    second: guy7_8
   - first:
-      213: 7448631022199812302
-    second: sprite-sheet_export_8x4_48x64_9
+      213: -3155943283163327897
+    second: guy7_9
   - first:
-      213: -1658423312956059601
-    second: sprite-sheet_export_8x4_48x64_10
+      213: -1514385376548223024
+    second: guy7_10
   - first:
-      213: 4114390705584982757
-    second: sprite-sheet_export_8x4_48x64_11
+      213: 671216223626877728
+    second: guy7_11
   - first:
-      213: 3545775794301917224
-    second: sprite-sheet_export_8x4_48x64_12
+      213: -6399190854663641805
+    second: guy7_12
   - first:
-      213: 2493285278697734119
-    second: sprite-sheet_export_8x4_48x64_13
+      213: -6105613422239801835
+    second: guy7_13
   - first:
-      213: -1826193866533054589
-    second: sprite-sheet_export_8x4_48x64_14
+      213: -2538390115005435321
+    second: guy7_14
   - first:
-      213: -4010134376940575903
-    second: sprite-sheet_export_8x4_48x64_15
+      213: -2707557419218270819
+    second: guy7_15
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -158,7 +158,7 @@ TextureImporter:
     serializedVersion: 2
     sprites:
     - serializedVersion: 2
-      name: sprite-sheet_export_8x4_48x64_0
+      name: guy7_0
       rect:
         serializedVersion: 2
         x: 0
@@ -173,14 +173,14 @@ TextureImporter:
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: 09e463377dd4719c0800000000000000
-      internalID: -3956608159875445104
+      spriteID: b01a91f2f84a8dab0800000000000000
+      internalID: -4983052052807966453
       vertices: []
       indices: 
       edges: []
       weights: []
     - serializedVersion: 2
-      name: sprite-sheet_export_8x4_48x64_1
+      name: guy7_1
       rect:
         serializedVersion: 2
         x: 48
@@ -195,14 +195,14 @@ TextureImporter:
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: 082cc78b1a155ea40800000000000000
-      internalID: 5396809483500176000
+      spriteID: f32dce645540f7d40800000000000000
+      internalID: 5584186827271361087
       vertices: []
       indices: 
       edges: []
       weights: []
     - serializedVersion: 2
-      name: sprite-sheet_export_8x4_48x64_2
+      name: guy7_2
       rect:
         serializedVersion: 2
         x: 96
@@ -217,14 +217,14 @@ TextureImporter:
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: 2e103733141b14d20800000000000000
-      internalID: 3261082498787115490
+      spriteID: 0fa44072b81e279e0800000000000000
+      internalID: -1624988527756031248
       vertices: []
       indices: 
       edges: []
       weights: []
     - serializedVersion: 2
-      name: sprite-sheet_export_8x4_48x64_3
+      name: guy7_3
       rect:
         serializedVersion: 2
         x: 144
@@ -239,14 +239,14 @@ TextureImporter:
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: 8f1248225604a5a20800000000000000
-      internalID: 3051822500611891704
+      spriteID: 5f393c11ab3e11820800000000000000
+      internalID: 2887339224422650869
       vertices: []
       indices: 
       edges: []
       weights: []
     - serializedVersion: 2
-      name: sprite-sheet_export_8x4_48x64_4
+      name: guy7_4
       rect:
         serializedVersion: 2
         x: 192
@@ -261,14 +261,14 @@ TextureImporter:
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: 6dab55e01a6b5f790800000000000000
-      internalID: -7496885201841833258
+      spriteID: fc655012214de3360800000000000000
+      internalID: 7151386432639424207
       vertices: []
       indices: 
       edges: []
       weights: []
     - serializedVersion: 2
-      name: sprite-sheet_export_8x4_48x64_5
+      name: guy7_5
       rect:
         serializedVersion: 2
         x: 240
@@ -283,14 +283,14 @@ TextureImporter:
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: 7ba6de986a11e55b0800000000000000
-      internalID: -5377841498057512265
+      spriteID: dc984c6530183ded0800000000000000
+      internalID: -2390425125862995507
       vertices: []
       indices: 
       edges: []
       weights: []
     - serializedVersion: 2
-      name: sprite-sheet_export_8x4_48x64_6
+      name: guy7_6
       rect:
         serializedVersion: 2
         x: 288
@@ -305,14 +305,14 @@ TextureImporter:
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: d37c10407a8f9ac60800000000000000
-      internalID: 7830062823370770237
+      spriteID: be699e41af92a9850800000000000000
+      internalID: 6384461575820515051
       vertices: []
       indices: 
       edges: []
       weights: []
     - serializedVersion: 2
-      name: sprite-sheet_export_8x4_48x64_7
+      name: guy7_7
       rect:
         serializedVersion: 2
         x: 336
@@ -327,14 +327,14 @@ TextureImporter:
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: 76418c79b18695c20800000000000000
-      internalID: 3195699878315955303
+      spriteID: ecac4b40d79cd6f50800000000000000
+      internalID: 6876373744851667662
       vertices: []
       indices: 
       edges: []
       weights: []
     - serializedVersion: 2
-      name: sprite-sheet_export_8x4_48x64_8
+      name: guy7_8
       rect:
         serializedVersion: 2
         x: 0
@@ -349,14 +349,14 @@ TextureImporter:
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: 786aeb9d076fbeed0800000000000000
-      internalID: -2383540613212625273
+      spriteID: 617d26c0ba1e2b5a0800000000000000
+      internalID: -6506890386833484010
       vertices: []
       indices: 
       edges: []
       weights: []
     - serializedVersion: 2
-      name: sprite-sheet_export_8x4_48x64_9
+      name: guy7_9
       rect:
         serializedVersion: 2
         x: 48
@@ -371,14 +371,14 @@ TextureImporter:
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: ec0bc2d337ade5760800000000000000
-      internalID: 7448631022199812302
+      spriteID: 76215cb0e46d334d0800000000000000
+      internalID: -3155943283163327897
       vertices: []
       indices: 
       edges: []
       weights: []
     - serializedVersion: 2
-      name: sprite-sheet_export_8x4_48x64_10
+      name: guy7_10
       rect:
         serializedVersion: 2
         x: 96
@@ -393,14 +393,14 @@ TextureImporter:
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: f20170898c81cf8e0800000000000000
-      internalID: -1658423312956059601
+      spriteID: 0d70cc90682dbfae0800000000000000
+      internalID: -1514385376548223024
       vertices: []
       indices: 
       edges: []
       weights: []
     - serializedVersion: 2
-      name: sprite-sheet_export_8x4_48x64_11
+      name: guy7_11
       rect:
         serializedVersion: 2
         x: 144
@@ -415,14 +415,14 @@ TextureImporter:
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: 5eacf893c80491930800000000000000
-      internalID: 4114390705584982757
+      spriteID: 02b52c06993a05900800000000000000
+      internalID: 671216223626877728
       vertices: []
       indices: 
       edges: []
       weights: []
     - serializedVersion: 2
-      name: sprite-sheet_export_8x4_48x64_12
+      name: guy7_12
       rect:
         serializedVersion: 2
         x: 192
@@ -437,14 +437,14 @@ TextureImporter:
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: 8285b807c40253130800000000000000
-      internalID: 3545775794301917224
+      spriteID: 33568d172d18137a0800000000000000
+      internalID: -6399190854663641805
       vertices: []
       indices: 
       edges: []
       weights: []
     - serializedVersion: 2
-      name: sprite-sheet_export_8x4_48x64_13
+      name: guy7_13
       rect:
         serializedVersion: 2
         x: 240
@@ -459,14 +459,14 @@ TextureImporter:
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: 7ef3d7040cde99220800000000000000
-      internalID: 2493285278697734119
+      spriteID: 51e1a8ff0f0844ba0800000000000000
+      internalID: -6105613422239801835
       vertices: []
       indices: 
       edges: []
       weights: []
     - serializedVersion: 2
-      name: sprite-sheet_export_8x4_48x64_14
+      name: guy7_14
       rect:
         serializedVersion: 2
         x: 288
@@ -481,14 +481,14 @@ TextureImporter:
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: 387dc4e9a5e08a6e0800000000000000
-      internalID: -1826193866533054589
+      spriteID: 742fcbda3a3d5ccd0800000000000000
+      internalID: -2538390115005435321
       vertices: []
       indices: 
       edges: []
       weights: []
     - serializedVersion: 2
-      name: sprite-sheet_export_8x4_48x64_15
+      name: guy7_15
       rect:
         serializedVersion: 2
         x: 336
@@ -503,8 +503,8 @@ TextureImporter:
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: 163efd0e7042958c0800000000000000
-      internalID: -4010134376940575903
+      spriteID: d95858a5fd2dc6ad0800000000000000
+      internalID: -2707557419218270819
       vertices: []
       indices: 
       edges: []
@@ -513,7 +513,7 @@ TextureImporter:
     customData: 
     physicsShape: []
     bones: []
-    spriteID: 99a58d34f77ff0044973411efabcc7e8
+    spriteID: 038a3fe0e719ce04eb4bc598572e0dfa
     internalID: 0
     vertices: []
     indices: 
@@ -523,22 +523,22 @@ TextureImporter:
     spriteCustomMetadata:
       entries: []
     nameFileIdTable:
-      sprite-sheet_export_8x4_48x64_0: -3956608159875445104
-      sprite-sheet_export_8x4_48x64_1: 5396809483500176000
-      sprite-sheet_export_8x4_48x64_10: -1658423312956059601
-      sprite-sheet_export_8x4_48x64_11: 4114390705584982757
-      sprite-sheet_export_8x4_48x64_12: 3545775794301917224
-      sprite-sheet_export_8x4_48x64_13: 2493285278697734119
-      sprite-sheet_export_8x4_48x64_14: -1826193866533054589
-      sprite-sheet_export_8x4_48x64_15: -4010134376940575903
-      sprite-sheet_export_8x4_48x64_2: 3261082498787115490
-      sprite-sheet_export_8x4_48x64_3: 3051822500611891704
-      sprite-sheet_export_8x4_48x64_4: -7496885201841833258
-      sprite-sheet_export_8x4_48x64_5: -5377841498057512265
-      sprite-sheet_export_8x4_48x64_6: 7830062823370770237
-      sprite-sheet_export_8x4_48x64_7: 3195699878315955303
-      sprite-sheet_export_8x4_48x64_8: -2383540613212625273
-      sprite-sheet_export_8x4_48x64_9: 7448631022199812302
+      guy7_0: -4983052052807966453
+      guy7_1: 5584186827271361087
+      guy7_10: -1514385376548223024
+      guy7_11: 671216223626877728
+      guy7_12: -6399190854663641805
+      guy7_13: -6105613422239801835
+      guy7_14: -2538390115005435321
+      guy7_15: -2707557419218270819
+      guy7_2: -1624988527756031248
+      guy7_3: 2887339224422650869
+      guy7_4: 7151386432639424207
+      guy7_5: -2390425125862995507
+      guy7_6: 6384461575820515051
+      guy7_7: 6876373744851667662
+      guy7_8: -6506890386833484010
+      guy7_9: -3155943283163327897
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

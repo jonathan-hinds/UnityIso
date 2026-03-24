@@ -27,6 +27,7 @@ public class TacticsPlayerController : MonoBehaviour
     private SelectionState selectionState;
     private readonly List<TacticsActionMenuAbilityOption> reusableAbilityOptions = new();
     private readonly List<TacticsCharacterController> hoveredAbilityPreviewTargets = new();
+    private readonly List<Vector2Int> reusableOverlayTiles = new();
 
     private void Awake()
     {
@@ -167,16 +168,30 @@ public class TacticsPlayerController : MonoBehaviour
         Collider2D[] hits = Physics2D.OverlapPointAll(point);
 
         if (selectionState == SelectionState.AwaitingAbilityTarget &&
-            ReferenceEquals(selectedCharacter, GetActivePlayerCharacter()) &&
-            TryGetClickedTile(hits, out IsometricTileHoverInfo targetedTile))
+            ReferenceEquals(selectedCharacter, GetActivePlayerCharacter()))
         {
-            if (combatSystem != null && combatSystem.TryExecuteTargetAt(new Vector2Int(targetedTile.GridX, targetedTile.GridY)))
+            if (TryGetClickedCharacter(hits, out TacticsCharacterController targetedCharacter) &&
+                targetedCharacter != null &&
+                combatSystem != null &&
+                combatSystem.TargetingAbility != null &&
+                combatSystem.CanTargetFromTile(selectedCharacter, selectedCharacter.GridPosition, combatSystem.TargetingAbility, targetedCharacter) &&
+                combatSystem.TryExecuteTargetAt(targetedCharacter.GridPosition))
             {
                 selectionState = SelectionState.CharacterSelected;
                 RefreshHud();
+                return;
             }
 
-            return;
+            if (TryGetClickedTile(hits, out IsometricTileHoverInfo targetedTile))
+            {
+                if (combatSystem != null && combatSystem.TryExecuteTargetAt(new Vector2Int(targetedTile.GridX, targetedTile.GridY)))
+                {
+                    selectionState = SelectionState.CharacterSelected;
+                    RefreshHud();
+                }
+
+                return;
+            }
         }
 
         if (TryGetClickedCharacter(hits, out TacticsCharacterController clickedCharacter))
@@ -625,7 +640,7 @@ public class TacticsPlayerController : MonoBehaviour
             combatSystem != null &&
             combatSystem.TargetingAbility != null)
         {
-            tileTargetOverlay.ShowTiles(combatSystem.GetTargetableTiles(selectedCharacter, combatSystem.TargetingAbility));
+            tileTargetOverlay.ShowTiles(BuildOverlayTiles(selectedCharacter, combatSystem.TargetingAbility));
             RefreshTargetIndicators();
             return;
         }
@@ -646,8 +661,7 @@ public class TacticsPlayerController : MonoBehaviour
         if (selectionState == SelectionState.AwaitingAbilityTarget &&
             ReferenceEquals(selectedCharacter, GetActivePlayerCharacter()) &&
             combatSystem != null &&
-            combatSystem.TargetingAbility != null &&
-            !combatSystem.TargetingAbility.UsesAreaOfEffect)
+            combatSystem.TargetingAbility != null)
         {
             IReadOnlyList<Vector2Int> tiles = combatSystem.GetValidTargetTiles(selectedCharacter, combatSystem.TargetingAbility);
             validTargetTiles = new HashSet<Vector2Int>(tiles);
@@ -789,6 +803,44 @@ public class TacticsPlayerController : MonoBehaviour
 
             hoveredAbilityPreviewTargets.Add(character);
             character.SetTargetHoverPreview(true);
+        }
+    }
+
+    private IReadOnlyList<Vector2Int> BuildOverlayTiles(
+        TacticsCharacterController source,
+        TacticsAbilityDefinition ability)
+    {
+        reusableOverlayTiles.Clear();
+
+        if (source == null || ability == null || combatSystem == null)
+        {
+            return reusableOverlayTiles;
+        }
+
+        AddUniqueTiles(reusableOverlayTiles, combatSystem.GetTargetableTiles(source, ability));
+
+        if (ability.RangeType == TacticsAbilityRangeType.SurroundingAoE)
+        {
+            AddUniqueTiles(reusableOverlayTiles, combatSystem.GetAreaTiles(source, ability, source.GridPosition));
+        }
+
+        return reusableOverlayTiles;
+    }
+
+    private static void AddUniqueTiles(List<Vector2Int> destination, IReadOnlyList<Vector2Int> tiles)
+    {
+        if (tiles == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < tiles.Count; i++)
+        {
+            Vector2Int tile = tiles[i];
+            if (!destination.Contains(tile))
+            {
+                destination.Add(tile);
+            }
         }
     }
 

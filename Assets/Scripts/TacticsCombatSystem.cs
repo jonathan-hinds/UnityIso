@@ -13,6 +13,7 @@ public sealed class TacticsCombatSystem : MonoBehaviour
     private readonly List<TacticsCharacterController> reusableAreaTargets = new();
     private readonly List<Vector2Int> reusableTargetTiles = new();
     private readonly List<Vector2Int> reusableTargetableTiles = new();
+    private readonly List<Vector2Int> reusableAreaTiles = new();
     private Coroutine resolveRoutine;
 
     public event Action StateChanged;
@@ -149,6 +150,12 @@ public sealed class TacticsCombatSystem : MonoBehaviour
             return false;
         }
 
+        if (ability.RangeType == TacticsAbilityRangeType.SurroundingAoE &&
+            !IsValidTarget(source, source.GridPosition, ability, FindCharacterAt(targetTile)))
+        {
+            return false;
+        }
+
         List<TacticsCharacterController> affectedTargets = GetAffectedTargets(source, ability, targetTile, reusableAreaTargets);
         if (affectedTargets.Count == 0)
         {
@@ -198,7 +205,10 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         reusableAreaTargets.Clear();
 
         if (!CanUseAbility(source, ability) ||
-            !CanTargetTile(source, source != null ? source.GridPosition : default, ability, targetTile))
+            !CanTargetTile(source, source != null ? source.GridPosition : default, ability, targetTile) ||
+            (ability != null &&
+             ability.RangeType == TacticsAbilityRangeType.SurroundingAoE &&
+             !IsValidTarget(source, source != null ? source.GridPosition : default, ability, FindCharacterAt(targetTile))))
         {
             return reusableAreaTargets;
         }
@@ -224,12 +234,65 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         reusableAreaTargets.Clear();
 
         if (!CanUseAbility(source, ability) ||
-            !CanTargetTile(source, sourceTile, ability, targetTile))
+            !CanTargetTile(source, sourceTile, ability, targetTile) ||
+            (ability != null &&
+             ability.RangeType == TacticsAbilityRangeType.SurroundingAoE &&
+             !IsValidTarget(source, sourceTile, ability, FindCharacterAt(targetTile))))
         {
             return reusableAreaTargets;
         }
 
         return GetAffectedTargets(source, ability, targetTile, reusableAreaTargets);
+    }
+
+    public IReadOnlyList<Vector2Int> GetAreaTiles(
+        TacticsCharacterController source,
+        TacticsAbilityDefinition ability,
+        Vector2Int targetTile)
+    {
+        reusableAreaTiles.Clear();
+
+        if (!CanUseAbility(source, ability) || mapGenerator == null || !mapGenerator.HasGeneratedMap)
+        {
+            return reusableAreaTiles;
+        }
+
+        if (!ability.UsesAreaOfEffect)
+        {
+            reusableAreaTiles.Add(targetTile);
+            return reusableAreaTiles;
+        }
+
+        Vector2Int areaCenter = ability.RangeType == TacticsAbilityRangeType.SurroundingAoE
+            ? source.GridPosition
+            : targetTile;
+        int areaRadius = ability.AreaOfEffectRadius;
+
+        for (int x = areaCenter.x - areaRadius; x <= areaCenter.x + areaRadius; x++)
+        {
+            for (int y = areaCenter.y - areaRadius; y <= areaCenter.y + areaRadius; y++)
+            {
+                if (x < 0 || x >= mapGenerator.Width || y < 0 || y >= mapGenerator.Length)
+                {
+                    continue;
+                }
+
+                if (!mapGenerator.IsTraversable(x, y))
+                {
+                    continue;
+                }
+
+                if (ability.RangeType == TacticsAbilityRangeType.SurroundingAoE &&
+                    !AreTilesOnSameElevation(source.GridPosition, new Vector2Int(x, y)))
+                {
+                    continue;
+                }
+
+                reusableAreaTiles.Add(new Vector2Int(x, y));
+            }
+        }
+
+        return reusableAreaTiles;
     }
 
     private bool IsValidTarget(TacticsCharacterController source, TacticsAbilityDefinition ability, TacticsCharacterController target)
@@ -289,6 +352,13 @@ public sealed class TacticsCombatSystem : MonoBehaviour
 
     private bool HasValidTargetsAtTile(TacticsCharacterController source, TacticsAbilityDefinition ability, Vector2Int targetTile)
     {
+        if (ability != null &&
+            ability.RangeType == TacticsAbilityRangeType.SurroundingAoE &&
+            !IsValidTarget(source, source != null ? source.GridPosition : default, ability, FindCharacterAt(targetTile)))
+        {
+            return false;
+        }
+
         return GetAffectedTargets(source, ability, targetTile, reusableAreaTargets).Count > 0;
     }
 
@@ -317,6 +387,12 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         }
 
         int areaRadius = ability.AreaOfEffectRadius;
+        Vector2Int areaCenter = ability.RangeType == TacticsAbilityRangeType.SurroundingAoE
+            ? source.GridPosition
+            : targetTile;
+        int sourceElevation = TryGetTileElevation(source.GridPosition, out int resolvedSourceElevation)
+            ? resolvedSourceElevation
+            : int.MinValue;
         TacticsCharacterController[] characters = FindObjectsByType<TacticsCharacterController>(FindObjectsSortMode.None);
         for (int i = 0; i < characters.Length; i++)
         {
@@ -326,8 +402,14 @@ public sealed class TacticsCombatSystem : MonoBehaviour
                 continue;
             }
 
-            if (Mathf.Abs(target.GridPosition.x - targetTile.x) > areaRadius ||
-                Mathf.Abs(target.GridPosition.y - targetTile.y) > areaRadius)
+            if (Mathf.Abs(target.GridPosition.x - areaCenter.x) > areaRadius ||
+                Mathf.Abs(target.GridPosition.y - areaCenter.y) > areaRadius)
+            {
+                continue;
+            }
+
+            if (ability.RangeType == TacticsAbilityRangeType.SurroundingAoE &&
+                (!TryGetTileElevation(target.GridPosition, out int targetElevation) || targetElevation != sourceElevation))
             {
                 continue;
             }
@@ -393,8 +475,7 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         switch (ability.RangeType)
         {
             case TacticsAbilityRangeType.Melee:
-                return distance == 1 &&
-                       mapGenerator.GetTileElevation(sourceTile.x, sourceTile.y) == mapGenerator.GetTileElevation(targetTile.x, targetTile.y);
+                return distance == 1 && AreTilesOnSameElevation(sourceTile, targetTile);
 
             case TacticsAbilityRangeType.Ranged:
             case TacticsAbilityRangeType.RangedAoE:
@@ -405,7 +486,7 @@ public sealed class TacticsCombatSystem : MonoBehaviour
                 return distance <= ability.Range;
 
             case TacticsAbilityRangeType.SurroundingAoE:
-                return targetTile == sourceTile;
+                return distance == 1 && AreTilesOnSameElevation(sourceTile, targetTile);
 
             default:
                 return false;
@@ -459,6 +540,30 @@ public sealed class TacticsCombatSystem : MonoBehaviour
     private static int GetTileDistance(Vector2Int source, Vector2Int target)
     {
         return Mathf.Abs(source.x - target.x) + Mathf.Abs(source.y - target.y);
+    }
+
+    private bool AreTilesOnSameElevation(Vector2Int firstTile, Vector2Int secondTile)
+    {
+        return TryGetTileElevation(firstTile, out int firstElevation) &&
+               TryGetTileElevation(secondTile, out int secondElevation) &&
+               firstElevation == secondElevation;
+    }
+
+    private bool TryGetTileElevation(Vector2Int tile, out int elevation)
+    {
+        elevation = 0;
+        if (mapGenerator == null || !mapGenerator.HasGeneratedMap)
+        {
+            return false;
+        }
+
+        if (tile.x < 0 || tile.x >= mapGenerator.Width || tile.y < 0 || tile.y >= mapGenerator.Length)
+        {
+            return false;
+        }
+
+        elevation = mapGenerator.GetTileElevation(tile.x, tile.y);
+        return true;
     }
 
     private static List<Vector2Int> GetLineTiles(Vector2Int start, Vector2Int end)

@@ -25,10 +25,14 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
     }
 
     private ProceduralIsometricMapGenerator mapGenerator;
+    private TacticsMainMenuView mainMenuView;
+    private bool sceneSetupComplete;
+    private bool gameplayStartInProgress;
 
     private void Start()
     {
         ConfigureTransparencySorting();
+        EnsureEventSystem();
 
         mapGenerator = FindFirstObjectByType<ProceduralIsometricMapGenerator>();
         if (mapGenerator == null)
@@ -37,13 +41,8 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             return;
         }
 
-        if (mapGenerator.HasGeneratedMap)
-        {
-            SetupScene();
-            return;
-        }
-
-        mapGenerator.MapGenerated += HandleMapGenerated;
+        mainMenuView = EnsureMainMenuView();
+        ShowMainMenu();
     }
 
     private void OnDestroy()
@@ -51,6 +50,11 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         if (mapGenerator != null)
         {
             mapGenerator.MapGenerated -= HandleMapGenerated;
+        }
+
+        if (mainMenuView != null)
+        {
+            mainMenuView.PlayRequested -= HandlePlayRequested;
         }
     }
 
@@ -64,8 +68,70 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         SetupScene();
     }
 
+    private void ShowMainMenu()
+    {
+        if (mainMenuView == null)
+        {
+            return;
+        }
+
+        mainMenuView.PlayRequested -= HandlePlayRequested;
+        mainMenuView.PlayRequested += HandlePlayRequested;
+        mainMenuView.SetStatusText(string.Empty);
+        mainMenuView.Show();
+        SetCameraInputEnabled(false);
+    }
+
+    private void HandlePlayRequested()
+    {
+        if (gameplayStartInProgress || sceneSetupComplete)
+        {
+            return;
+        }
+
+        gameplayStartInProgress = true;
+        TacticsRuntimeStartupState.RequestGameplayStart();
+        SetCameraInputEnabled(true);
+
+        if (mainMenuView != null)
+        {
+            mainMenuView.SetInteractable(false);
+            mainMenuView.SetStatusText("Initializing battle systems...");
+        }
+
+        if (mapGenerator == null)
+        {
+            Debug.LogWarning("Tactics bootstrap could not start gameplay because no ProceduralIsometricMapGenerator was found.");
+            gameplayStartInProgress = false;
+
+            if (mainMenuView != null)
+            {
+                mainMenuView.SetInteractable(true);
+                mainMenuView.SetStatusText("Map generator missing.");
+            }
+
+            return;
+        }
+
+        if (mapGenerator.HasGeneratedMap)
+        {
+            SetupScene();
+            return;
+        }
+
+        mapGenerator.MapGenerated -= HandleMapGenerated;
+        mapGenerator.MapGenerated += HandleMapGenerated;
+        mapGenerator.GenerateMap();
+    }
+
     private void SetupScene()
     {
+        if (sceneSetupComplete)
+        {
+            return;
+        }
+
+        sceneSetupComplete = true;
         ConfigureTransparencySorting();
         EnsureEventSystem();
         TacticsActionMenuView actionMenuView = EnsureActionMenuView();
@@ -106,6 +172,12 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             turnManager,
             combatSystem);
         turnManager?.RefreshParticipantsAndStartBattle();
+        gameplayStartInProgress = false;
+
+        if (mainMenuView != null)
+        {
+            mainMenuView.Hide();
+        }
     }
 
     private static void ConfigureTransparencySorting()
@@ -154,6 +226,18 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         GameObject eventSystemObject = new GameObject("EventSystem");
         eventSystemObject.AddComponent<EventSystem>();
         eventSystemObject.AddComponent<InputSystemUIInputModule>();
+    }
+
+    private TacticsMainMenuView EnsureMainMenuView()
+    {
+        TacticsMainMenuView existingView = FindFirstObjectByType<TacticsMainMenuView>();
+        if (existingView != null)
+        {
+            return existingView;
+        }
+
+        GameObject menuObject = new GameObject("Tactics Main Menu");
+        return menuObject.AddComponent<TacticsMainMenuView>();
     }
 
     private TacticsActionMenuView EnsureActionMenuView()
@@ -339,6 +423,12 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
         GameObject combatTextObject = new GameObject("Tactics Combat Text System");
         combatTextObject.AddComponent<TacticsCombatTextSystem>();
+    }
+
+    private static void SetCameraInputEnabled(bool enabled)
+    {
+        MouseCameraController cameraController = FindFirstObjectByType<MouseCameraController>();
+        cameraController?.SetInputEnabled(enabled);
     }
 
     private void EnsureCharacters()

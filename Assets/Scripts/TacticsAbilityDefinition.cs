@@ -43,7 +43,7 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
     public bool UsesAreaOfEffect => rangeType == TacticsAbilityRangeType.SurroundingAoE ||
                                     rangeType == TacticsAbilityRangeType.RangedAoE ||
                                     rangeType == TacticsAbilityRangeType.AbsoluteAoE;
-    public bool RequiresTargetSelection => rangeType != TacticsAbilityRangeType.SurroundingAoE;
+    public bool RequiresTargetSelection => true;
     public TacticsAbilityTargetRule TargetRule => targetRule;
     public TacticsAbilityDamageType DamageType => damageType;
     public TacticsAbilityProjectile ProjectilePrefab => projectilePrefab;

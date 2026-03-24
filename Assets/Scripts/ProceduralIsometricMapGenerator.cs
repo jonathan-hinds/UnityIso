@@ -94,7 +94,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
 
     private void Start()
     {
-        if (!generateOnStart)
+        if (!generateOnStart || !TacticsRuntimeStartupState.GameplayStartRequested)
         {
             return;
         }

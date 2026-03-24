@@ -10,35 +10,35 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 22e7b594db971ee418d48f83c5b2661c, type: 3}
-  m_Name: Mage
+  m_Name: Knight
   m_EditorClassIdentifier: 
-  characterId: mage
-  displayName: Mage
+  characterId: knight
+  displayName: Knight
   team: 0
-  spriteSheetResourcePath: Characters/guy2
+  spriteSheetResourcePath: Characters/guy7
   walkFramesPerSecond: 5
   baseColor: {r: 1, g: 1, b: 1, a: 1}
-  selectedColor: {r: 0.78, g: 0.93, b: 1, a: 1}
+  selectedColor: {r: 1, g: 0.95, b: 0.65, a: 1}
   moveSpeed: 1.2
   jumpDuration: 0.5
   jumpArcHeight: 0.5
   maxStepUp: 1
   maxStepDown: 1
   tileAnchorOffset: {x: 0.18, y: 0.17}
-  preferredSpawnTile: {x: 1, y: 0}
+  preferredSpawnTile: {x: 2, y: 0}
   baseStats:
     primaryStats:
-      stamina: 4
-      strength: 3
-      agility: 5
-      wisdom: 7
-      intelligence: 8
+      stamina: 6
+      strength: 6
+      agility: 2
+      wisdom: 1
+      intelligence: 1
     mobilityStats:
       moveRange: 4
       jumpHeight: 2
   startingAbilities:
-  - {fileID: 11400000, guid: 07ea7b7d353f9a3479eca6d4efcc8860, type: 2}
-  - {fileID: 11400000, guid: f6aecb6ac7328f34aa17eeb1085cda3c, type: 2}
+  - {fileID: 11400000, guid: 3001edcb51eaa3147bde39d09a4a27fd, type: 2}
+  - {fileID: 11400000, guid: 6a6672c1565e0f0438af0fab463d3ca8, type: 2}
   experienceToNextLevel: 100
   experienceRewardMin: 0
   experienceRewardMax: 0

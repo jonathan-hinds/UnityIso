@@ -1,0 +1,25 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="False">
+    <ui:Style src="project://database/Assets/Resources/UI/TacticsMainMenu.uss" />
+    <ui:VisualElement name="main-menu-root" class="menu-root">
+        <ui:VisualElement name="menu-backdrop" class="menu-backdrop">
+            <ui:VisualElement name="ambient-glow-top" class="ambient-glow ambient-glow--top" />
+            <ui:VisualElement name="ambient-glow-bottom" class="ambient-glow ambient-glow--bottom" />
+            <ui:VisualElement name="menu-shell" class="menu-shell">
+                <ui:VisualElement name="crest-column" class="crest-column">
+                    <ui:Label name="chapter-label" class="chapter-label" text="TACTICAL CHRONICLE" />
+                    <ui:VisualElement name="crest-line" class="crest-line" />
+                    <ui:Label name="title-label" class="title-label" text="ISOMETRIC RPG" />
+                    <ui:Label name="subtitle-label" class="subtitle-label" text="A slim, luminous battlefield overture" />
+                </ui:VisualElement>
+                <ui:VisualElement name="command-panel" class="command-panel">
+                    <ui:Label name="command-heading" class="command-heading" text="Main Menu" />
+                    <ui:Label name="command-copy" class="command-copy" text="Enter the encounter when you are ready. The existing tactical flow will begin exactly from its current runtime bootstrap." />
+                    <ui:Button name="play-button" class="play-button" text="Play" />
+                    <ui:Label name="status-label" class="status-label" text="" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+            <ui:VisualElement name="frame-top" class="frame-line frame-line--top" />
+            <ui:VisualElement name="frame-bottom" class="frame-line frame-line--bottom" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

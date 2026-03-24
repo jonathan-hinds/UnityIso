@@ -1,0 +1,186 @@
+:root {
+    --menu-ink: rgba(243, 242, 235, 1);
+    --menu-soft-ink: rgba(203, 208, 214, 0.82);
+    --menu-gold: rgba(194, 164, 104, 1);
+}
+
+.menu-root {
+    flex-grow: 1;
+}
+
+.menu-backdrop {
+    flex-grow: 1;
+    align-items: stretch;
+    justify-content: center;
+    padding-left: 96px;
+    padding-right: 96px;
+    padding-top: 72px;
+    padding-bottom: 72px;
+    background-color: rgba(6, 10, 18, 0.96);
+}
+
+.ambient-glow {
+    position: absolute;
+    border-radius: 999px;
+    opacity: 0.65;
+}
+
+.ambient-glow--top {
+    left: -140px;
+    top: -90px;
+    width: 520px;
+    height: 520px;
+    background-color: rgba(78, 114, 156, 0.18);
+}
+
+.ambient-glow--bottom {
+    right: -120px;
+    bottom: -160px;
+    width: 620px;
+    height: 620px;
+    background-color: rgba(177, 146, 92, 0.10);
+}
+
+.menu-shell {
+    flex-grow: 1;
+    flex-direction: row;
+    align-items: stretch;
+    justify-content: space-between;
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-right-width: 1px;
+    border-top-color: rgba(255, 255, 255, 0.08);
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+    border-left-color: rgba(255, 255, 255, 0.03);
+    border-right-color: rgba(255, 255, 255, 0.03);
+    background-color: rgba(8, 14, 24, 0.32);
+}
+
+.crest-column {
+    width: 56%;
+    justify-content: center;
+    padding-left: 56px;
+    padding-right: 56px;
+    padding-top: 60px;
+    padding-bottom: 60px;
+}
+
+.chapter-label {
+    color: var(--menu-soft-ink);
+    font-size: 15px;
+    -unity-font-style: bold;
+    letter-spacing: 6px;
+    margin-bottom: 20px;
+}
+
+.crest-line {
+    width: 420px;
+    height: 1px;
+    background-color: rgba(194, 164, 104, 0.85);
+    margin-bottom: 26px;
+}
+
+.title-label {
+    color: var(--menu-ink);
+    font-size: 64px;
+    -unity-font-style: bold;
+    letter-spacing: 14px;
+    margin-bottom: 12px;
+}
+
+.subtitle-label {
+    color: var(--menu-soft-ink);
+    font-size: 18px;
+    letter-spacing: 3px;
+    width: 520px;
+    white-space: normal;
+}
+
+.command-panel {
+    width: 460px;
+    align-self: center;
+    margin-right: 36px;
+    padding-left: 34px;
+    padding-right: 34px;
+    padding-top: 34px;
+    padding-bottom: 30px;
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-right-width: 1px;
+    border-top-color: rgba(255, 255, 255, 0.12);
+    border-bottom-color: rgba(255, 255, 255, 0.12);
+    border-left-color: rgba(255, 255, 255, 0.08);
+    border-right-color: rgba(255, 255, 255, 0.08);
+    background-color: rgba(10, 16, 28, 0.78);
+}
+
+.command-heading {
+    color: var(--menu-ink);
+    font-size: 19px;
+    -unity-font-style: bold;
+    letter-spacing: 3px;
+    margin-bottom: 18px;
+}
+
+.command-copy {
+    color: var(--menu-soft-ink);
+    font-size: 14px;
+    margin-bottom: 28px;
+    white-space: normal;
+    width: 100%;
+}
+
+.play-button {
+    height: 56px;
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-right-width: 1px;
+    border-top-color: rgba(216, 192, 140, 0.58);
+    border-bottom-color: rgba(216, 192, 140, 0.58);
+    border-left-color: rgba(216, 192, 140, 0.58);
+    border-right-color: rgba(216, 192, 140, 0.58);
+    background-color: rgba(26, 39, 57, 0.94);
+    color: rgb(245, 241, 230);
+    font-size: 18px;
+    -unity-font-style: bold;
+    letter-spacing: 6px;
+}
+
+.play-button:hover {
+    background-color: rgba(53, 74, 98, 0.98);
+    border-top-color: rgba(243, 224, 178, 0.85);
+    border-bottom-color: rgba(243, 224, 178, 0.85);
+    border-left-color: rgba(243, 224, 178, 0.85);
+    border-right-color: rgba(243, 224, 178, 0.85);
+}
+
+.play-button:disabled {
+    opacity: 0.45;
+}
+
+.status-label {
+    color: rgba(194, 164, 104, 0.92);
+    font-size: 13px;
+    letter-spacing: 2px;
+    margin-top: 18px;
+    display: none;
+}
+
+.frame-line {
+    position: absolute;
+    left: 72px;
+    right: 72px;
+    height: 1px;
+    background-color: rgba(194, 164, 104, 0.38);
+}
+
+.frame-line--top {
+    top: 40px;
+}
+
+.frame-line--bottom {
+    bottom: 40px;
+}

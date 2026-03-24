@@ -558,6 +558,9 @@ public class TacticsActionMenuView : MonoBehaviour
             TacticsAbilityRangeType.Melee => "MELEE 1",
             TacticsAbilityRangeType.Ranged => $"RANGED {ability.Range}",
             TacticsAbilityRangeType.AbsoluteRanged => $"ABSOLUTE {ability.Range}",
+            TacticsAbilityRangeType.SurroundingAoE => $"SURROUND {ability.AreaOfEffectSize}x{ability.AreaOfEffectSize}",
+            TacticsAbilityRangeType.RangedAoE => $"AOE {ability.Range} / {ability.AreaOfEffectSize}x{ability.AreaOfEffectSize}",
+            TacticsAbilityRangeType.AbsoluteAoE => $"ABS AOE {ability.Range} / {ability.AreaOfEffectSize}x{ability.AreaOfEffectSize}",
             _ => $"RANGE {ability.Range}"
         };
     }
