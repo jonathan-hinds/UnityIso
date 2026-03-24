@@ -11,10 +11,12 @@ using Unity.Burst;
 [DisallowMultipleComponent]
 public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
 {
+    private const string DefaultAddress = "127.0.0.1";
     private const ushort DefaultPort = 7777;
     private const int ExpectedPlayerCount = 2;
     private const int HostPartyIndex = 0;
     private const int ClientPartyIndex = 1;
+    private const NetworkDelivery NamedMessageDelivery = NetworkDelivery.ReliableFragmentedSequenced;
 
     private const string PartySelectionMessageName = "tactics.party.selection";
     private const string BattleStartMessageName = "tactics.battle.start";
@@ -24,15 +26,18 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
     private const string AbilityCommandMessageName = "tactics.command.ability.execute";
     private const string EndTurnRequestMessageName = "tactics.command.endturn.request";
     private const string EndTurnCommandMessageName = "tactics.command.endturn.execute";
+    private const string AllocateAttributeRequestMessageName = "tactics.command.attribute.request";
+    private const string AllocateAttributeCommandMessageName = "tactics.command.attribute.execute";
     private const string ExitSessionRequestMessageName = "tactics.session.exit.request";
     private const string ExitSessionCommandMessageName = "tactics.session.exit.command";
 
-    private readonly Dictionary<ulong, List<string>> partySelectionsByClientId = new();
+    private readonly Dictionary<ulong, List<TacticsCoopCharacterLoadout>> partySelectionsByClientId = new();
     private readonly Queue<ReplicatedCommandEnvelope> pendingReplicatedCommands = new();
 
     private NetworkManager networkManager;
     private UnityTransport transport;
     private TacticsPartySelectionService partySelectionService;
+    private TacticsCharacterProgressionService progressionService;
     private bool handlersRegistered;
     private bool isMatchStarting;
     private bool pendingClientPartySubmission;
@@ -72,22 +77,32 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         partySelectionService = selectionService;
     }
 
-    public bool StartHost()
+    public void AssignCharacterProgressionService(TacticsCharacterProgressionService service)
+    {
+        progressionService = service;
+    }
+
+    public bool StartHost(string address)
     {
         EnsureNetworkStack();
+        StopActiveSession();
         ResetSessionState();
-        ConfigureHostTransport();
+        if (!TryConfigureHostTransport(address, out string hostAddress, out ushort port))
+        {
+            return false;
+        }
+
         ApplyEditorBurstWorkaround();
 
         if (!networkManager.StartHost())
         {
-            EmitStatus("Failed to start host.");
+            EmitStatus($"Failed to start host on {hostAddress}:{port}. Check whether another Unity session is already using that port.");
             return false;
         }
 
         RegisterNetworkCallbacks();
-        partySelectionsByClientId[networkManager.LocalClientId] = GetLocalPartyCharacterIds();
-        EmitStatus($"Hosting co-op on 127.0.0.1:{DefaultPort}. Waiting for a second player...");
+        partySelectionsByClientId[networkManager.LocalClientId] = GetLocalPartyLoadout();
+        EmitStatus($"Hosting co-op on {hostAddress}:{port}. Waiting for a second player...");
         TryStartBattleIfReady();
         return true;
     }
@@ -95,19 +110,24 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
     public bool StartClient(string address)
     {
         EnsureNetworkStack();
+        StopActiveSession();
         ResetSessionState();
-        ConfigureClientTransport(address);
+        if (!TryConfigureClientTransport(address, out string hostAddress, out ushort port))
+        {
+            return false;
+        }
+
         ApplyEditorBurstWorkaround();
 
         if (!networkManager.StartClient())
         {
-            EmitStatus("Failed to start client.");
+            EmitStatus($"Failed to start client for {hostAddress}:{port}.");
             return false;
         }
 
         RegisterNetworkCallbacks();
         pendingClientPartySubmission = true;
-        EmitStatus($"Joining co-op at {ResolveAddress(address)}:{DefaultPort}...");
+        EmitStatus($"Joining co-op at {hostAddress}:{port}...");
         return true;
     }
 
@@ -227,6 +247,39 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         return true;
     }
 
+    public bool RequestAllocateAttributePoint(TacticsCharacterController character, TacticsAbilityScalingStat stat)
+    {
+        if (character == null || !CanInitiateCommandForCharacter(character))
+        {
+            return false;
+        }
+
+        AllocateAttributeCommandMessage message = new AllocateAttributeCommandMessage
+        {
+            runtimeCharacterId = character.RuntimeCharacterId,
+            stat = stat
+        };
+
+        if (!IsOnlineSession)
+        {
+            return ExecuteAllocateAttributeCommand(message);
+        }
+
+        if (IsHostAuthority)
+        {
+            if (!ExecuteAllocateAttributeCommand(message))
+            {
+                return false;
+            }
+
+            BroadcastMessage(AllocateAttributeCommandMessageName, JsonUtility.ToJson(message), includeHost: false);
+            return true;
+        }
+
+        SendMessageToServer(AllocateAttributeRequestMessageName, JsonUtility.ToJson(message));
+        return true;
+    }
+
     public bool RequestReturnToHome()
     {
         if (!IsOnlineSession)
@@ -285,6 +338,17 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         pendingClientPartySubmission = false;
     }
 
+    private void StopActiveSession()
+    {
+        if (networkManager == null || !networkManager.IsListening)
+        {
+            return;
+        }
+
+        UnregisterNetworkCallbacks();
+        networkManager.Shutdown();
+    }
+
     private void RegisterNetworkCallbacks()
     {
         if (networkManager == null || handlersRegistered)
@@ -304,6 +368,8 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         messaging.RegisterNamedMessageHandler(AbilityCommandMessageName, HandleAbilityCommandMessage);
         messaging.RegisterNamedMessageHandler(EndTurnRequestMessageName, HandleEndTurnRequestMessage);
         messaging.RegisterNamedMessageHandler(EndTurnCommandMessageName, HandleEndTurnCommandMessage);
+        messaging.RegisterNamedMessageHandler(AllocateAttributeRequestMessageName, HandleAllocateAttributeRequestMessage);
+        messaging.RegisterNamedMessageHandler(AllocateAttributeCommandMessageName, HandleAllocateAttributeCommandMessage);
         messaging.RegisterNamedMessageHandler(ExitSessionRequestMessageName, HandleExitSessionRequestMessage);
         messaging.RegisterNamedMessageHandler(ExitSessionCommandMessageName, HandleExitSessionCommandMessage);
         handlersRegistered = true;
@@ -330,6 +396,8 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
             messaging.UnregisterNamedMessageHandler(AbilityCommandMessageName);
             messaging.UnregisterNamedMessageHandler(EndTurnRequestMessageName);
             messaging.UnregisterNamedMessageHandler(EndTurnCommandMessageName);
+            messaging.UnregisterNamedMessageHandler(AllocateAttributeRequestMessageName);
+            messaging.UnregisterNamedMessageHandler(AllocateAttributeCommandMessageName);
             messaging.UnregisterNamedMessageHandler(ExitSessionRequestMessageName);
             messaging.UnregisterNamedMessageHandler(ExitSessionCommandMessageName);
         }
@@ -379,7 +447,7 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
 
         string payload = ReadPayload(ref reader);
         PartySelectionMessage message = JsonUtility.FromJson<PartySelectionMessage>(payload);
-        partySelectionsByClientId[senderClientId] = message?.characterIds ?? new List<string>();
+        partySelectionsByClientId[senderClientId] = message?.characters ?? new List<TacticsCoopCharacterLoadout>();
         EmitStatus("Both clients are connected. Finalizing battle setup...");
         TryStartBattleIfReady();
     }
@@ -490,6 +558,36 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         EnqueueReplicatedCommand(ReplicatedCommandType.EndTurn, ReadPayload(ref reader));
     }
 
+    private void HandleAllocateAttributeRequestMessage(ulong senderClientId, FastBufferReader reader)
+    {
+        if (!IsHostAuthority)
+        {
+            return;
+        }
+
+        string payload = ReadPayload(ref reader);
+        AllocateAttributeCommandMessage message = JsonUtility.FromJson<AllocateAttributeCommandMessage>(payload);
+        if (!CanClientControlCharacter(senderClientId, message.runtimeCharacterId))
+        {
+            return;
+        }
+
+        if (ExecuteAllocateAttributeCommand(message))
+        {
+            BroadcastMessage(AllocateAttributeCommandMessageName, payload, includeHost: false);
+        }
+    }
+
+    private void HandleAllocateAttributeCommandMessage(ulong senderClientId, FastBufferReader reader)
+    {
+        if (IsHostAuthority)
+        {
+            return;
+        }
+
+        EnqueueReplicatedCommand(ReplicatedCommandType.AllocateAttribute, ReadPayload(ref reader));
+    }
+
     private void HandleExitSessionRequestMessage(ulong senderClientId, FastBufferReader reader)
     {
         if (!IsHostAuthority)
@@ -562,6 +660,12 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
             : character.ApplyReplicatedEndTurn();
     }
 
+    private bool ExecuteAllocateAttributeCommand(AllocateAttributeCommandMessage message)
+    {
+        TacticsCharacterController character = FindCharacterByRuntimeId(message.runtimeCharacterId);
+        return character != null && character.TryAllocateAttributePoint(message.stat);
+    }
+
     private void TryStartBattleIfReady()
     {
         if (!IsHostAuthority || isMatchStarting || networkManager == null)
@@ -577,7 +681,7 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         for (int i = 0; i < networkManager.ConnectedClientsIds.Count; i++)
         {
             ulong clientId = networkManager.ConnectedClientsIds[i];
-            if (!partySelectionsByClientId.TryGetValue(clientId, out List<string> partyIds) || partyIds == null || partyIds.Count == 0)
+            if (!partySelectionsByClientId.TryGetValue(clientId, out List<TacticsCoopCharacterLoadout> partyIds) || partyIds == null || partyIds.Count == 0)
             {
                 return;
             }
@@ -597,10 +701,10 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
 
         TacticsCoopBattleSetup battleSetup = new TacticsCoopBattleSetup
         {
-            hostPartyCharacterIds = new List<string>(partySelectionsByClientId[hostClientId]),
-            clientPartyCharacterIds = remoteClientId != 0 && partySelectionsByClientId.TryGetValue(remoteClientId, out List<string> remoteParty)
-                ? new List<string>(remoteParty)
-                : new List<string>()
+            hostPartyMembers = new List<TacticsCoopCharacterLoadout>(partySelectionsByClientId[hostClientId]),
+            clientPartyMembers = remoteClientId != 0 && partySelectionsByClientId.TryGetValue(remoteClientId, out List<TacticsCoopCharacterLoadout> remoteParty)
+                ? new List<TacticsCoopCharacterLoadout>(remoteParty)
+                : new List<TacticsCoopCharacterLoadout>()
         };
 
         isMatchStarting = true;
@@ -609,9 +713,9 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         BattleSetupReady?.Invoke(battleSetup);
     }
 
-    private List<string> GetLocalPartyCharacterIds()
+    private List<TacticsCoopCharacterLoadout> GetLocalPartyLoadout()
     {
-        List<string> result = new();
+        List<TacticsCoopCharacterLoadout> result = new();
         TacticsPartySelection selection = partySelectionService?.LoadSelection();
         if (selection == null)
         {
@@ -623,32 +727,86 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
             string characterId = selection.GetCharacterId(i);
             if (!string.IsNullOrEmpty(characterId))
             {
-                result.Add(characterId);
+                result.Add(new TacticsCoopCharacterLoadout
+                {
+                    characterId = characterId,
+                    progression = progressionService != null
+                        ? progressionService.GetProgression(characterId)
+                        : TacticsCharacterProgressionSnapshot.CreateDefault(characterId)
+                });
             }
         }
 
         return result;
     }
 
-    private void ConfigureHostTransport()
+    private bool TryConfigureHostTransport(string address, out string hostAddress, out ushort port)
     {
-        if (transport != null)
+        hostAddress = DefaultAddress;
+        port = DefaultPort;
+        if (transport == null)
         {
-            transport.SetConnectionData("127.0.0.1", DefaultPort, "0.0.0.0");
+            EmitStatus("Network transport is unavailable.");
+            return false;
         }
+
+        if (!TryParseEndpoint(address, out hostAddress, out port))
+        {
+            EmitStatus("Invalid host address. Use `address` or `address:port`.");
+            return false;
+        }
+
+        transport.SetConnectionData(hostAddress, port, "0.0.0.0");
+        return true;
     }
 
-    private void ConfigureClientTransport(string address)
+    private bool TryConfigureClientTransport(string address, out string hostAddress, out ushort port)
     {
-        if (transport != null)
+        hostAddress = DefaultAddress;
+        port = DefaultPort;
+        if (transport == null)
         {
-            transport.SetConnectionData(ResolveAddress(address), DefaultPort);
+            EmitStatus("Network transport is unavailable.");
+            return false;
         }
+
+        if (!TryParseEndpoint(address, out hostAddress, out port))
+        {
+            EmitStatus("Invalid join address. Use `address` or `address:port`.");
+            return false;
+        }
+
+        transport.SetConnectionData(hostAddress, port);
+        return true;
     }
 
     private static string ResolveAddress(string address)
     {
-        return string.IsNullOrWhiteSpace(address) ? "127.0.0.1" : address.Trim();
+        return string.IsNullOrWhiteSpace(address) ? DefaultAddress : address.Trim();
+    }
+
+    private static bool TryParseEndpoint(string rawAddress, out string address, out ushort port)
+    {
+        address = DefaultAddress;
+        port = DefaultPort;
+
+        string candidate = ResolveAddress(rawAddress);
+        int colonIndex = candidate.LastIndexOf(':');
+        if (colonIndex < 0 || colonIndex != candidate.IndexOf(':'))
+        {
+            address = candidate;
+            return true;
+        }
+
+        string parsedAddress = candidate[..colonIndex].Trim();
+        string parsedPort = candidate[(colonIndex + 1)..].Trim();
+        if (string.IsNullOrWhiteSpace(parsedPort) || !ushort.TryParse(parsedPort, out port) || port == 0)
+        {
+            return false;
+        }
+
+        address = string.IsNullOrWhiteSpace(parsedAddress) ? DefaultAddress : parsedAddress;
+        return true;
     }
 
     public bool CanLocalPlayerControlCharacter(TacticsCharacterController character)
@@ -738,7 +896,7 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
 
         using FastBufferWriter writer = new(FastBufferWriter.GetWriteSize(payload), Allocator.Temp);
         writer.WriteValueSafe(payload);
-        networkManager.CustomMessagingManager.SendNamedMessage(messageName, recipients, writer, NetworkDelivery.ReliableSequenced);
+        networkManager.CustomMessagingManager.SendNamedMessage(messageName, recipients, writer, NamedMessageDelivery);
     }
 
     private void SendMessageToServer(string messageName, string payload)
@@ -750,7 +908,7 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
 
         using FastBufferWriter writer = new(FastBufferWriter.GetWriteSize(payload), Allocator.Temp);
         writer.WriteValueSafe(payload);
-        networkManager.CustomMessagingManager.SendNamedMessage(messageName, NetworkManager.ServerClientId, writer, NetworkDelivery.ReliableSequenced);
+        networkManager.CustomMessagingManager.SendNamedMessage(messageName, NetworkManager.ServerClientId, writer, NamedMessageDelivery);
     }
 
     private static string ReadPayload(ref FastBufferReader reader)
@@ -863,6 +1021,8 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
             ReplicatedCommandType.EndTurn => ExecuteEndTurnCommand(
                 JsonUtility.FromJson<EndTurnCommandMessage>(command.Payload),
                 requireLocalAuthorityState: false),
+            ReplicatedCommandType.AllocateAttribute => ExecuteAllocateAttributeCommand(
+                JsonUtility.FromJson<AllocateAttributeCommandMessage>(command.Payload)),
             _ => false
         };
     }
@@ -872,7 +1032,7 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         EmitStatus("Connected. Sending team selection to host...");
         SendMessageToServer(PartySelectionMessageName, JsonUtility.ToJson(new PartySelectionMessage
         {
-            characterIds = GetLocalPartyCharacterIds()
+            characters = GetLocalPartyLoadout()
         }));
     }
 
@@ -896,7 +1056,7 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
     [Serializable]
     private sealed class PartySelectionMessage
     {
-        public List<string> characterIds = new();
+        public List<TacticsCoopCharacterLoadout> characters = new();
     }
 
     [Serializable]
@@ -924,6 +1084,13 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
     }
 
     [Serializable]
+    private struct AllocateAttributeCommandMessage
+    {
+        public string runtimeCharacterId;
+        public TacticsAbilityScalingStat stat;
+    }
+
+    [Serializable]
     private struct RandomStatePayload
     {
         public UnityEngine.Random.State state;
@@ -945,6 +1112,7 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
     {
         Move = 0,
         Ability = 1,
-        EndTurn = 2
+        EndTurn = 2,
+        AllocateAttribute = 3
     }
 }

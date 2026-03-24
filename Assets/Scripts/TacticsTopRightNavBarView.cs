@@ -17,12 +17,15 @@ public sealed class TacticsTopRightNavBarView : MonoBehaviour
     private GameObject navRoot;
     private Button elevationButton;
     private Text elevationButtonText;
+    private Button characterButton;
+    private Text characterButtonText;
     private Button menuButton;
     private Text menuButtonText;
     private GameObject pauseMenuRoot;
     private Button quitButton;
     private Font sharedFont;
     private TacticsElevationSliderView elevationSliderView;
+    private TacticsCharacterMenuView characterMenuView;
     private bool isPauseMenuVisible;
 
     public event Action QuitRequested;
@@ -44,6 +47,11 @@ public sealed class TacticsTopRightNavBarView : MonoBehaviour
             menuButton.onClick.RemoveListener(HandleMenuButtonClicked);
         }
 
+        if (characterButton != null)
+        {
+            characterButton.onClick.RemoveListener(HandleCharacterButtonClicked);
+        }
+
         if (quitButton != null)
         {
             quitButton.onClick.RemoveListener(HandleQuitButtonClicked);
@@ -56,6 +64,12 @@ public sealed class TacticsTopRightNavBarView : MonoBehaviour
         RefreshButtonState();
     }
 
+    public void AssignCharacterMenuView(TacticsCharacterMenuView menuView)
+    {
+        characterMenuView = menuView;
+        RefreshButtonState();
+    }
+
     private void HandleElevationButtonClicked()
     {
         if (elevationSliderView == null)
@@ -64,7 +78,21 @@ public sealed class TacticsTopRightNavBarView : MonoBehaviour
         }
 
         isPauseMenuVisible = false;
+        characterMenuView?.SetPanelVisible(false);
         elevationSliderView.TogglePanelVisibility();
+        RefreshButtonState();
+    }
+
+    private void HandleCharacterButtonClicked()
+    {
+        if (characterMenuView == null)
+        {
+            return;
+        }
+
+        isPauseMenuVisible = false;
+        elevationSliderView?.SetPanelVisible(false);
+        characterMenuView.TogglePanelVisibility();
         RefreshButtonState();
     }
 
@@ -75,6 +103,11 @@ public sealed class TacticsTopRightNavBarView : MonoBehaviour
         if (isPauseMenuVisible && elevationSliderView != null)
         {
             elevationSliderView.SetPanelVisible(false);
+        }
+
+        if (isPauseMenuVisible && characterMenuView != null)
+        {
+            characterMenuView.SetPanelVisible(false);
         }
 
         RefreshButtonState();
@@ -131,7 +164,7 @@ public sealed class TacticsTopRightNavBarView : MonoBehaviour
         navRect.anchorMax = new Vector2(1f, 1f);
         navRect.pivot = new Vector2(1f, 1f);
         navRect.anchoredPosition = new Vector2(-36f, -36f);
-        navRect.sizeDelta = new Vector2(152f, 76f);
+        navRect.sizeDelta = new Vector2(228f, 76f);
 
         Image navImage = navRoot.AddComponent<Image>();
         navImage.color = barColor;
@@ -147,15 +180,23 @@ public sealed class TacticsTopRightNavBarView : MonoBehaviour
         CreateNavButton(
             "ElevationToggleButton",
             navRoot.transform,
-            new Vector2(-36f, 0f),
+            new Vector2(-72f, 0f),
             "EL",
             HandleElevationButtonClicked,
             out elevationButton,
             out elevationButtonText);
         CreateNavButton(
+            "CharacterToggleButton",
+            navRoot.transform,
+            Vector2.zero,
+            "CH",
+            HandleCharacterButtonClicked,
+            out characterButton,
+            out characterButtonText);
+        CreateNavButton(
             "MenuToggleButton",
             navRoot.transform,
-            new Vector2(36f, 0f),
+            new Vector2(72f, 0f),
             "II",
             HandleMenuButtonClicked,
             out menuButton,
@@ -214,12 +255,13 @@ public sealed class TacticsTopRightNavBarView : MonoBehaviour
 
     private void RefreshButtonState()
     {
-        if (elevationButtonText == null || menuButtonText == null)
+        if (elevationButtonText == null || menuButtonText == null || characterButtonText == null)
         {
             return;
         }
 
         bool isElevationVisible = elevationSliderView != null && elevationSliderView.IsPanelVisible;
+        bool isCharacterVisible = characterMenuView != null && characterMenuView.IsPanelVisible;
 
         Image elevationImage = elevationButton != null ? elevationButton.targetGraphic as Image : null;
         if (elevationImage != null)
@@ -231,6 +273,12 @@ public sealed class TacticsTopRightNavBarView : MonoBehaviour
         if (menuImage != null)
         {
             menuImage.color = isPauseMenuVisible ? buttonHighlightColor : buttonColor;
+        }
+
+        Image characterImage = characterButton != null ? characterButton.targetGraphic as Image : null;
+        if (characterImage != null)
+        {
+            characterImage.color = isCharacterVisible ? buttonHighlightColor : buttonColor;
         }
 
         if (pauseMenuRoot != null)

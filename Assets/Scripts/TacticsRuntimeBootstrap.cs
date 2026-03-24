@@ -28,6 +28,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
     private ProceduralIsometricMapGenerator mapGenerator;
     private TacticsMainMenuView mainMenuView;
     private TacticsPartySelectionService partySelectionService;
+    private TacticsCharacterProgressionService progressionService;
     private TacticsCoopSessionCoordinator coopSessionCoordinator;
     private TacticsCoopBattleSetup pendingCoopBattleSetup;
     private bool sceneSetupComplete;
@@ -46,8 +47,10 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         }
 
         partySelectionService = new TacticsPartySelectionService();
+        progressionService = new TacticsCharacterProgressionService();
         coopSessionCoordinator = EnsureCoopSessionCoordinator();
         coopSessionCoordinator.AssignPartySelectionService(partySelectionService);
+        coopSessionCoordinator.AssignCharacterProgressionService(progressionService);
         coopSessionCoordinator.StatusChanged -= HandleCoopStatusChanged;
         coopSessionCoordinator.StatusChanged += HandleCoopStatusChanged;
         coopSessionCoordinator.BattleSetupReady -= HandleCoopBattleSetupReady;
@@ -120,7 +123,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
                 break;
 
             case TacticsSessionStartMode.HostCoop:
-                if (!coopSessionCoordinator.StartHost())
+                if (!coopSessionCoordinator.StartHost(request.Address))
                 {
                     mainMenuView.SetInteractable(true);
                 }
@@ -224,6 +227,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         IsometricMapLayerVisibilityController layerVisibilityController = EnsureLayerVisibilityController();
         TacticsElevationSliderView elevationSliderView = EnsureElevationSliderView();
         TacticsTopRightNavBarView topRightNavBarView = EnsureTopRightNavBarView();
+        TacticsCharacterMenuView characterMenuView = EnsureCharacterMenuView();
         TacticsTileTargetOverlay tileTargetOverlay = EnsureTileTargetOverlay();
         EnsureCombatTextSystem();
         EnsureTurnCameraDirector();
@@ -238,6 +242,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             layerVisibilityController,
             elevationSliderView,
             topRightNavBarView,
+            characterMenuView,
             tileTargetOverlay,
             turnManager,
             combatSystem);
@@ -372,6 +377,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         IsometricMapLayerVisibilityController layerVisibilityController,
         TacticsElevationSliderView elevationSliderView,
         TacticsTopRightNavBarView topRightNavBarView,
+        TacticsCharacterMenuView characterMenuView,
         TacticsTileTargetOverlay tileTargetOverlay,
         TacticsTurnManager turnManager,
         TacticsCombatSystem combatSystem)
@@ -391,8 +397,18 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         if (topRightNavBarView != null)
         {
             topRightNavBarView.AssignElevationSliderView(elevationSliderView);
+            topRightNavBarView.AssignCharacterMenuView(characterMenuView);
             topRightNavBarView.QuitRequested -= HandleQuitRequested;
             topRightNavBarView.QuitRequested += HandleQuitRequested;
+        }
+
+        if (characterMenuView != null)
+        {
+            characterMenuView.AssignDependencies(progressionService, coopSessionCoordinator);
+            characterMenuView.AttributePointRequested -= HandleAttributePointRequested;
+            characterMenuView.AttributePointRequested += HandleAttributePointRequested;
+            BindCharacterProgressionPersistence(characterMenuView);
+            characterMenuView.RefreshCharacterList();
         }
 
         TacticsPlayerController playerController = FindFirstObjectByType<TacticsPlayerController>();
@@ -464,6 +480,18 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
         GameObject hudObject = new GameObject("Tactics Top Right Nav HUD");
         return hudObject.AddComponent<TacticsTopRightNavBarView>();
+    }
+
+    private TacticsCharacterMenuView EnsureCharacterMenuView()
+    {
+        TacticsCharacterMenuView existingView = FindFirstObjectByType<TacticsCharacterMenuView>();
+        if (existingView != null)
+        {
+            return existingView;
+        }
+
+        GameObject hudObject = new GameObject("Tactics Character Menu HUD");
+        return hudObject.AddComponent<TacticsCharacterMenuView>();
     }
 
     private TacticsTurnManager EnsureTurnManager()
@@ -565,6 +593,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         DestroyAllOfType<IsometricMapLayerVisibilityController>();
         DestroyAllOfType<TacticsElevationSliderView>();
         DestroyAllOfType<TacticsTopRightNavBarView>();
+        DestroyAllOfType<TacticsCharacterMenuView>();
         DestroyAllOfType<TacticsCombatTextSystem>();
         DestroyAllOfType<TacticsFloatingCombatText>();
         DestroyAllOfType<TacticsOverheadHealthBar>();
@@ -717,7 +746,10 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
                 mapGenerator,
                 definition,
                 spawnTile,
-                runtimeCharacterId: $"party_0_slot_{i}_{definition.CharacterId}");
+                runtimeCharacterId: $"party_0_slot_{i}_{definition.CharacterId}",
+                progression: progressionService != null
+                    ? progressionService.GetProgression(definition)
+                    : TacticsCharacterProgressionSnapshot.CreateDefault(definition.CharacterId));
             if (character != null)
             {
                 occupiedTiles.Add(character.GridPosition);
@@ -737,14 +769,16 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         }
 
         Dictionary<string, TacticsCharacterDefinition> definitionsById = roster.BuildLookupById();
-        List<TacticsCharacterDefinition> hostParty = ResolveDefinitions(definitionsById, pendingCoopBattleSetup.hostPartyCharacterIds);
-        List<TacticsCharacterDefinition> clientParty = ResolveDefinitions(definitionsById, pendingCoopBattleSetup.clientPartyCharacterIds);
+        List<TacticsCharacterDefinition> hostParty = ResolveDefinitions(definitionsById, pendingCoopBattleSetup.hostPartyMembers);
+        List<TacticsCharacterDefinition> clientParty = ResolveDefinitions(definitionsById, pendingCoopBattleSetup.clientPartyMembers);
         List<TacticsCoopSpawnPlanner.PlannedCharacterSpawn> plannedSpawns = TacticsCoopSpawnPlanner.BuildPlayerSpawns(mapGenerator, hostParty, clientParty);
         if (plannedSpawns.Count == 0)
         {
             Debug.LogWarning("Tactics bootstrap could not create any co-op player spawn entries.");
             return false;
         }
+
+        Dictionary<string, TacticsCharacterProgressionSnapshot> progressionByRuntimeId = BuildProgressionLookup(plannedSpawns);
 
         for (int i = 0; i < plannedSpawns.Count; i++)
         {
@@ -758,7 +792,10 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
                 mapGenerator,
                 definition,
                 plannedSpawn.SpawnTile,
-                runtimeCharacterId: plannedSpawn.RuntimeId);
+                runtimeCharacterId: plannedSpawn.RuntimeId,
+                progression: progressionByRuntimeId.TryGetValue(plannedSpawn.RuntimeId, out TacticsCharacterProgressionSnapshot progression)
+                    ? progression
+                    : TacticsCharacterProgressionSnapshot.CreateDefault(definition.CharacterId));
             if (character != null)
             {
                 occupiedTiles.Add(character.GridPosition);
@@ -770,17 +807,17 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
     private static List<TacticsCharacterDefinition> ResolveDefinitions(
         Dictionary<string, TacticsCharacterDefinition> definitionsById,
-        List<string> characterIds)
+        List<TacticsCoopCharacterLoadout> loadout)
     {
         List<TacticsCharacterDefinition> results = new();
-        if (definitionsById == null || characterIds == null)
+        if (definitionsById == null || loadout == null)
         {
             return results;
         }
 
-        for (int i = 0; i < characterIds.Count; i++)
+        for (int i = 0; i < loadout.Count; i++)
         {
-            string characterId = TacticsPartySelection.NormalizeCharacterId(characterIds[i]);
+            string characterId = TacticsPartySelection.NormalizeCharacterId(loadout[i]?.characterId);
             if (!string.IsNullOrEmpty(characterId) &&
                 definitionsById.TryGetValue(characterId, out TacticsCharacterDefinition definition) &&
                 definition != null)
@@ -842,5 +879,106 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         }
 
         return true;
+    }
+
+    private Dictionary<string, TacticsCharacterProgressionSnapshot> BuildProgressionLookup(
+        IReadOnlyList<TacticsCoopSpawnPlanner.PlannedCharacterSpawn> plannedSpawns)
+    {
+        Dictionary<string, TacticsCharacterProgressionSnapshot> lookup = new Dictionary<string, TacticsCharacterProgressionSnapshot>(StringComparer.OrdinalIgnoreCase);
+        if (pendingCoopBattleSetup == null || plannedSpawns == null)
+        {
+            return lookup;
+        }
+
+        Dictionary<int, Queue<TacticsCharacterProgressionSnapshot>> progressionByParty = new Dictionary<int, Queue<TacticsCharacterProgressionSnapshot>>
+        {
+            [0] = BuildProgressionQueue(pendingCoopBattleSetup.hostPartyMembers),
+            [1] = BuildProgressionQueue(pendingCoopBattleSetup.clientPartyMembers)
+        };
+
+        for (int i = 0; i < plannedSpawns.Count; i++)
+        {
+            TacticsCoopSpawnPlanner.PlannedCharacterSpawn plannedSpawn = plannedSpawns[i];
+            if (!progressionByParty.TryGetValue(plannedSpawn.PartyIndex, out Queue<TacticsCharacterProgressionSnapshot> queue) ||
+                queue.Count == 0)
+            {
+                continue;
+            }
+
+            lookup[plannedSpawn.RuntimeId] = queue.Dequeue();
+        }
+
+        return lookup;
+    }
+
+    private static Queue<TacticsCharacterProgressionSnapshot> BuildProgressionQueue(List<TacticsCoopCharacterLoadout> loadout)
+    {
+        Queue<TacticsCharacterProgressionSnapshot> queue = new Queue<TacticsCharacterProgressionSnapshot>();
+        if (loadout == null)
+        {
+            return queue;
+        }
+
+        for (int i = 0; i < loadout.Count; i++)
+        {
+            TacticsCoopCharacterLoadout entry = loadout[i];
+            if (entry == null || string.IsNullOrWhiteSpace(entry.characterId))
+            {
+                continue;
+            }
+
+            queue.Enqueue(entry.progression.WithCharacterId(entry.characterId).Sanitize());
+        }
+
+        return queue;
+    }
+
+    private void BindCharacterProgressionPersistence(TacticsCharacterMenuView characterMenuView)
+    {
+        TacticsCharacterController[] characters = FindObjectsByType<TacticsCharacterController>(FindObjectsSortMode.None);
+        for (int i = 0; i < characters.Length; i++)
+        {
+            TacticsCharacterController character = characters[i];
+            if (character == null || !character.IsPlayerControlled)
+            {
+                continue;
+            }
+
+            character.ProgressionChanged -= HandleCharacterProgressionChanged;
+            character.ProgressionChanged += HandleCharacterProgressionChanged;
+        }
+    }
+
+    private void HandleCharacterProgressionChanged(TacticsCharacterController character)
+    {
+        if (character == null || progressionService == null || !character.IsPlayerControlled)
+        {
+            return;
+        }
+
+        bool isLocallyOwned = coopSessionCoordinator == null || coopSessionCoordinator.CanLocalPlayerControlCharacter(character);
+        if (isLocallyOwned)
+        {
+            progressionService.SaveProgression(character.Progression.WithCharacterId(character.CharacterData != null ? character.CharacterData.CharacterId : string.Empty));
+        }
+
+        TacticsCharacterMenuView characterMenuView = FindFirstObjectByType<TacticsCharacterMenuView>();
+        characterMenuView?.RefreshCharacterList();
+    }
+
+    private void HandleAttributePointRequested(TacticsCharacterController character, TacticsAbilityScalingStat stat)
+    {
+        if (character == null)
+        {
+            return;
+        }
+
+        if (coopSessionCoordinator != null)
+        {
+            coopSessionCoordinator.RequestAllocateAttributePoint(character, stat);
+            return;
+        }
+
+        character.TryAllocateAttributePoint(stat);
     }
 }

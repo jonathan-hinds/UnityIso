@@ -8,7 +8,8 @@ public static class TacticsCharacterSpawner
         TacticsCharacterDefinition definition,
         Vector2Int spawnTile,
         Transform parent = null,
-        string runtimeCharacterId = "")
+        string runtimeCharacterId = "",
+        TacticsCharacterProgressionSnapshot progression = default)
     {
         return SpawnCharacter(
             mapGenerator,
@@ -16,7 +17,8 @@ public static class TacticsCharacterSpawner
             spawnTile,
             parent,
             definition,
-            runtimeCharacterId);
+            runtimeCharacterId,
+            progression);
     }
 
     public static TacticsCharacterController SpawnCharacter(
@@ -25,7 +27,8 @@ public static class TacticsCharacterSpawner
         Vector2Int spawnTile,
         Transform parent = null,
         TacticsCharacterDefinition sourceDefinition = null,
-        string runtimeCharacterId = "")
+        string runtimeCharacterId = "",
+        TacticsCharacterProgressionSnapshot progression = default)
     {
         if (mapGenerator == null || characterData == null)
         {
@@ -68,7 +71,7 @@ public static class TacticsCharacterSpawner
         selectionCollider.offset = Vector2.zero;
 
         TacticsCharacterController characterController = characterRoot.AddComponent<TacticsCharacterController>();
-        characterController.Initialize(mapGenerator, animator, characterData, spawnTile, sourceDefinition, runtimeCharacterId);
+        characterController.Initialize(mapGenerator, animator, characterData, spawnTile, sourceDefinition, runtimeCharacterId, progression);
         characterRoot.AddComponent<TacticsCharacterElevationVisibility>();
 
         if (characterData.Team == TacticsUnitTeam.Enemy)

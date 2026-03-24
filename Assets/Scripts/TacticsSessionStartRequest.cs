@@ -24,6 +24,13 @@ public readonly struct TacticsSessionStartRequest
 [Serializable]
 public sealed class TacticsCoopBattleSetup
 {
-    public List<string> hostPartyCharacterIds = new();
-    public List<string> clientPartyCharacterIds = new();
+    public List<TacticsCoopCharacterLoadout> hostPartyMembers = new();
+    public List<TacticsCoopCharacterLoadout> clientPartyMembers = new();
+}
+
+[Serializable]
+public sealed class TacticsCoopCharacterLoadout
+{
+    public string characterId;
+    public TacticsCharacterProgressionSnapshot progression;
 }

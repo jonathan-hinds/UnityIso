@@ -29,8 +29,10 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     private TacticsMovementDirection currentDirection = TacticsMovementDirection.SouthWest;
     private Vector2 lastAppliedTileAnchorOffset;
     private TacticsCharacterData characterData;
+    private TacticsCharacterStats effectiveStats;
     private TacticsCharacterDerivedStats derivedStats;
     private TacticsCharacterRuntimeResources runtimeResources;
+    private TacticsCharacterProgressionSnapshot progression;
     private TacticsTurnManager turnManager;
     private readonly List<TacticsAbilityDefinition> abilities = new();
     private bool isPerformingAction;
@@ -60,7 +62,8 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     public int BaseMagicDamageMax => derivedStats.baseMagicDamageMax;
     public float MeleeCriticalHitChance => derivedStats.meleeCriticalHitChance;
     public float MagicCriticalHitChance => derivedStats.magicCriticalHitChance;
-    public TacticsCharacterStats BaseStats => characterData != null ? characterData.BaseStats : TacticsCharacterStats.Default();
+    public TacticsCharacterStats BaseStats => effectiveStats;
+    public TacticsCharacterStats DefinitionBaseStats => characterData != null ? characterData.BaseStats : TacticsCharacterStats.Default();
     public int MoveRange => BaseStats.MoveRange;
     public int JumpHeight => BaseStats.JumpHeight;
     public int CurrentElevation => mapGenerator != null ? mapGenerator.GetTileElevation(GridPosition.x, GridPosition.y) : 0;
@@ -68,6 +71,8 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     public int CurrentLevel { get; private set; } = 1;
     public int ExperienceToNextLevel { get; private set; }
     public bool SupportsExperience => IsPlayerControlled && ExperienceToNextLevel > 0;
+    public int UnspentAttributePoints => progression.UnspentAttributePoints;
+    public TacticsCharacterProgressionSnapshot Progression => progression;
     public bool HasMovedThisTurn { get; private set; }
     public bool HasActedThisTurn { get; private set; }
     public bool IsTurnActive { get; private set; }
@@ -83,6 +88,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
 
     public event Action<ITacticsTurnParticipant> TurnEnded;
     public event Action<ITacticsTurnParticipant> TurnStateChanged;
+    public event Action<TacticsCharacterController> ProgressionChanged;
 
     public TacticsSelectionHudData BuildSelectionHudData()
     {
@@ -100,9 +106,10 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         TacticsCharacterAnimator animator,
         TacticsCharacterDefinition definition,
         Vector2Int spawnTile,
-        string runtimeCharacterId = "")
+        string runtimeCharacterId = "",
+        TacticsCharacterProgressionSnapshot startingProgression = default)
     {
-        Initialize(generator, animator, definition != null ? definition.BuildRuntimeData() : null, spawnTile, definition, runtimeCharacterId);
+        Initialize(generator, animator, definition != null ? definition.BuildRuntimeData() : null, spawnTile, definition, runtimeCharacterId, startingProgression);
     }
 
     public void Initialize(
@@ -111,7 +118,8 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         TacticsCharacterData data,
         Vector2Int spawnTile,
         TacticsCharacterDefinition definition = null,
-        string runtimeCharacterId = "")
+        string runtimeCharacterId = "",
+        TacticsCharacterProgressionSnapshot startingProgression = default)
     {
         mapGenerator = generator;
         characterAnimator = animator;
@@ -120,7 +128,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         RuntimeCharacterId = string.IsNullOrWhiteSpace(runtimeCharacterId)
             ? BuildFallbackRuntimeCharacterId(characterData, definition)
             : runtimeCharacterId.Trim();
-        ApplyCharacterData(characterData);
+        ApplyCharacterData(characterData, startingProgression);
         startingGridPosition = spawnTile;
         SubscribeToMap();
         SnapToTile(GetBestValidTile(spawnTile));
@@ -149,7 +157,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
             characterData = characterDefinition.BuildRuntimeData();
         }
 
-        ApplyCharacterData(characterData);
+        ApplyCharacterData(characterData, progression);
 
         if (mapGenerator == null || !mapGenerator.HasGeneratedMap)
         {
@@ -398,14 +406,29 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
             return false;
         }
 
-        CurrentExperience += amount;
-        while (ExperienceToNextLevel > 0 && CurrentExperience >= ExperienceToNextLevel)
+        if (!progression.TryAwardExperience(amount, ExperienceToNextLevel, out TacticsCharacterProgressionSnapshot updatedProgression, out int levelsGained))
         {
-            CurrentExperience -= ExperienceToNextLevel;
-            CurrentLevel++;
+            return false;
         }
 
-        NotifyTurnStateChanged();
+        bool progressionChanged = levelsGained > 0 || updatedProgression.CurrentExperience != progression.CurrentExperience;
+        ApplyProgressionSnapshot(updatedProgression, preserveResourceRatios: levelsGained <= 0, emitNotification: progressionChanged);
+        return progressionChanged;
+    }
+
+    public bool TryAllocateAttributePoint(TacticsAbilityScalingStat stat)
+    {
+        if (!SupportsExperience)
+        {
+            return false;
+        }
+
+        if (!progression.TryAllocatePoint(stat, out TacticsCharacterProgressionSnapshot updatedProgression))
+        {
+            return false;
+        }
+
+        ApplyProgressionSnapshot(updatedProgression, preserveResourceRatios: true, emitNotification: true);
         return true;
     }
 
@@ -741,7 +764,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         };
     }
 
-    private void ApplyCharacterData(TacticsCharacterData data)
+    private void ApplyCharacterData(TacticsCharacterData data, TacticsCharacterProgressionSnapshot startingProgression)
     {
         if (data == null)
         {
@@ -755,12 +778,80 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         maxStepUp = data.MaxStepUp;
         maxStepDown = data.MaxStepDown;
         tileAnchorOffset = data.TileAnchorOffset;
-        derivedStats = data.BaseStats.CalculateDerivedStats();
-        runtimeResources = data.BaseStats.CreateRuntimeResources();
-        CurrentLevel = 1;
-        CurrentExperience = 0;
         ExperienceToNextLevel = data.Team == TacticsUnitTeam.Player ? Mathf.Max(1, data.ExperienceToNextLevel) : 0;
+        progression = data.Team == TacticsUnitTeam.Player
+            ? ResolveProgression(startingProgression, data.CharacterId)
+            : TacticsCharacterProgressionSnapshot.CreateDefault(data.CharacterId);
+        RefreshEffectiveStats(ref runtimeResources, refillResources: true);
         RebuildAbilities(data);
+    }
+
+    private TacticsCharacterProgressionSnapshot ResolveProgression(TacticsCharacterProgressionSnapshot startingProgression, string characterId)
+    {
+        TacticsCharacterProgressionSnapshot resolved = startingProgression.Sanitize();
+        if (string.IsNullOrEmpty(resolved.CharacterId))
+        {
+            resolved = TacticsCharacterProgressionSnapshot.CreateDefault(characterId);
+        }
+        else if (!string.Equals(resolved.CharacterId, characterId, StringComparison.OrdinalIgnoreCase))
+        {
+            resolved = resolved.WithCharacterId(characterId);
+        }
+
+        return resolved.Sanitize();
+    }
+
+    private void ApplyProgressionSnapshot(
+        TacticsCharacterProgressionSnapshot updatedProgression,
+        bool preserveResourceRatios,
+        bool emitNotification)
+    {
+        progression = ResolveProgression(updatedProgression, characterData != null ? characterData.CharacterId : string.Empty);
+        TacticsCharacterRuntimeResources adjustedResources = runtimeResources;
+        RefreshEffectiveStats(ref adjustedResources, refillResources: !preserveResourceRatios);
+        runtimeResources = adjustedResources;
+
+        if (emitNotification)
+        {
+            ProgressionChanged?.Invoke(this);
+        }
+
+        NotifyTurnStateChanged();
+    }
+
+    private void RefreshEffectiveStats(ref TacticsCharacterRuntimeResources adjustedResources, bool refillResources)
+    {
+        TacticsCharacterDerivedStats previousDerivedStats = derivedStats;
+        effectiveStats = progression.ApplyTo(characterData != null ? characterData.BaseStats : TacticsCharacterStats.Default());
+        derivedStats = effectiveStats.CalculateDerivedStats();
+        CurrentLevel = progression.Level;
+        CurrentExperience = progression.CurrentExperience;
+
+        if (refillResources || previousDerivedStats.maxHitPoints <= 0)
+        {
+            adjustedResources = effectiveStats.CreateRuntimeResources();
+            return;
+        }
+
+        adjustedResources.hitPoints = RecalculateCurrentResource(adjustedResources.hitPoints, previousDerivedStats.maxHitPoints, derivedStats.maxHitPoints);
+        adjustedResources.stamina = RecalculateCurrentResource(adjustedResources.stamina, previousDerivedStats.maxStamina, derivedStats.maxStamina);
+        adjustedResources.mana = RecalculateCurrentResource(adjustedResources.mana, previousDerivedStats.maxMana, derivedStats.maxMana);
+    }
+
+    private static int RecalculateCurrentResource(int currentValue, int previousMax, int nextMax)
+    {
+        if (nextMax <= 0)
+        {
+            return 0;
+        }
+
+        if (previousMax <= 0)
+        {
+            return nextMax;
+        }
+
+        float normalizedValue = Mathf.Clamp01(currentValue / (float)previousMax);
+        return Mathf.Clamp(Mathf.RoundToInt(nextMax * normalizedValue), 0, nextMax);
     }
 
     private Vector3 GetVisualAnchorPosition(float normalizedHeight, Vector3 fallbackOffset)
