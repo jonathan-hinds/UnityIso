@@ -138,7 +138,7 @@ public sealed class TacticsOverheadHealthBar : MonoBehaviour
             return;
         }
 
-        if (!isVisible || !target.IsAlive)
+        if (!isVisible || !target.IsAlive || !target.IsPresentationVisible)
         {
             barRoot.gameObject.SetActive(false);
             return;

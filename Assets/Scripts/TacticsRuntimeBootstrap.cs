@@ -386,6 +386,8 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             elevationSliderView.AssignVisibilityController(layerVisibilityController);
         }
 
+        EnsureCharacterElevationVisibility();
+
         if (topRightNavBarView != null)
         {
             topRightNavBarView.AssignElevationSliderView(elevationSliderView);
@@ -418,6 +420,26 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         IsometricMapLayerVisibilityController controller = controllerObject.AddComponent<IsometricMapLayerVisibilityController>();
         controller.AssignMapGenerator(mapGenerator);
         return controller;
+    }
+
+    private void EnsureCharacterElevationVisibility()
+    {
+        TacticsCharacterController[] characters = FindObjectsByType<TacticsCharacterController>(FindObjectsSortMode.None);
+        for (int i = 0; i < characters.Length; i++)
+        {
+            TacticsCharacterController character = characters[i];
+            if (character == null)
+            {
+                continue;
+            }
+
+            if (character.TryGetComponent<TacticsCharacterElevationVisibility>(out _))
+            {
+                continue;
+            }
+
+            character.gameObject.AddComponent<TacticsCharacterElevationVisibility>();
+        }
     }
 
     private TacticsElevationSliderView EnsureElevationSliderView()

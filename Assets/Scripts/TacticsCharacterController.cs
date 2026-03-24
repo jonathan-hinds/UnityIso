@@ -72,6 +72,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     public bool HasActedThisTurn { get; private set; }
     public bool IsTurnActive { get; private set; }
     public bool IsAlive => CurrentHitPoints > 0;
+    public bool IsPresentationVisible { get; private set; } = true;
     public bool CanReceiveCommands => mapGenerator != null && mapGenerator.HasGeneratedMap && !IsMoving && !IsPerformingAction;
     public bool CanMoveThisTurn => IsTurnActive && !HasMovedThisTurn && CanReceiveCommands;
     public bool CanUseAbilitiesThisTurn => IsTurnActive && !HasActedThisTurn && CanReceiveCommands && IsAlive;
@@ -775,6 +776,11 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         }
 
         return transform.position + fallbackOffset;
+    }
+
+    public void SetPresentationVisible(bool isVisible)
+    {
+        IsPresentationVisible = isVisible;
     }
 
     private void RegisterWithTurnManager()

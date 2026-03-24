@@ -69,6 +69,7 @@ public static class TacticsCharacterSpawner
 
         TacticsCharacterController characterController = characterRoot.AddComponent<TacticsCharacterController>();
         characterController.Initialize(mapGenerator, animator, characterData, spawnTile, sourceDefinition, runtimeCharacterId);
+        characterRoot.AddComponent<TacticsCharacterElevationVisibility>();
 
         if (characterData.Team == TacticsUnitTeam.Enemy)
         {

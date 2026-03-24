@@ -83,6 +83,7 @@ public class TacticsCharacterAnimator : MonoBehaviour
     private bool isSelected;
     private bool isTargeted;
     private bool isTargetHoverPreviewActive;
+    private bool isPresentationVisible = true;
     private int occlusionDetectedFrameCount;
     private float occlusionHideTimer;
     private int activeOcclusionSortingOrder;
@@ -186,6 +187,15 @@ public class TacticsCharacterAnimator : MonoBehaviour
         SyncTargetHoverOverlayVisual();
         UpdateSelectionIndicatorVisuals();
 
+        if (!isPresentationVisible)
+        {
+            ResetOcclusionState();
+            HideOcclusionOverlay();
+            HideTargetHoverOverlay();
+            HideSelectionIndicator();
+            return;
+        }
+
         if (mapGenerator == null)
         {
             mapGenerator = FindFirstObjectByType<ProceduralIsometricMapGenerator>();
@@ -285,6 +295,32 @@ public class TacticsCharacterAnimator : MonoBehaviour
     {
         isTurnHighlighted = isActiveTurn;
         UpdateRendererColor();
+    }
+
+    public void SetVisualVisibility(bool isVisible)
+    {
+        isPresentationVisible = isVisible;
+
+        if (!isPresentationVisible)
+        {
+            if (targetRenderer != null)
+            {
+                targetRenderer.enabled = false;
+            }
+
+            HideOcclusionOverlay();
+            HideTargetHoverOverlay();
+            HideSelectionIndicator();
+            return;
+        }
+
+        if (targetRenderer != null)
+        {
+            targetRenderer.enabled = targetRenderer.sprite != null;
+        }
+
+        UpdateRendererColor();
+        UpdateSelectionIndicatorVisuals();
     }
 
     public void SetIdle(TacticsMovementDirection direction)
@@ -480,6 +516,12 @@ public class TacticsCharacterAnimator : MonoBehaviour
             return;
         }
 
+        if (!isPresentationVisible)
+        {
+            targetRenderer.enabled = false;
+            return;
+        }
+
         Color baseColor;
         if (!isTurnHighlighted)
         {
@@ -494,15 +536,23 @@ public class TacticsCharacterAnimator : MonoBehaviour
         if (!isTargetHoverPreviewActive)
         {
             targetRenderer.color = baseColor;
+            targetRenderer.enabled = targetRenderer.sprite != null;
             return;
         }
 
         targetRenderer.color = baseColor;
+        targetRenderer.enabled = targetRenderer.sprite != null;
     }
 
     private void UpdateSelectionIndicatorVisuals()
     {
         EnsureSelectionIndicatorObjects();
+        if (!isPresentationVisible)
+        {
+            HideSelectionIndicator();
+            return;
+        }
+
         bool shouldShowCarrot = isSelected || isTargeted;
         if (!shouldShowCarrot ||
             targetRenderer == null ||
@@ -813,7 +863,7 @@ public class TacticsCharacterAnimator : MonoBehaviour
             return;
         }
 
-        if (!ShouldShowTargetHoverFlashFrame())
+        if (!isPresentationVisible || !ShouldShowTargetHoverFlashFrame())
         {
             HideTargetHoverOverlay();
             return;
