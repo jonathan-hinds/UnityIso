@@ -8,6 +8,8 @@ using UnityEngine.Rendering;
 public class TacticsCharacterAnimator : MonoBehaviour
 {
     private const string SelectionCarrotObjectName = "SelectionCarrot";
+    private const string SelectionCarrotBorderObjectName = "SelectionCarrotBorder";
+    private const int SelectionCarrotBorderThicknessPixels = 3;
 
     [Header("References")]
     [SerializeField] private SpriteRenderer targetRenderer;
@@ -36,15 +38,16 @@ public class TacticsCharacterAnimator : MonoBehaviour
     [SerializeField, Min(0f)] private float damageImpactOvershoot = 0.04f;
 
     [Header("Selection Indicator")]
-    [SerializeField] private Color friendlySelectionColor = new Color(0.35f, 0.9f, 0.45f, 1f);
-    [SerializeField] private Color enemySelectionColor = new Color(1f, 0.32f, 0.32f, 1f);
-    [SerializeField] private Color targetedCarrotColor = new Color(1f, 0.25f, 0.25f, 1f);
+    [SerializeField] private Color activeCharacterCarrotColor = new Color(1f, 0.9f, 0.2f, 1f);
+    [SerializeField] private Color selectedCharacterCarrotColor = new Color(1f, 0.2f, 0.2f, 1f);
     [SerializeField, Min(0.01f)] private float selectionCarrotWidth = 0.2f;
     [SerializeField, Min(0.01f)] private float selectionCarrotHeight = 0.1f;
+    [SerializeField, Range(0.5f, 1f)] private float selectionCarrotInnerScale = 0.72f;
     [SerializeField] private float selectionCarrotVerticalOffset = 0.25f;
     [SerializeField, Min(0f)] private float selectionCarrotBobAmplitude = 0.05f;
     [SerializeField, Min(0f)] private float selectionCarrotBobFrequency = 1.5f;
     [SerializeField] private int selectionCarrotSortingOrder = 10;
+    [SerializeField] private int selectionCarrotBorderSortingOrderOffset = -1;
 
     [Header("Target Hover Preview")]
     [SerializeField] private Color targetHoverFlashColor = new Color(0.98f, 0.98f, 0.98f, 1f);
@@ -78,6 +81,7 @@ public class TacticsCharacterAnimator : MonoBehaviour
     private SpriteRenderer occlusionOverlayRenderer;
     private SpriteRenderer targetHoverOverlayRenderer;
     private SpriteRenderer selectionCarrotRenderer;
+    private SpriteRenderer selectionCarrotBorderRenderer;
     private SortingGroup sortingGroup;
     private bool isTurnHighlighted;
     private bool isSelected;
@@ -89,6 +93,7 @@ public class TacticsCharacterAnimator : MonoBehaviour
     private int activeOcclusionSortingOrder;
     private Coroutine damageImpactRoutine;
     private static Sprite selectionCarrotSprite;
+    private static Sprite selectionCarrotBorderSprite;
     private static Shader solidTintOverlayShader;
 
     public SpriteRenderer TargetRenderer => targetRenderer;
@@ -553,24 +558,35 @@ public class TacticsCharacterAnimator : MonoBehaviour
             return;
         }
 
-        bool shouldShowCarrot = isSelected || isTargeted;
+        bool isActiveCharacter = isTurnHighlighted;
+        bool isSelectedCharacter = isSelected || isTargeted;
+        bool shouldShowCarrot = isActiveCharacter || isSelectedCharacter;
         if (!shouldShowCarrot ||
             targetRenderer == null ||
-            selectionCarrotRenderer == null)
+            selectionCarrotRenderer == null ||
+            selectionCarrotBorderRenderer == null)
         {
             HideSelectionIndicator();
             return;
         }
 
-        Color selectionColor = GetSelectionIndicatorColor();
         int sortingLayerId = CurrentSortingLayerId;
         int localBaseSortingOrder = targetRenderer != null ? targetRenderer.sortingOrder : 0;
 
         selectionCarrotRenderer.sprite = GetSelectionCarrotSprite();
-        selectionCarrotRenderer.color = isTargeted ? targetedCarrotColor : selectionColor;
+        selectionCarrotBorderRenderer.sprite = GetSelectionCarrotBorderSprite();
+        Color fillColor = isActiveCharacter ? activeCharacterCarrotColor : selectedCharacterCarrotColor;
+        Color borderColor = selectedCharacterCarrotColor;
+        bool shouldShowBorder = isSelectedCharacter;
+
+        selectionCarrotRenderer.color = fillColor;
+        selectionCarrotBorderRenderer.color = borderColor;
         selectionCarrotRenderer.sortingLayerID = sortingLayerId;
         selectionCarrotRenderer.sortingOrder = localBaseSortingOrder + selectionCarrotSortingOrder;
+        selectionCarrotBorderRenderer.sortingLayerID = sortingLayerId;
+        selectionCarrotBorderRenderer.sortingOrder = localBaseSortingOrder + selectionCarrotSortingOrder + selectionCarrotBorderSortingOrderOffset;
         selectionCarrotRenderer.enabled = shouldShowCarrot;
+        selectionCarrotBorderRenderer.enabled = shouldShowBorder;
 
         float bobTime = Application.isPlaying ? Time.time : Time.realtimeSinceStartup;
         float bobOffset = Mathf.Sin(bobTime * Mathf.PI * 2f * selectionCarrotBobFrequency) * selectionCarrotBobAmplitude;
@@ -579,20 +595,22 @@ public class TacticsCharacterAnimator : MonoBehaviour
         Transform indicatorParent = GetSelectionIndicatorParent();
         Vector3 localTopPosition = indicatorParent.InverseTransformPoint(topWorldPosition);
 
-        selectionCarrotRenderer.transform.localPosition = new Vector3(
+        Vector3 carrotLocalPosition = new Vector3(
             localTopPosition.x,
             localTopPosition.y + selectionCarrotVerticalOffset + bobOffset,
             0f);
-        selectionCarrotRenderer.transform.localScale = new Vector3(
+        Vector3 carrotOuterScale = new Vector3(
             selectionCarrotWidth,
             -selectionCarrotHeight,
             1f);
-    }
-
-    private Color GetSelectionIndicatorColor()
-    {
-        bool isEnemy = characterData != null && characterData.Team == TacticsUnitTeam.Enemy;
-        return isEnemy ? enemySelectionColor : friendlySelectionColor;
+        Vector3 carrotInnerScale = new Vector3(
+            selectionCarrotWidth * selectionCarrotInnerScale,
+            -selectionCarrotHeight * selectionCarrotInnerScale,
+            1f);
+        selectionCarrotRenderer.transform.localPosition = carrotLocalPosition;
+        selectionCarrotBorderRenderer.transform.localPosition = carrotLocalPosition;
+        selectionCarrotRenderer.transform.localScale = shouldShowBorder ? carrotInnerScale : carrotOuterScale;
+        selectionCarrotBorderRenderer.transform.localScale = carrotOuterScale;
     }
 
     private void HideSelectionIndicator()
@@ -600,6 +618,11 @@ public class TacticsCharacterAnimator : MonoBehaviour
         if (selectionCarrotRenderer != null)
         {
             selectionCarrotRenderer.enabled = false;
+        }
+
+        if (selectionCarrotBorderRenderer != null)
+        {
+            selectionCarrotBorderRenderer.enabled = false;
         }
     }
 
@@ -677,25 +700,41 @@ public class TacticsCharacterAnimator : MonoBehaviour
         Transform indicatorParent = GetSelectionIndicatorParent();
         RemoveLegacySelectionRingObject(indicatorParent);
 
-        if (selectionCarrotRenderer != null)
+        if (selectionCarrotRenderer != null && selectionCarrotBorderRenderer != null)
         {
             if (selectionCarrotRenderer.transform.parent != indicatorParent)
             {
                 selectionCarrotRenderer.transform.SetParent(indicatorParent, true);
             }
 
+            if (selectionCarrotBorderRenderer.transform.parent != indicatorParent)
+            {
+                selectionCarrotBorderRenderer.transform.SetParent(indicatorParent, true);
+            }
+
             return;
         }
 
         Transform existingCarrot = transform.Find(SelectionCarrotObjectName);
+        Transform existingCarrotBorder = transform.Find(SelectionCarrotBorderObjectName);
         if (existingCarrot == null && indicatorParent != null)
         {
             existingCarrot = indicatorParent.Find(SelectionCarrotObjectName);
         }
 
+        if (existingCarrotBorder == null && indicatorParent != null)
+        {
+            existingCarrotBorder = indicatorParent.Find(SelectionCarrotBorderObjectName);
+        }
+
         if (existingCarrot != null)
         {
             selectionCarrotRenderer = existingCarrot.GetComponent<SpriteRenderer>();
+        }
+
+        if (existingCarrotBorder != null)
+        {
+            selectionCarrotBorderRenderer = existingCarrotBorder.GetComponent<SpriteRenderer>();
         }
 
         if (selectionCarrotRenderer == null)
@@ -705,8 +744,17 @@ public class TacticsCharacterAnimator : MonoBehaviour
             selectionCarrotRenderer = carrotObject.AddComponent<SpriteRenderer>();
         }
 
+        if (selectionCarrotBorderRenderer == null)
+        {
+            GameObject carrotBorderObject = new GameObject(SelectionCarrotBorderObjectName);
+            carrotBorderObject.transform.SetParent(indicatorParent, false);
+            selectionCarrotBorderRenderer = carrotBorderObject.AddComponent<SpriteRenderer>();
+        }
+
         selectionCarrotRenderer.sprite = GetSelectionCarrotSprite();
+        selectionCarrotBorderRenderer.sprite = GetSelectionCarrotBorderSprite();
         selectionCarrotRenderer.enabled = false;
+        selectionCarrotBorderRenderer.enabled = false;
     }
 
     private void RemoveLegacySelectionRingObject(Transform indicatorParent)
@@ -794,6 +842,74 @@ public class TacticsCharacterAnimator : MonoBehaviour
             size);
         selectionCarrotSprite.name = "SelectionCarrotSprite";
         return selectionCarrotSprite;
+    }
+
+    private static Sprite GetSelectionCarrotBorderSprite()
+    {
+        if (selectionCarrotBorderSprite != null)
+        {
+            return selectionCarrotBorderSprite;
+        }
+
+        Sprite fillSprite = GetSelectionCarrotSprite();
+        Rect rect = fillSprite.rect;
+        Texture2D sourceTexture = fillSprite.texture;
+        int width = Mathf.RoundToInt(rect.width);
+        int height = Mathf.RoundToInt(rect.height);
+        Texture2D texture = new Texture2D(width, height, TextureFormat.RGBA32, false)
+        {
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Clamp,
+            name = "SelectionCarrotBorderTexture"
+        };
+
+        Color clear = new Color(1f, 1f, 1f, 0f);
+        Color fill = Color.white;
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                bool isFilled = sourceTexture.GetPixel((int)rect.x + x, (int)rect.y + y).a > 0.5f;
+                if (!isFilled)
+                {
+                    texture.SetPixel(x, y, clear);
+                    continue;
+                }
+
+                bool hasTransparentNeighbor = false;
+                for (int offsetY = -SelectionCarrotBorderThicknessPixels; offsetY <= SelectionCarrotBorderThicknessPixels && !hasTransparentNeighbor; offsetY++)
+                {
+                    for (int offsetX = -SelectionCarrotBorderThicknessPixels; offsetX <= SelectionCarrotBorderThicknessPixels; offsetX++)
+                    {
+                        int sampleX = x + offsetX;
+                        int sampleY = y + offsetY;
+                        if (sampleX < 0 || sampleX >= width || sampleY < 0 || sampleY >= height)
+                        {
+                            hasTransparentNeighbor = true;
+                            break;
+                        }
+
+                        bool neighborFilled = sourceTexture.GetPixel((int)rect.x + sampleX, (int)rect.y + sampleY).a > 0.5f;
+                        if (!neighborFilled)
+                        {
+                            hasTransparentNeighbor = true;
+                            break;
+                        }
+                    }
+                }
+
+                texture.SetPixel(x, y, hasTransparentNeighbor ? fill : clear);
+            }
+        }
+
+        texture.Apply();
+        selectionCarrotBorderSprite = Sprite.Create(
+            texture,
+            new Rect(0f, 0f, width, height),
+            new Vector2(0.5f, 0f),
+            fillSprite.pixelsPerUnit);
+        selectionCarrotBorderSprite.name = "SelectionCarrotBorderSprite";
+        return selectionCarrotBorderSprite;
     }
 
     private void ResolveSortingGroup()
