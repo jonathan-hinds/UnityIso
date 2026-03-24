@@ -256,14 +256,71 @@ public sealed class TacticsTurnManager : MonoBehaviour
 
     private static int CompareParticipants(ITacticsTurnParticipant left, ITacticsTurnParticipant right)
     {
+        if (ReferenceEquals(left, right))
+        {
+            return 0;
+        }
+
+        if (left == null)
+        {
+            return 1;
+        }
+
+        if (right == null)
+        {
+            return -1;
+        }
+
+        int playerPriorityComparison = GetParticipantPriority(left).CompareTo(GetParticipantPriority(right));
+        if (playerPriorityComparison != 0)
+        {
+            return playerPriorityComparison;
+        }
+
+        int teamComparison = left.Team.CompareTo(right.Team);
+        if (teamComparison != 0)
+        {
+            return teamComparison;
+        }
+
+        int keyComparison = string.Compare(
+            left.TurnOrderKey,
+            right.TurnOrderKey,
+            StringComparison.OrdinalIgnoreCase);
+        if (keyComparison != 0)
+        {
+            return keyComparison;
+        }
+
+        int displayNameComparison = string.Compare(
+            left.DisplayName,
+            right.DisplayName,
+            StringComparison.OrdinalIgnoreCase);
+        if (displayNameComparison != 0)
+        {
+            return displayNameComparison;
+        }
+
         MonoBehaviour leftBehaviour = left as MonoBehaviour;
         MonoBehaviour rightBehaviour = right as MonoBehaviour;
-
         if (leftBehaviour == null || rightBehaviour == null)
         {
             return 0;
         }
 
-        return leftBehaviour.GetInstanceID().CompareTo(rightBehaviour.GetInstanceID());
+        return string.Compare(
+            leftBehaviour.gameObject.name,
+            rightBehaviour.gameObject.name,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int GetParticipantPriority(ITacticsTurnParticipant participant)
+    {
+        if (participant == null)
+        {
+            return int.MaxValue;
+        }
+
+        return participant.IsPlayerControlled ? 0 : 1;
     }
 }

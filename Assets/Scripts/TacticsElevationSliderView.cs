@@ -26,11 +26,12 @@ public sealed class TacticsElevationSliderView : MonoBehaviour
     private Font sharedFont;
     private IsometricMapLayerVisibilityController visibilityController;
     private bool suppressValueChanged;
-    private bool isPanelVisible = true;
+    private bool isPanelVisible;
 
     private void Awake()
     {
         EnsureBuilt();
+        isPanelVisible = false;
         Hide();
     }
 
@@ -100,7 +101,7 @@ public sealed class TacticsElevationSliderView : MonoBehaviour
         slider.value = visibleElevation;
         suppressValueChanged = false;
 
-        titleText.text = "ELEVATION";
+        titleText.text = "Elevation";
         valueText.text = $"VISIBLE {visibleElevation}/{maximumElevation}";
     }
 
@@ -154,7 +155,7 @@ public sealed class TacticsElevationSliderView : MonoBehaviour
         panelRect.anchorMax = new Vector2(1f, 1f);
         panelRect.pivot = new Vector2(1f, 1f);
         panelRect.anchoredPosition = new Vector2(-36f, -124f);
-        panelRect.sizeDelta = new Vector2(188f, 360f);
+        panelRect.sizeDelta = new Vector2(188f, 248f);
 
         Image panelImage = panelRoot.AddComponent<Image>();
         panelImage.color = panelColor;

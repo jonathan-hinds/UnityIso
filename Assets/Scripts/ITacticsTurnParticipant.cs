@@ -4,6 +4,7 @@ using UnityEngine;
 public interface ITacticsTurnParticipant
 {
     string DisplayName { get; }
+    string TurnOrderKey { get; }
     TacticsUnitTeam Team { get; }
     bool IsPlayerControlled { get; }
     bool IsTurnEligible { get; }

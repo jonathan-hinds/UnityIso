@@ -179,6 +179,35 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         return true;
     }
 
+    public bool ApplyReplicatedAbility(TacticsCharacterController source, TacticsAbilityDefinition ability, Vector2Int targetTile)
+    {
+        if (State == TacticsCombatState.ResolvingAbility || resolveRoutine != null)
+        {
+            return false;
+        }
+
+        if (!CanResolveReplicatedAbility(source, ability, targetTile, out List<TacticsCharacterController> affectedTargets))
+        {
+            return false;
+        }
+
+        TacticsAbilityExecutionContext context = new TacticsAbilityExecutionContext(
+            source,
+            ability,
+            targetTile,
+            new List<TacticsCharacterController>(affectedTargets));
+
+        if (!HasApplicableEffect(context))
+        {
+            RestoreIdleState();
+            return false;
+        }
+
+        SetState(TacticsCombatState.ResolvingAbility);
+        resolveRoutine = StartCoroutine(ResolveAbilityRoutine(context));
+        return true;
+    }
+
     public bool CanTargetFromTile(
         TacticsCharacterController source,
         Vector2Int sourceTile,
@@ -629,6 +658,45 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         }
 
         return false;
+    }
+
+    private bool CanResolveReplicatedAbility(
+        TacticsCharacterController source,
+        TacticsAbilityDefinition ability,
+        Vector2Int targetTile,
+        out List<TacticsCharacterController> affectedTargets)
+    {
+        affectedTargets = reusableAreaTargets;
+        affectedTargets.Clear();
+
+        if (source == null || ability == null || !source.isActiveAndEnabled || !source.IsAlive)
+        {
+            return false;
+        }
+
+        if (mapGenerator == null || !mapGenerator.HasGeneratedMap)
+        {
+            return false;
+        }
+
+        if (!source.HasResourcesForAbility(ability))
+        {
+            return false;
+        }
+
+        if (!CanTargetTile(source, source.GridPosition, ability, targetTile))
+        {
+            return false;
+        }
+
+        if (ability.RangeType == TacticsAbilityRangeType.SurroundingAoE &&
+            !IsValidTarget(source, source.GridPosition, ability, FindCharacterAt(targetTile)))
+        {
+            return false;
+        }
+
+        affectedTargets = GetAffectedTargets(source, ability, targetTile, reusableAreaTargets);
+        return affectedTargets.Count > 0;
     }
 
     private IEnumerator ResolveAbilityRoutine(TacticsAbilityExecutionContext context)

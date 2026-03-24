@@ -15,6 +15,7 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
     [SerializeField] private TacticsCharacterController character;
     [SerializeField] private TacticsTurnManager turnManager;
     [SerializeField] private TacticsCombatSystem combatSystem;
+    [SerializeField] private TacticsCoopSessionCoordinator coopSessionCoordinator;
     [SerializeField, Min(0f)] private float thinkDelay = 0.2f;
     [SerializeField, Min(0f)] private float endTurnDelay = 0.15f;
 
@@ -79,6 +80,11 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         {
             combatSystem = FindFirstObjectByType<TacticsCombatSystem>();
         }
+
+        if (coopSessionCoordinator == null)
+        {
+            coopSessionCoordinator = FindFirstObjectByType<TacticsCoopSessionCoordinator>();
+        }
     }
 
     private void OnEnable()
@@ -91,6 +97,11 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         if (combatSystem == null)
         {
             combatSystem = FindFirstObjectByType<TacticsCombatSystem>();
+        }
+
+        if (coopSessionCoordinator == null)
+        {
+            coopSessionCoordinator = FindFirstObjectByType<TacticsCoopSessionCoordinator>();
         }
     }
 
@@ -113,6 +124,12 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         if (turnRoutine != null)
         {
             StopCoroutine(turnRoutine);
+        }
+
+        if (coopSessionCoordinator != null && !coopSessionCoordinator.CanRunAutomatedTurns)
+        {
+            turnRoutine = null;
+            return;
         }
 
         if (character == null || character.IsPlayerControlled || turnManager == null)
@@ -157,7 +174,7 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         bool attemptedAction = false;
         if (TryBuildBestAbilityPlan(out EnemyAbilityPlan abilityPlan))
         {
-            if (abilityPlan.RequiresMovement && character.TryMoveTo(abilityPlan.MoveDestination))
+            if (abilityPlan.RequiresMovement && TryMove(abilityPlan.MoveDestination))
             {
                 while (character != null && character.IsMoving)
                 {
@@ -171,12 +188,12 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
                 abilityPlan.Target.isActiveAndEnabled &&
                 abilityPlan.Target.IsAlive)
             {
-                attemptedAction = combatSystem.TryUseAbility(character, abilityPlan.Ability, abilityPlan.TargetTile);
+                attemptedAction = TryUseAbility(abilityPlan.Ability, abilityPlan.TargetTile);
             }
         }
         else if (TryBuildBestMovementPlan(out EnemyMovementPlan movementPlan))
         {
-            if (character.TryMoveTo(movementPlan.Destination))
+            if (TryMove(movementPlan.Destination))
             {
                 while (character != null && character.IsMoving)
                 {
@@ -202,7 +219,7 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
 
         if (character != null && turnManager != null && ReferenceEquals(turnManager.ActiveParticipant, character))
         {
-            character.TryEndTurn();
+            TryEndTurn();
         }
 
         turnRoutine = null;
@@ -310,11 +327,10 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
             return false;
         }
 
-        return combatSystem != null &&
-               immediatePlan.Target != null &&
+        return immediatePlan.Target != null &&
                immediatePlan.Target.isActiveAndEnabled &&
                immediatePlan.Target.IsAlive &&
-               combatSystem.TryUseAbility(character, immediatePlan.Ability, immediatePlan.TargetTile);
+               TryUseAbility(immediatePlan.Ability, immediatePlan.TargetTile);
     }
 
     private bool TryBuildBestImmediateAbilityPlan(out EnemyAbilityPlan bestPlan)
@@ -852,5 +868,39 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
     private static int GetTileDistance(Vector2Int source, Vector2Int target)
     {
         return Mathf.Abs(source.x - target.x) + Mathf.Abs(source.y - target.y);
+    }
+
+    private bool TryMove(Vector2Int destination)
+    {
+        return coopSessionCoordinator != null
+            ? coopSessionCoordinator.RequestMove(character, destination)
+            : character != null && character.TryMoveTo(destination);
+    }
+
+    private bool TryUseAbility(TacticsAbilityDefinition ability, Vector2Int targetTile)
+    {
+        if (character == null || ability == null)
+        {
+            return false;
+        }
+
+        if (coopSessionCoordinator != null)
+        {
+            return coopSessionCoordinator.RequestUseAbility(character, ability, targetTile);
+        }
+
+        return combatSystem != null && combatSystem.TryUseAbility(character, ability, targetTile);
+    }
+
+    private bool TryEndTurn()
+    {
+        if (character == null)
+        {
+            return false;
+        }
+
+        return coopSessionCoordinator != null
+            ? coopSessionCoordinator.RequestEndTurn(character)
+            : character.TryEndTurn();
     }
 }

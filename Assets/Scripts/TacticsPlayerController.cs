@@ -22,6 +22,7 @@ public class TacticsPlayerController : MonoBehaviour
     [SerializeField] private TacticsTurnManager turnManager;
     [SerializeField] private TacticsCombatSystem combatSystem;
     [SerializeField] private TacticsTileTargetOverlay tileTargetOverlay;
+    [SerializeField] private TacticsCoopSessionCoordinator coopSessionCoordinator;
 
     private TacticsCharacterController selectedCharacter;
     private SelectionState selectionState;
@@ -57,6 +58,11 @@ public class TacticsPlayerController : MonoBehaviour
         {
             tileTargetOverlay = FindFirstObjectByType<TacticsTileTargetOverlay>();
         }
+
+        if (coopSessionCoordinator == null)
+        {
+            coopSessionCoordinator = FindFirstObjectByType<TacticsCoopSessionCoordinator>();
+        }
     }
 
     private void OnEnable()
@@ -81,6 +87,11 @@ public class TacticsPlayerController : MonoBehaviour
         if (tileTargetOverlay == null)
         {
             tileTargetOverlay = FindFirstObjectByType<TacticsTileTargetOverlay>();
+        }
+
+        if (coopSessionCoordinator == null)
+        {
+            coopSessionCoordinator = FindFirstObjectByType<TacticsCoopSessionCoordinator>();
         }
 
         if (actionMenuView != null)
@@ -163,6 +174,11 @@ public class TacticsPlayerController : MonoBehaviour
         }
 
         Vector2 screenPosition = mouse.position.ReadValue();
+        if (!IsFinite(screenPosition))
+        {
+            return;
+        }
+
         Vector3 worldPosition = targetCamera.ScreenToWorldPoint(new Vector3(screenPosition.x, screenPosition.y, 0f));
         Vector2 point = new Vector2(worldPosition.x, worldPosition.y);
         Collider2D[] hits = Physics2D.OverlapPointAll(point);
@@ -175,7 +191,7 @@ public class TacticsPlayerController : MonoBehaviour
                 combatSystem != null &&
                 combatSystem.TargetingAbility != null &&
                 combatSystem.CanTargetFromTile(selectedCharacter, selectedCharacter.GridPosition, combatSystem.TargetingAbility, targetedCharacter) &&
-                combatSystem.TryExecuteTargetAt(targetedCharacter.GridPosition))
+                RequestUseAbility(selectedCharacter, combatSystem.TargetingAbility, targetedCharacter.GridPosition))
             {
                 selectionState = SelectionState.CharacterSelected;
                 RefreshHud();
@@ -184,7 +200,9 @@ public class TacticsPlayerController : MonoBehaviour
 
             if (TryGetClickedTile(hits, out IsometricTileHoverInfo targetedTile))
             {
-                if (combatSystem != null && combatSystem.TryExecuteTargetAt(new Vector2Int(targetedTile.GridX, targetedTile.GridY)))
+                if (combatSystem != null &&
+                    combatSystem.TargetingAbility != null &&
+                    RequestUseAbility(selectedCharacter, combatSystem.TargetingAbility, new Vector2Int(targetedTile.GridX, targetedTile.GridY)))
                 {
                     selectionState = SelectionState.CharacterSelected;
                     RefreshHud();
@@ -205,7 +223,7 @@ public class TacticsPlayerController : MonoBehaviour
             ReferenceEquals(selectedCharacter, GetActivePlayerCharacter()) &&
             TryGetClickedTile(hits, out IsometricTileHoverInfo clickedTile))
         {
-            if (selectedCharacter.TryMoveTo(new Vector2Int(clickedTile.GridX, clickedTile.GridY)))
+            if (RequestMove(selectedCharacter, new Vector2Int(clickedTile.GridX, clickedTile.GridY)))
             {
                 selectionState = SelectionState.CharacterSelected;
                 RefreshHud();
@@ -219,6 +237,11 @@ public class TacticsPlayerController : MonoBehaviour
 
     private void SelectCharacter(TacticsCharacterController character, SelectionState nextState)
     {
+        if (character != null && nextState != SelectionState.None && !CanIssueCommandsTo(character))
+        {
+            nextState = SelectionState.None;
+        }
+
         if (selectedCharacter == character && selectionState == nextState)
         {
             RefreshHud();
@@ -391,7 +414,7 @@ public class TacticsPlayerController : MonoBehaviour
 
     private void HandleActionSelected(TacticsHudActionType actionType)
     {
-        TacticsCharacterController activePlayerCharacter = GetActivePlayerCharacter();
+        TacticsCharacterController activePlayerCharacter = GetActiveOwnedPlayerCharacter();
         if (activePlayerCharacter == null)
         {
             return;
@@ -417,14 +440,14 @@ public class TacticsPlayerController : MonoBehaviour
                 break;
             case TacticsHudActionType.EndTurn:
                 combatSystem?.CancelTargeting();
-                turnManager?.TryEndActiveTurn();
+                RequestEndTurn(activePlayerCharacter);
                 break;
         }
     }
 
     private void HandleAbilitySelected(TacticsAbilityDefinition ability)
     {
-        TacticsCharacterController activePlayerCharacter = GetActivePlayerCharacter();
+        TacticsCharacterController activePlayerCharacter = GetActiveOwnedPlayerCharacter();
         if (activePlayerCharacter == null || ability == null || combatSystem == null)
         {
             return;
@@ -437,7 +460,7 @@ public class TacticsPlayerController : MonoBehaviour
 
         if (!ability.RequiresTargetSelection)
         {
-            if (combatSystem.TryUseAbility(activePlayerCharacter, ability, activePlayerCharacter.GridPosition))
+            if (RequestUseAbility(activePlayerCharacter, ability, activePlayerCharacter.GridPosition))
             {
                 selectionState = SelectionState.CharacterSelected;
             }
@@ -478,7 +501,7 @@ public class TacticsPlayerController : MonoBehaviour
     private void RefreshHud()
     {
         TacticsCharacterController activeCharacter = turnManager != null ? turnManager.ActiveCharacter : null;
-        TacticsCharacterController activePlayerCharacter = GetActivePlayerCharacter();
+        TacticsCharacterController activePlayerCharacter = GetActiveOwnedPlayerCharacter();
         if (activeCharacter != null)
         {
             activeCharacterPanelView?.Show(activeCharacter);
@@ -598,11 +621,27 @@ public class TacticsPlayerController : MonoBehaviour
         return activeCharacter != null && activeCharacter.IsPlayerControlled ? activeCharacter : null;
     }
 
+    private TacticsCharacterController GetActiveOwnedPlayerCharacter()
+    {
+        TacticsCharacterController activeCharacter = GetActivePlayerCharacter();
+        return CanIssueCommandsTo(activeCharacter) ? activeCharacter : null;
+    }
+
     private SelectionState GetSelectionStateForCharacter(TacticsCharacterController character)
     {
-        return ReferenceEquals(character, GetActivePlayerCharacter())
+        return ReferenceEquals(character, GetActiveOwnedPlayerCharacter())
             ? SelectionState.CharacterSelected
             : SelectionState.None;
+    }
+
+    private bool CanIssueCommandsTo(TacticsCharacterController character)
+    {
+        if (character == null || !character.IsPlayerControlled)
+        {
+            return false;
+        }
+
+        return coopSessionCoordinator == null || coopSessionCoordinator.CanLocalPlayerControlCharacter(character);
     }
 
     private void CacheSelectionPanels()
@@ -751,6 +790,11 @@ public class TacticsPlayerController : MonoBehaviour
         }
 
         Vector2 screenPosition = mouse.position.ReadValue();
+        if (!IsFinite(screenPosition))
+        {
+            return false;
+        }
+
         Vector3 worldPosition = targetCamera.ScreenToWorldPoint(new Vector3(screenPosition.x, screenPosition.y, 0f));
         Vector2 point = new Vector2(worldPosition.x, worldPosition.y);
         hits = Physics2D.OverlapPointAll(point);
@@ -911,5 +955,52 @@ public class TacticsPlayerController : MonoBehaviour
         }
 
         return hasTargets ? "Ready" : "No targets";
+    }
+
+    private static bool IsFinite(Vector2 value)
+    {
+        return !float.IsNaN(value.x) &&
+               !float.IsNaN(value.y) &&
+               !float.IsInfinity(value.x) &&
+               !float.IsInfinity(value.y);
+    }
+
+    private bool RequestMove(TacticsCharacterController character, Vector2Int destination)
+    {
+        if (character == null)
+        {
+            return false;
+        }
+
+        return coopSessionCoordinator != null
+            ? coopSessionCoordinator.RequestMove(character, destination)
+            : character.TryMoveTo(destination);
+    }
+
+    private bool RequestUseAbility(TacticsCharacterController character, TacticsAbilityDefinition ability, Vector2Int targetTile)
+    {
+        if (character == null || ability == null)
+        {
+            return false;
+        }
+
+        if (coopSessionCoordinator != null)
+        {
+            return coopSessionCoordinator.RequestUseAbility(character, ability, targetTile);
+        }
+
+        return combatSystem != null && combatSystem.TryUseAbility(character, ability, targetTile);
+    }
+
+    private bool RequestEndTurn(TacticsCharacterController character)
+    {
+        if (character == null)
+        {
+            return false;
+        }
+
+        return coopSessionCoordinator != null
+            ? coopSessionCoordinator.RequestEndTurn(character)
+            : turnManager != null && turnManager.TryEndActiveTurn();
     }
 }

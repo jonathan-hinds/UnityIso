@@ -169,6 +169,12 @@ public class MouseCameraController : MonoBehaviour
         }
 
         Vector2 screenPosition = Mouse.current.position.ReadValue();
+        if (!IsFinite(screenPosition))
+        {
+            worldPoint = default;
+            return false;
+        }
+
         Ray ray = controlledCamera.ScreenPointToRay(screenPosition);
         if (dragPlane.Raycast(ray, out float enter))
         {
@@ -197,5 +203,13 @@ public class MouseCameraController : MonoBehaviour
         zoomStep = Mathf.Max(0.01f, zoomStep);
         zoomSmoothSpeed = Mathf.Max(0.01f, zoomSmoothSpeed);
         panSmoothSpeed = Mathf.Max(0.01f, panSmoothSpeed);
+    }
+
+    private static bool IsFinite(Vector2 value)
+    {
+        return !float.IsNaN(value.x) &&
+               !float.IsNaN(value.y) &&
+               !float.IsInfinity(value.x) &&
+               !float.IsInfinity(value.y);
     }
 }

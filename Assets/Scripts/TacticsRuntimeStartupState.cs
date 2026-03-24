@@ -14,4 +14,9 @@ public static class TacticsRuntimeStartupState
     {
         GameplayStartRequested = true;
     }
+
+    public static void ResetGameplayStart()
+    {
+        GameplayStartRequested = false;
+    }
 }

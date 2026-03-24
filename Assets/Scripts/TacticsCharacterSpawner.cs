@@ -7,14 +7,16 @@ public static class TacticsCharacterSpawner
         ProceduralIsometricMapGenerator mapGenerator,
         TacticsCharacterDefinition definition,
         Vector2Int spawnTile,
-        Transform parent = null)
+        Transform parent = null,
+        string runtimeCharacterId = "")
     {
         return SpawnCharacter(
             mapGenerator,
             definition != null ? definition.BuildRuntimeData() : null,
             spawnTile,
             parent,
-            definition);
+            definition,
+            runtimeCharacterId);
     }
 
     public static TacticsCharacterController SpawnCharacter(
@@ -22,7 +24,8 @@ public static class TacticsCharacterSpawner
         TacticsCharacterData characterData,
         Vector2Int spawnTile,
         Transform parent = null,
-        TacticsCharacterDefinition sourceDefinition = null)
+        TacticsCharacterDefinition sourceDefinition = null,
+        string runtimeCharacterId = "")
     {
         if (mapGenerator == null || characterData == null)
         {
@@ -65,7 +68,7 @@ public static class TacticsCharacterSpawner
         selectionCollider.offset = Vector2.zero;
 
         TacticsCharacterController characterController = characterRoot.AddComponent<TacticsCharacterController>();
-        characterController.Initialize(mapGenerator, animator, characterData, spawnTile, sourceDefinition);
+        characterController.Initialize(mapGenerator, animator, characterData, spawnTile, sourceDefinition, runtimeCharacterId);
 
         if (characterData.Team == TacticsUnitTeam.Enemy)
         {
