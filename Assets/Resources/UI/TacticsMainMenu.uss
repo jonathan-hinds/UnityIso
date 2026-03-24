@@ -150,8 +150,42 @@
     color: rgba(194, 164, 104, 0.92);
     font-size: 13px;
     letter-spacing: 2px;
-    margin-bottom: 24px;
+    margin-bottom: 20px;
     white-space: normal;
+}
+
+.network-section-label {
+    color: var(--menu-ink);
+    font-size: 13px;
+    -unity-font-style: bold;
+    letter-spacing: 3px;
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+.join-address-field {
+    margin-bottom: 14px;
+    color: var(--menu-ink);
+}
+
+.join-address-field .unity-base-text-field__label {
+    min-width: 118px;
+    color: var(--menu-soft-ink);
+    letter-spacing: 1px;
+}
+
+.join-address-field .unity-base-text-field__input {
+    height: 40px;
+    color: var(--menu-ink);
+    background-color: rgba(16, 24, 38, 0.94);
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-right-width: 1px;
+    border-top-color: rgba(255, 255, 255, 0.12);
+    border-bottom-color: rgba(255, 255, 255, 0.12);
+    border-left-color: rgba(255, 255, 255, 0.12);
+    border-right-color: rgba(255, 255, 255, 0.12);
 }
 
 .menu-button {

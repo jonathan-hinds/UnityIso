@@ -15,10 +15,14 @@
 
                 <ui:VisualElement name="command-panel" class="command-panel">
                     <ui:Label name="command-heading" class="command-heading" text="Main Menu" />
-                    <ui:Label name="command-copy" class="command-copy" text="Assemble your vanguard, then launch straight into the current tactical runtime." />
+                    <ui:Label name="command-copy" class="command-copy" text="Assemble your vanguard, launch solo, or open an online co-op session for two allied parties." />
                     <ui:Label name="team-summary-label" class="team-summary-label" text="Current Team:" />
                     <ui:Button name="edit-team-button" class="menu-button menu-button--secondary" text="Edit Team" />
-                    <ui:Button name="play-button" class="menu-button menu-button--primary" text="Play" />
+                    <ui:Button name="play-button" class="menu-button menu-button--primary" text="Single Player" />
+                    <ui:Label name="network-section-label" class="network-section-label" text="Online Co-op" />
+                    <ui:TextField name="join-address-field" class="join-address-field" label="Host Address" value="127.0.0.1" />
+                    <ui:Button name="host-online-button" class="menu-button menu-button--primary" text="Host Online Co-op" />
+                    <ui:Button name="join-online-button" class="menu-button menu-button--secondary" text="Join Online Co-op" />
                     <ui:Label name="status-label" class="status-label" text="" />
                 </ui:VisualElement>
             </ui:VisualElement>

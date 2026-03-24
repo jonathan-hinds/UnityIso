@@ -42,6 +42,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     public TacticsCharacterDefinition CharacterDefinition => characterDefinition;
     public TacticsCharacterData CharacterData => characterData;
     public string DisplayName => characterData != null ? characterData.DisplayName : (characterDefinition != null ? characterDefinition.DisplayName : name);
+    public string RuntimeCharacterId { get; private set; }
     public TacticsUnitTeam Team => characterData != null ? characterData.Team : (characterDefinition != null ? characterDefinition.Team : TacticsUnitTeam.Player);
     public bool IsPlayerControlled => Team == TacticsUnitTeam.Player;
     public TacticsCharacterDerivedStats DerivedStats => derivedStats;
@@ -92,9 +93,14 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
             characterData != null ? characterData.SelectedColor : Color.white);
     }
 
-    public void Initialize(ProceduralIsometricMapGenerator generator, TacticsCharacterAnimator animator, TacticsCharacterDefinition definition, Vector2Int spawnTile)
+    public void Initialize(
+        ProceduralIsometricMapGenerator generator,
+        TacticsCharacterAnimator animator,
+        TacticsCharacterDefinition definition,
+        Vector2Int spawnTile,
+        string runtimeCharacterId = "")
     {
-        Initialize(generator, animator, definition != null ? definition.BuildRuntimeData() : null, spawnTile, definition);
+        Initialize(generator, animator, definition != null ? definition.BuildRuntimeData() : null, spawnTile, definition, runtimeCharacterId);
     }
 
     public void Initialize(
@@ -102,12 +108,16 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         TacticsCharacterAnimator animator,
         TacticsCharacterData data,
         Vector2Int spawnTile,
-        TacticsCharacterDefinition definition = null)
+        TacticsCharacterDefinition definition = null,
+        string runtimeCharacterId = "")
     {
         mapGenerator = generator;
         characterAnimator = animator;
         characterDefinition = definition;
         characterData = data ?? definition?.BuildRuntimeData();
+        RuntimeCharacterId = string.IsNullOrWhiteSpace(runtimeCharacterId)
+            ? BuildFallbackRuntimeCharacterId(characterData, definition)
+            : runtimeCharacterId.Trim();
         ApplyCharacterData(characterData);
         startingGridPosition = spawnTile;
         SubscribeToMap();
@@ -777,6 +787,15 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         }
 
         abilities.Add(ability);
+    }
+
+    private string BuildFallbackRuntimeCharacterId(TacticsCharacterData data, TacticsCharacterDefinition definition)
+    {
+        string baseId = data != null
+            ? data.CharacterId
+            : (definition != null ? definition.CharacterId : name);
+        baseId = string.IsNullOrWhiteSpace(baseId) ? "character" : baseId.Trim();
+        return $"{baseId}_{GetInstanceID()}";
     }
 
     private void HandleDefeat(TacticsCharacterController defeatingCharacter)

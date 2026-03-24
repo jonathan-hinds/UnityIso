@@ -13,6 +13,9 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     private const string MainPageName = "main-page";
     private const string EditPageName = "edit-team-page";
     private const string PlayButtonName = "play-button";
+    private const string HostOnlineButtonName = "host-online-button";
+    private const string JoinOnlineButtonName = "join-online-button";
+    private const string JoinAddressFieldName = "join-address-field";
     private const string EditTeamButtonName = "edit-team-button";
     private const string StatusLabelName = "status-label";
     private const string TeamSummaryLabelName = "team-summary-label";
@@ -36,6 +39,9 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     private VisualElement mainPage;
     private VisualElement editTeamPage;
     private Button playButton;
+    private Button hostOnlineButton;
+    private Button joinOnlineButton;
+    private TextField joinAddressField;
     private Button editTeamButton;
     private Label statusLabel;
     private Label teamSummaryLabel;
@@ -61,7 +67,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     private int dragSourceSlotIndex = -1;
     private int previewCounter;
 
-    public event Action PlayRequested;
+    public event Action<TacticsSessionStartRequest> SessionStartRequested;
 
     public bool IsVisible => gameObject.activeSelf;
 
@@ -142,6 +148,9 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     {
         CacheElements();
         playButton?.SetEnabled(interactable);
+        hostOnlineButton?.SetEnabled(interactable);
+        joinOnlineButton?.SetEnabled(interactable);
+        joinAddressField?.SetEnabled(interactable);
         editTeamButton?.SetEnabled(interactable);
         editorBackButton?.SetEnabled(interactable);
         editorSaveButton?.SetEnabled(interactable && CanSaveWorkingSelection());
@@ -196,6 +205,9 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         mainPage = rootElement.Q<VisualElement>(MainPageName);
         editTeamPage = rootElement.Q<VisualElement>(EditPageName);
         playButton = rootElement.Q<Button>(PlayButtonName);
+        hostOnlineButton = rootElement.Q<Button>(HostOnlineButtonName);
+        joinOnlineButton = rootElement.Q<Button>(JoinOnlineButtonName);
+        joinAddressField = rootElement.Q<TextField>(JoinAddressFieldName);
         editTeamButton = rootElement.Q<Button>(EditTeamButtonName);
         statusLabel = rootElement.Q<Label>(StatusLabelName);
         teamSummaryLabel = rootElement.Q<Label>(TeamSummaryLabelName);
@@ -211,8 +223,20 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     {
         if (playButton != null)
         {
-            playButton.clicked -= HandlePlayButtonClicked;
-            playButton.clicked += HandlePlayButtonClicked;
+            playButton.clicked -= HandleSinglePlayerButtonClicked;
+            playButton.clicked += HandleSinglePlayerButtonClicked;
+        }
+
+        if (hostOnlineButton != null)
+        {
+            hostOnlineButton.clicked -= HandleHostOnlineButtonClicked;
+            hostOnlineButton.clicked += HandleHostOnlineButtonClicked;
+        }
+
+        if (joinOnlineButton != null)
+        {
+            joinOnlineButton.clicked -= HandleJoinOnlineButtonClicked;
+            joinOnlineButton.clicked += HandleJoinOnlineButtonClicked;
         }
 
         if (editTeamButton != null)
@@ -238,7 +262,17 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     {
         if (playButton != null)
         {
-            playButton.clicked -= HandlePlayButtonClicked;
+            playButton.clicked -= HandleSinglePlayerButtonClicked;
+        }
+
+        if (hostOnlineButton != null)
+        {
+            hostOnlineButton.clicked -= HandleHostOnlineButtonClicked;
+        }
+
+        if (joinOnlineButton != null)
+        {
+            joinOnlineButton.clicked -= HandleJoinOnlineButtonClicked;
         }
 
         if (editTeamButton != null)
@@ -698,9 +732,25 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         RefreshAllUi();
     }
 
-    private void HandlePlayButtonClicked()
+    private void HandleSinglePlayerButtonClicked()
     {
-        PlayRequested?.Invoke();
+        SessionStartRequested?.Invoke(new TacticsSessionStartRequest(
+            TacticsSessionStartMode.SinglePlayer,
+            string.Empty));
+    }
+
+    private void HandleHostOnlineButtonClicked()
+    {
+        SessionStartRequested?.Invoke(new TacticsSessionStartRequest(
+            TacticsSessionStartMode.HostCoop,
+            GetJoinAddress()));
+    }
+
+    private void HandleJoinOnlineButtonClicked()
+    {
+        SessionStartRequested?.Invoke(new TacticsSessionStartRequest(
+            TacticsSessionStartMode.JoinCoop,
+            GetJoinAddress()));
     }
 
     private void HandleEditTeamButtonClicked()
@@ -725,6 +775,13 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         partySelectionService?.SaveSelection(savedSelection);
         SetStatusText("Team formation saved.");
         ShowMainPage();
+    }
+
+    private string GetJoinAddress()
+    {
+        return string.IsNullOrWhiteSpace(joinAddressField?.value)
+            ? "127.0.0.1"
+            : joinAddressField.value.Trim();
     }
 
     private bool CanSaveWorkingSelection()

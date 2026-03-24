@@ -28,6 +28,8 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
     private ProceduralIsometricMapGenerator mapGenerator;
     private TacticsMainMenuView mainMenuView;
     private TacticsPartySelectionService partySelectionService;
+    private TacticsCoopSessionCoordinator coopSessionCoordinator;
+    private TacticsCoopBattleSetup pendingCoopBattleSetup;
     private bool sceneSetupComplete;
     private bool gameplayStartInProgress;
 
@@ -44,6 +46,12 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         }
 
         partySelectionService = new TacticsPartySelectionService();
+        coopSessionCoordinator = EnsureCoopSessionCoordinator();
+        coopSessionCoordinator.AssignPartySelectionService(partySelectionService);
+        coopSessionCoordinator.StatusChanged -= HandleCoopStatusChanged;
+        coopSessionCoordinator.StatusChanged += HandleCoopStatusChanged;
+        coopSessionCoordinator.BattleSetupReady -= HandleCoopBattleSetupReady;
+        coopSessionCoordinator.BattleSetupReady += HandleCoopBattleSetupReady;
         mainMenuView = EnsureMainMenuView();
         mainMenuView.AssignDependencies(mapGenerator, partySelectionService);
         ShowMainMenu();
@@ -58,7 +66,13 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
         if (mainMenuView != null)
         {
-            mainMenuView.PlayRequested -= HandlePlayRequested;
+            mainMenuView.SessionStartRequested -= HandleSessionStartRequested;
+        }
+
+        if (coopSessionCoordinator != null)
+        {
+            coopSessionCoordinator.StatusChanged -= HandleCoopStatusChanged;
+            coopSessionCoordinator.BattleSetupReady -= HandleCoopBattleSetupReady;
         }
     }
 
@@ -79,14 +93,48 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             return;
         }
 
-        mainMenuView.PlayRequested -= HandlePlayRequested;
-        mainMenuView.PlayRequested += HandlePlayRequested;
+        mainMenuView.SessionStartRequested -= HandleSessionStartRequested;
+        mainMenuView.SessionStartRequested += HandleSessionStartRequested;
         mainMenuView.SetStatusText(string.Empty);
         mainMenuView.Show();
         SetCameraInputEnabled(false);
     }
 
-    private void HandlePlayRequested()
+    private void HandleSessionStartRequested(TacticsSessionStartRequest request)
+    {
+        if (gameplayStartInProgress || sceneSetupComplete || mainMenuView == null)
+        {
+            return;
+        }
+
+        pendingCoopBattleSetup = null;
+        mainMenuView.SetInteractable(false);
+
+        switch (request.Mode)
+        {
+            case TacticsSessionStartMode.SinglePlayer:
+                BeginGameplayStartup("Initializing battle systems...");
+                break;
+
+            case TacticsSessionStartMode.HostCoop:
+                if (!coopSessionCoordinator.StartHost())
+                {
+                    mainMenuView.SetInteractable(true);
+                }
+
+                break;
+
+            case TacticsSessionStartMode.JoinCoop:
+                if (!coopSessionCoordinator.StartClient(request.Address))
+                {
+                    mainMenuView.SetInteractable(true);
+                }
+
+                break;
+        }
+    }
+
+    private void BeginGameplayStartup(string statusText)
     {
         if (gameplayStartInProgress || sceneSetupComplete)
         {
@@ -99,8 +147,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
         if (mainMenuView != null)
         {
-            mainMenuView.SetInteractable(false);
-            mainMenuView.SetStatusText("Initializing battle systems...");
+            mainMenuView.SetStatusText(statusText);
         }
 
         if (mapGenerator == null)
@@ -126,6 +173,17 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         mapGenerator.MapGenerated -= HandleMapGenerated;
         mapGenerator.MapGenerated += HandleMapGenerated;
         mapGenerator.GenerateMap();
+    }
+
+    private void HandleCoopStatusChanged(string statusText)
+    {
+        mainMenuView?.SetStatusText(statusText);
+    }
+
+    private void HandleCoopBattleSetupReady(TacticsCoopBattleSetup battleSetup)
+    {
+        pendingCoopBattleSetup = battleSetup;
+        BeginGameplayStartup("Synchronizing co-op battle...");
     }
 
     private void SetupScene()
@@ -254,6 +312,18 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
         GameObject hudObject = new GameObject("Tactics Action Menu HUD");
         return hudObject.AddComponent<TacticsActionMenuView>();
+    }
+
+    private TacticsCoopSessionCoordinator EnsureCoopSessionCoordinator()
+    {
+        TacticsCoopSessionCoordinator existingCoordinator = FindFirstObjectByType<TacticsCoopSessionCoordinator>();
+        if (existingCoordinator != null)
+        {
+            return existingCoordinator;
+        }
+
+        GameObject coordinatorObject = new GameObject("Tactics Coop Session Coordinator");
+        return coordinatorObject.AddComponent<TacticsCoopSessionCoordinator>();
     }
 
     private TacticsSelectionPanelView EnsureSelectionPanelView(
@@ -464,29 +534,9 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
         if (!hasPlayerCharacters)
         {
-            IReadOnlyList<TacticsCharacterDefinition> selectedParty = partySelectionService != null
-                ? partySelectionService.ResolveSelectedParty()
-                : Array.Empty<TacticsCharacterDefinition>();
-            if (selectedParty == null || selectedParty.Count == 0)
+            if (!TrySpawnPlayerCharacters(occupiedTiles))
             {
-                Debug.LogWarning($"Tactics bootstrap could not resolve a playable party from Resources/{CharacterRosterResourcePath}.");
                 return;
-            }
-
-            for (int i = 0; i < selectedParty.Count; i++)
-            {
-                TacticsCharacterDefinition definition = selectedParty[i];
-                if (definition == null)
-                {
-                    continue;
-                }
-
-                Vector2Int spawnTile = FindSpawnTile(definition.PreferredSpawnTile, occupiedTiles);
-                TacticsCharacterController character = TacticsCharacterSpawner.SpawnCharacter(mapGenerator, definition, spawnTile);
-                if (character != null)
-                {
-                    occupiedTiles.Add(character.GridPosition);
-                }
             }
         }
 
@@ -530,7 +580,8 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
                 TacticsCharacterController enemy = TacticsCharacterSpawner.SpawnCharacter(
                     mapGenerator,
                     enemyData,
-                    spawnTiles[tileIndex]);
+                    spawnTiles[tileIndex],
+                    runtimeCharacterId: $"enemy_{spawnEntry.EnemyId}_{tileIndex}");
 
                 if (enemy != null)
                 {
@@ -538,6 +589,110 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
                 }
             }
         }
+    }
+
+    private bool TrySpawnPlayerCharacters(HashSet<Vector2Int> occupiedTiles)
+    {
+        if (pendingCoopBattleSetup != null)
+        {
+            return TrySpawnCoopPlayerCharacters(occupiedTiles);
+        }
+
+        IReadOnlyList<TacticsCharacterDefinition> selectedParty = partySelectionService != null
+            ? partySelectionService.ResolveSelectedParty()
+            : Array.Empty<TacticsCharacterDefinition>();
+        if (selectedParty == null || selectedParty.Count == 0)
+        {
+            Debug.LogWarning($"Tactics bootstrap could not resolve a playable party from Resources/{CharacterRosterResourcePath}.");
+            return false;
+        }
+
+        for (int i = 0; i < selectedParty.Count; i++)
+        {
+            TacticsCharacterDefinition definition = selectedParty[i];
+            if (definition == null)
+            {
+                continue;
+            }
+
+            Vector2Int spawnTile = FindSpawnTile(definition.PreferredSpawnTile, occupiedTiles);
+            TacticsCharacterController character = TacticsCharacterSpawner.SpawnCharacter(
+                mapGenerator,
+                definition,
+                spawnTile,
+                runtimeCharacterId: $"party_0_slot_{i}_{definition.CharacterId}");
+            if (character != null)
+            {
+                occupiedTiles.Add(character.GridPosition);
+            }
+        }
+
+        return true;
+    }
+
+    private bool TrySpawnCoopPlayerCharacters(HashSet<Vector2Int> occupiedTiles)
+    {
+        TacticsCharacterRoster roster = partySelectionService?.LoadRoster();
+        if (roster == null)
+        {
+            Debug.LogWarning($"Tactics bootstrap could not resolve a playable party from Resources/{CharacterRosterResourcePath}.");
+            return false;
+        }
+
+        Dictionary<string, TacticsCharacterDefinition> definitionsById = roster.BuildLookupById();
+        List<TacticsCharacterDefinition> hostParty = ResolveDefinitions(definitionsById, pendingCoopBattleSetup.hostPartyCharacterIds);
+        List<TacticsCharacterDefinition> clientParty = ResolveDefinitions(definitionsById, pendingCoopBattleSetup.clientPartyCharacterIds);
+        List<TacticsCoopSpawnPlanner.PlannedCharacterSpawn> plannedSpawns = TacticsCoopSpawnPlanner.BuildPlayerSpawns(mapGenerator, hostParty, clientParty);
+        if (plannedSpawns.Count == 0)
+        {
+            Debug.LogWarning("Tactics bootstrap could not create any co-op player spawn entries.");
+            return false;
+        }
+
+        for (int i = 0; i < plannedSpawns.Count; i++)
+        {
+            TacticsCoopSpawnPlanner.PlannedCharacterSpawn plannedSpawn = plannedSpawns[i];
+            if (!definitionsById.TryGetValue(plannedSpawn.CharacterId, out TacticsCharacterDefinition definition) || definition == null)
+            {
+                continue;
+            }
+
+            TacticsCharacterController character = TacticsCharacterSpawner.SpawnCharacter(
+                mapGenerator,
+                definition,
+                plannedSpawn.SpawnTile,
+                runtimeCharacterId: plannedSpawn.RuntimeId);
+            if (character != null)
+            {
+                occupiedTiles.Add(character.GridPosition);
+            }
+        }
+
+        return true;
+    }
+
+    private static List<TacticsCharacterDefinition> ResolveDefinitions(
+        Dictionary<string, TacticsCharacterDefinition> definitionsById,
+        List<string> characterIds)
+    {
+        List<TacticsCharacterDefinition> results = new();
+        if (definitionsById == null || characterIds == null)
+        {
+            return results;
+        }
+
+        for (int i = 0; i < characterIds.Count; i++)
+        {
+            string characterId = TacticsPartySelection.NormalizeCharacterId(characterIds[i]);
+            if (!string.IsNullOrEmpty(characterId) &&
+                definitionsById.TryGetValue(characterId, out TacticsCharacterDefinition definition) &&
+                definition != null)
+            {
+                results.Add(definition);
+            }
+        }
+
+        return results;
     }
 
     private Vector2Int FindSpawnTile(Vector2Int requestedTile, HashSet<Vector2Int> occupiedTiles)
