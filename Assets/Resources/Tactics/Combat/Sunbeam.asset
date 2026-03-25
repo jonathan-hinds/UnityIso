@@ -20,7 +20,7 @@ MonoBehaviour:
   areaOfEffectSize: 3
   targetRule: 0
   damageType: 1
-  projectilePrefab: {fileID: 0}
+  projectilePrefab: {fileID: 1919018610427331710, guid: b696f3366c66355408ebce01080f3b47, type: 3}
   effects:
   - effectKind: 0
     dealDamage:

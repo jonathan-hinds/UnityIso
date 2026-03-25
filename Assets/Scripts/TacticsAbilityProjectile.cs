@@ -9,14 +9,15 @@ public sealed class TacticsAbilityProjectile : MonoBehaviour
     [Header("References")]
     [SerializeField] private SpriteRenderer spriteRenderer;
     [SerializeField] private TrailRenderer trailRenderer;
+    [SerializeField] private TacticsAbilityProjectileMotion motion;
 
-    [Header("Flight")]
+    [Header("Legacy Flight Fallback")]
     [SerializeField, Min(0.01f)] private float travelUnitsPerSecond = 8f;
     [SerializeField, Min(0f)] private float arcHeight = 0.15f;
     [SerializeField, Min(0f)] private float arrivalPause = 0.02f;
     [SerializeField] private bool orientToVelocity = true;
 
-    [Header("Offsets")]
+    [Header("Legacy Offsets")]
     [SerializeField] private Vector3 launchOffset = new(0f, 0.25f, 0f);
     [SerializeField] private Vector3 impactOffset = new(0f, 0.2f, 0f);
 
@@ -30,21 +31,79 @@ public sealed class TacticsAbilityProjectile : MonoBehaviour
     public IEnumerator Play(TacticsAbilityProjectileFlight flight)
     {
         EnsureDefaultVisuals();
-
-        Vector3 start = flight.StartWorldPosition + launchOffset;
-        Vector3 end = flight.EndWorldPosition + impactOffset;
         int sortingLayerId = ResolveSortingLayerId(flight.SortingLayerId);
         int sortingOrder = flight.SortingOrder + sortingOrderOffset;
 
         ApplySorting(sortingLayerId, sortingOrder);
-        transform.position = start;
-        transform.rotation = Quaternion.identity;
 
+        motion ??= GetComponent<TacticsAbilityProjectileMotion>();
+        if (motion != null && motion.isActiveAndEnabled)
+        {
+            yield return motion.Play(this, flight);
+            yield break;
+        }
+
+        yield return PlayLegacyArcRoutine(flight);
+    }
+
+    public SpriteRenderer SpriteRenderer => spriteRenderer;
+    public TrailRenderer TrailRenderer => trailRenderer;
+    public Vector3 LaunchOffset => launchOffset;
+    public Vector3 ImpactOffset => impactOffset;
+
+    public void ClearTrail()
+    {
+        if (trailRenderer == null)
+        {
+            return;
+        }
+
+        trailRenderer.Clear();
+        trailRenderer.emitting = true;
+    }
+
+    public void StopTrail()
+    {
         if (trailRenderer != null)
         {
-            trailRenderer.Clear();
-            trailRenderer.emitting = true;
+            trailRenderer.emitting = false;
         }
+    }
+
+    public void ResetVisualState(Vector3 position)
+    {
+        transform.position = position;
+        transform.rotation = Quaternion.identity;
+
+        if (spriteRenderer != null)
+        {
+            spriteRenderer.enabled = true;
+        }
+    }
+
+    public void FaceVelocity(Vector3 velocity)
+    {
+        if (velocity.sqrMagnitude <= 0.000001f)
+        {
+            return;
+        }
+
+        float angle = Mathf.Atan2(velocity.y, velocity.x) * Mathf.Rad2Deg;
+        transform.rotation = Quaternion.AngleAxis(angle, Vector3.forward);
+    }
+
+    public void BeginCleanup()
+    {
+        BeginCleanupInternal();
+    }
+
+    private IEnumerator PlayLegacyArcRoutine(TacticsAbilityProjectileFlight flight)
+    {
+        Vector3 start = flight.StartWorldPosition + launchOffset;
+        Vector3 end = flight.EndWorldPosition + impactOffset;
+
+        ResetVisualState(start);
+        ClearTrail();
 
         float distance = Vector3.Distance(start, end);
         float duration = distance <= 0.001f ? 0f : distance / Mathf.Max(0.01f, travelUnitsPerSecond);
@@ -62,8 +121,7 @@ public sealed class TacticsAbilityProjectile : MonoBehaviour
 
             if (orientToVelocity && velocity.sqrMagnitude > 0.000001f)
             {
-                float angle = Mathf.Atan2(velocity.y, velocity.x) * Mathf.Rad2Deg;
-                transform.rotation = Quaternion.AngleAxis(angle, Vector3.forward);
+                FaceVelocity(velocity);
             }
 
             yield return null;
@@ -76,13 +134,14 @@ public sealed class TacticsAbilityProjectile : MonoBehaviour
             yield return new WaitForSeconds(arrivalPause);
         }
 
-        BeginCleanup();
+        BeginCleanupInternal();
     }
 
     private void Reset()
     {
         spriteRenderer = GetComponentInChildren<SpriteRenderer>();
         trailRenderer = GetComponentInChildren<TrailRenderer>();
+        motion = GetComponent<TacticsAbilityProjectileMotion>();
     }
 
     private void ApplySorting(int sortingLayerId, int sortingOrder)
@@ -126,7 +185,7 @@ public sealed class TacticsAbilityProjectile : MonoBehaviour
             : explicitSortingLayerId;
     }
 
-    private void BeginCleanup()
+    private void BeginCleanupInternal()
     {
         if (spriteRenderer != null)
         {

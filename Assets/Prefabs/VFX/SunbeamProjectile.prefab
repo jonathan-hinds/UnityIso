@@ -12,9 +12,9 @@ GameObject:
   - component: {fileID: 2119896287542761520}
   - component: {fileID: 6332284546924359770}
   - component: {fileID: 1919018610427331710}
-  - component: {fileID: 815457459334572433}
+  - component: {fileID: 1767268993826316549}
   m_Layer: 0
-  m_Name: BeamBoltProjectile
+  m_Name: SunbeamProjectile
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -80,7 +80,7 @@ SpriteRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_Sprite: {fileID: 0}
-  m_Color: {r: 0.59607846, g: 0, b: 0, a: 1}
+  m_Color: {r: 1, g: 0.9254902, b: 0.47058824, a: 1}
   m_FlipX: 0
   m_FlipY: 0
   m_DrawMode: 0
@@ -166,8 +166,8 @@ TrailRenderer:
       m_RotationOrder: 4
     colorGradient:
       serializedVersion: 2
-      key0: {r: 0, g: 0, b: 0, a: 1}
-      key1: {r: 0.5943396, g: 0, b: 0, a: 1}
+      key0: {r: 1, g: 0.54509807, b: 0.14117648, a: 1}
+      key1: {r: 1, g: 0.9529412, b: 0.56078434, a: 1}
       key2: {r: 0, g: 0, b: 0, a: 0}
       key3: {r: 0, g: 0, b: 0, a: 0}
       key4: {r: 0, g: 0, b: 0, a: 0}
@@ -220,7 +220,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   spriteRenderer: {fileID: 2119896287542761520}
   trailRenderer: {fileID: 6332284546924359770}
-  motion: {fileID: 815457459334572433}
+  motion: {fileID: 1767268993826316549}
   travelUnitsPerSecond: 5
   arcHeight: 0.05
   arrivalPause: 0.02
@@ -229,7 +229,7 @@ MonoBehaviour:
   impactOffset: {x: 0, y: 0.2, z: 0}
   sortingLayerName: Default
   sortingOrderOffset: 8
---- !u!114 &815457459334572433
+--- !u!114 &1767268993826316549
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -238,10 +238,13 @@ MonoBehaviour:
   m_GameObject: {fileID: 6504878942499019535}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 2b24869bfc7484b42a6ded8b5bd9f5a1, type: 3}
+  m_Script: {fileID: 11500000, guid: 96d907ae86fd06f49838fb4cb0bced01, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  travelUnitsPerSecond: 5
-  arcHeight: 0.05
-  arrivalPause: 0.02
+  descentUnitsPerSecond: 18
+  skyHeight: 4.5
+  horizontalLead: 0.08
+  horizontalDirection: {x: 0.08, y: 1}
   orientToVelocity: 1
+  arrivalPause: 0.06
+  impactFlashScale: 1.6
