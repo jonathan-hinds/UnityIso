@@ -176,8 +176,18 @@ public sealed class TacticsCloudSavePlayerProfile
         lock (sync)
         {
             pendingSaves[key] = value;
-            saveChain = saveChain.ContinueWith(_ => FlushPendingAsync()).Unwrap();
+            saveChain = AwaitQueuedSaveAsync(saveChain);
         }
+    }
+
+    private async Task AwaitQueuedSaveAsync(Task previousSave)
+    {
+        if (previousSave != null)
+        {
+            await previousSave;
+        }
+
+        await FlushPendingAsync();
     }
 
     private async Task FlushPendingAsync()

@@ -20,6 +20,7 @@ MonoBehaviour:
   areaOfEffectSize: 1
   targetRule: 0
   damageType: 0
+  projectilePrefab: {fileID: 0}
   effects:
   - effectKind: 0
     dealDamage:
@@ -29,5 +30,10 @@ MonoBehaviour:
       scaling:
       - stat: 0
         rank: 4
+    restoreHitPoints:
+      healingFormula: 0
+      flatAmount: 0
+      bonusMultiplier: 1
+      scaling: []
   costResourceType: 1
-  costAmount: 10
+  costAmount: 5

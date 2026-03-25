@@ -8,12 +8,14 @@ public sealed class TacticsCombatSystem : MonoBehaviour
 {
     [SerializeField] private ProceduralIsometricMapGenerator mapGenerator;
     [SerializeField] private TacticsAbilityCatalog abilityCatalog;
+    [SerializeField] private TacticsCharacterRegistry characterRegistry;
 
     private readonly Dictionary<TacticsAbilityEffectKind, ITacticsAbilityEffectProcessor> effectProcessors = new();
     private readonly List<TacticsCharacterController> reusableAreaTargets = new();
     private readonly List<Vector2Int> reusableTargetTiles = new();
     private readonly List<Vector2Int> reusableTargetableTiles = new();
     private readonly List<Vector2Int> reusableAreaTiles = new();
+    private readonly List<TacticsCharacterController> reusableCharacterBuffer = new();
     private Coroutine resolveRoutine;
 
     public event Action StateChanged;
@@ -29,6 +31,11 @@ public sealed class TacticsCombatSystem : MonoBehaviour
             mapGenerator = FindFirstObjectByType<ProceduralIsometricMapGenerator>();
         }
 
+        if (characterRegistry == null)
+        {
+            characterRegistry = FindFirstObjectByType<TacticsCharacterRegistry>();
+        }
+
         abilityCatalog ??= TacticsAbilityCatalogResources.LoadCatalog();
         effectProcessors[TacticsAbilityEffectKind.DealDamage] = new TacticsDealDamageEffectProcessor();
         effectProcessors[TacticsAbilityEffectKind.RestoreHitPoints] = new TacticsRestoreHitPointsEffectProcessor();
@@ -37,6 +44,11 @@ public sealed class TacticsCombatSystem : MonoBehaviour
     public void AssignMapGenerator(ProceduralIsometricMapGenerator generator)
     {
         mapGenerator = generator;
+    }
+
+    public void AssignCharacterRegistry(TacticsCharacterRegistry registry)
+    {
+        characterRegistry = registry;
     }
 
     public TacticsAbilityDefinition GetDefaultAttackAbility()
@@ -366,17 +378,10 @@ public sealed class TacticsCombatSystem : MonoBehaviour
 
     private TacticsCharacterController FindCharacterAt(Vector2Int tile)
     {
-        TacticsCharacterController[] characters = FindObjectsByType<TacticsCharacterController>(FindObjectsSortMode.None);
-        for (int i = 0; i < characters.Length; i++)
-        {
-            TacticsCharacterController character = characters[i];
-            if (character != null && character.isActiveAndEnabled && character.GridPosition == tile)
-            {
-                return character;
-            }
-        }
-
-        return null;
+        return characterRegistry != null &&
+               characterRegistry.TryGetCharacterAtTile(tile, out TacticsCharacterController character)
+            ? character
+            : null;
     }
 
     private bool HasValidTargetsAtTile(TacticsCharacterController source, TacticsAbilityDefinition ability, Vector2Int targetTile)
@@ -422,10 +427,15 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         int sourceElevation = TryGetTileElevation(source.GridPosition, out int resolvedSourceElevation)
             ? resolvedSourceElevation
             : int.MinValue;
-        TacticsCharacterController[] characters = FindObjectsByType<TacticsCharacterController>(FindObjectsSortMode.None);
-        for (int i = 0; i < characters.Length; i++)
+        if (characterRegistry == null)
         {
-            TacticsCharacterController target = characters[i];
+            return results;
+        }
+
+        characterRegistry.GetAllCharacters(reusableCharacterBuffer);
+        for (int i = 0; i < reusableCharacterBuffer.Count; i++)
+        {
+            TacticsCharacterController target = reusableCharacterBuffer[i];
             if (!CanAffectTarget(source, ability, target))
             {
                 continue;

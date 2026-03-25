@@ -41,6 +41,8 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
 
     private NetworkManager networkManager;
     private UnityTransport transport;
+    private TacticsCharacterRegistry characterRegistry;
+    private TacticsCombatSystem combatSystem;
     private TacticsPartySelectionService partySelectionService;
     private TacticsCharacterProgressionService progressionService;
     private TacticsPlayerCurrencyService currencyService;
@@ -149,6 +151,8 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
 
     private void Update()
     {
+        ResolveRuntimeReferences();
+
         if (pendingClientPartySubmission &&
             networkManager != null &&
             networkManager.IsConnectedClient &&
@@ -717,7 +721,6 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
     {
         TacticsCharacterController character = FindCharacterByRuntimeId(message.runtimeCharacterId);
         TacticsAbilityDefinition ability = FindAbility(character, message.abilityId);
-        TacticsCombatSystem combatSystem = FindFirstObjectByType<TacticsCombatSystem>();
         if (character == null || ability == null || combatSystem == null)
         {
             return false;
@@ -1066,20 +1069,26 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         return payload;
     }
 
-    private static TacticsCharacterController FindCharacterByRuntimeId(string runtimeCharacterId)
+    private void ResolveRuntimeReferences()
     {
-        TacticsCharacterController[] characters = FindObjectsByType<TacticsCharacterController>(FindObjectsSortMode.None);
-        for (int i = 0; i < characters.Length; i++)
+        if (characterRegistry == null)
         {
-            TacticsCharacterController character = characters[i];
-            if (character != null &&
-                string.Equals(character.RuntimeCharacterId, runtimeCharacterId, StringComparison.OrdinalIgnoreCase))
-            {
-                return character;
-            }
+            characterRegistry = FindFirstObjectByType<TacticsCharacterRegistry>();
         }
 
-        return null;
+        if (combatSystem == null)
+        {
+            combatSystem = FindFirstObjectByType<TacticsCombatSystem>();
+        }
+    }
+
+    private TacticsCharacterController FindCharacterByRuntimeId(string runtimeCharacterId)
+    {
+        ResolveRuntimeReferences();
+        return characterRegistry != null &&
+               characterRegistry.TryGetCharacterByRuntimeId(runtimeCharacterId, out TacticsCharacterController character)
+            ? character
+            : null;
     }
 
     private static TacticsAbilityDefinition FindAbility(TacticsCharacterController character, string abilityId)

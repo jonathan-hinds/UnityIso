@@ -30,7 +30,7 @@ MonoBehaviour:
     primaryStats:
       stamina: 6
       strength: 6
-      agility: 2
+      agility: 1
       wisdom: 1
       intelligence: 1
     mobilityStats:

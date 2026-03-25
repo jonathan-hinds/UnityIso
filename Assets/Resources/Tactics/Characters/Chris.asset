@@ -28,7 +28,7 @@ MonoBehaviour:
   preferredSpawnTile: {x: 2, y: 0}
   baseStats:
     primaryStats:
-      stamina: 5
+      stamina: 4
       strength: 1
       agility: 1
       wisdom: 7
@@ -37,7 +37,7 @@ MonoBehaviour:
       moveRange: 4
       jumpHeight: 2
   startingAbilities:
-  - {fileID: 11400000, guid: 3001edcb51eaa3147bde39d09a4a27fd, type: 2}
+  - {fileID: 11400000, guid: 7ad70e1d1a847bd44afcb2eb99dbb75f, type: 2}
   - {fileID: 11400000, guid: f6aecb6ac7328f34aa17eeb1085cda3c, type: 2}
   experienceToNextLevel: 100
   experienceRewardMin: 0

@@ -561,7 +561,7 @@ MonoBehaviour:
     count: 4
   chestSpawnSettings:
     spawnChance: 1
-    mimicChance: 1
+    mimicChance: 0.5
     maxChestCount: 4
     minGoldReward: 5
     maxGoldReward: 100

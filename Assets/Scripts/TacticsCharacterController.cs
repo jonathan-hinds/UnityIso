@@ -34,6 +34,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     private TacticsCharacterRuntimeResources runtimeResources;
     private TacticsCharacterProgressionSnapshot progression;
     private TacticsTurnManager turnManager;
+    private TacticsCharacterRegistry characterRegistry;
     private readonly List<TacticsAbilityDefinition> abilities = new();
     private bool isPerformingAction;
 
@@ -133,11 +134,14 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         startingGridPosition = spawnTile;
         SubscribeToMap();
         SnapToTile(GetBestValidTile(spawnTile));
+        RefreshCharacterRegistryState();
     }
 
     private void OnEnable()
     {
         SubscribeToMap();
+        ResolveCharacterRegistry();
+        RefreshCharacterRegistryState();
         RegisterWithTurnManager();
     }
 
@@ -159,6 +163,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         }
 
         ApplyCharacterData(characterData, progression);
+        ResolveCharacterRegistry();
 
         if (mapGenerator == null || !mapGenerator.HasGeneratedMap)
         {
@@ -166,6 +171,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         }
 
         SnapToTile(GetBestValidTile(startingGridPosition));
+        RefreshCharacterRegistryState();
         RegisterWithTurnManager();
     }
 
@@ -191,6 +197,8 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         {
             turnManager.UnregisterParticipant(this);
         }
+
+        characterRegistry?.Unregister(this);
     }
 
     public void SetSelected(bool isSelected)
@@ -559,6 +567,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         {
             yield return MoveBetweenTiles(path[i - 1], path[i]);
             GridPosition = path[i];
+            RefreshCharacterRegistryState();
         }
 
         movementRoutine = null;
@@ -659,22 +668,9 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
             return true;
         }
 
-        TacticsCharacterController[] characters = FindObjectsByType<TacticsCharacterController>(FindObjectsSortMode.None);
-        for (int i = 0; i < characters.Length; i++)
-        {
-            TacticsCharacterController character = characters[i];
-            if (character == this)
-            {
-                continue;
-            }
-
-            if (character.GridPosition == tile)
-            {
-                return true;
-            }
-        }
-
-        return false;
+        ResolveCharacterRegistry();
+        return characterRegistry != null &&
+               characterRegistry.TryGetCharacterAtTile(tile, out _, this);
     }
 
     private void HandleMapGenerated()
@@ -692,6 +688,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         GridPosition = tile;
         transform.position = worldPosition + GetTileAnchorOffset();
         lastAppliedTileAnchorOffset = tileAnchorOffset;
+        RefreshCharacterRegistryState();
         ApplySorting(
             characterAnimator != null ? characterAnimator.CurrentSortingLayerId : SortingLayer.NameToID("Default"),
             mapGenerator.GetCharacterSortingOrder(tile.x, tile.y, mapGenerator.GetTileElevation(tile.x, tile.y)));
@@ -964,6 +961,20 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         turnManager?.RegisterParticipant(this);
     }
 
+    private void ResolveCharacterRegistry()
+    {
+        if (characterRegistry == null)
+        {
+            characterRegistry = FindFirstObjectByType<TacticsCharacterRegistry>();
+        }
+    }
+
+    private void RefreshCharacterRegistryState()
+    {
+        ResolveCharacterRegistry();
+        characterRegistry?.Refresh(this);
+    }
+
     private void NotifyTurnStateChanged()
     {
         TurnStateChanged?.Invoke(this);
@@ -999,11 +1010,6 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
             }
         }
 
-        TacticsAbilityCatalog catalog = TacticsAbilityCatalogResources.LoadCatalog();
-        if (catalog != null)
-        {
-            AddAbilityIfMissing(catalog.DefaultAttackAbility);
-        }
     }
 
     private void AddAbilityIfMissing(TacticsAbilityDefinition ability)
@@ -1066,6 +1072,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         SetTargeted(false);
         characterAnimator?.SetTurnHighlight(false);
         NotifyTurnStateChanged();
+        characterRegistry?.Refresh(this);
         gameObject.SetActive(false);
     }
 

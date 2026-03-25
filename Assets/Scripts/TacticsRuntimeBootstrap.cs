@@ -280,8 +280,10 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         TacticsTileTargetOverlay tileTargetOverlay = EnsureTileTargetOverlay();
         EnsureCombatTextSystem();
         EnsureTurnCameraDirector();
+        TacticsCharacterRegistry characterRegistry = EnsureCharacterRegistry();
         TacticsTurnManager turnManager = EnsureTurnManager();
         TacticsCombatSystem combatSystem = EnsureCombatSystem();
+        combatSystem?.AssignCharacterRegistry(characterRegistry);
         EnsureChestEncounterService(turnManager);
         EnsurePlayerController();
         EnsureChests();
@@ -558,6 +560,18 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         return managerObject.GetComponent<TacticsTurnManager>();
     }
 
+    private TacticsCharacterRegistry EnsureCharacterRegistry()
+    {
+        TacticsCharacterRegistry existingRegistry = FindFirstObjectByType<TacticsCharacterRegistry>();
+        if (existingRegistry != null)
+        {
+            return existingRegistry;
+        }
+
+        GameObject registryObject = new GameObject("Tactics Character Registry");
+        return registryObject.AddComponent<TacticsCharacterRegistry>();
+    }
+
     private void EnsureTurnCameraDirector()
     {
         if (FindFirstObjectByType<TacticsTurnCameraDirector>() != null)
@@ -645,6 +659,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
     private void CleanupGameplayObjects()
     {
         DestroyAllOfType<TacticsCharacterController>();
+        DestroyAllOfType<TacticsCharacterRegistry>();
         DestroyAllOfType<TacticsChestController>();
         DestroyAllOfType<TacticsPlayerController>();
         DestroyAllOfType<TacticsTurnManager>();
@@ -897,7 +912,11 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         Dictionary<string, TacticsCharacterDefinition> definitionsById = roster.BuildLookupById();
         List<TacticsCharacterDefinition> hostParty = ResolveDefinitions(definitionsById, pendingCoopBattleSetup.hostPartyMembers);
         List<TacticsCharacterDefinition> clientParty = ResolveDefinitions(definitionsById, pendingCoopBattleSetup.clientPartyMembers);
-        List<TacticsCoopSpawnPlanner.PlannedCharacterSpawn> plannedSpawns = TacticsCoopSpawnPlanner.BuildPlayerSpawns(mapGenerator, hostParty, clientParty);
+        List<TacticsCoopSpawnPlanner.PlannedCharacterSpawn> plannedSpawns = TacticsCoopSpawnPlanner.BuildPlayerSpawns(
+            mapGenerator,
+            hostParty,
+            clientParty,
+            occupiedTiles);
         if (plannedSpawns.Count == 0)
         {
             Debug.LogWarning("Tactics bootstrap could not create any co-op player spawn entries.");

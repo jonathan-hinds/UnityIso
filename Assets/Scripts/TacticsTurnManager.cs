@@ -8,8 +8,10 @@ using UnityEngine;
 public sealed class TacticsTurnManager : MonoBehaviour
 {
     [SerializeField] private TacticsTurnCameraDirector cameraDirector;
+    [SerializeField] private TacticsCharacterRegistry characterRegistry;
 
     private readonly List<ITacticsTurnParticipant> participants = new();
+    private readonly List<TacticsCharacterController> reusableCharacters = new();
     private Coroutine turnTransitionRoutine;
     private int activeTurnIndex = -1;
     private ITacticsTurnParticipant queuedPriorityParticipant;
@@ -29,6 +31,11 @@ public sealed class TacticsTurnManager : MonoBehaviour
         if (cameraDirector == null)
         {
             cameraDirector = FindFirstObjectByType<TacticsTurnCameraDirector>();
+        }
+
+        if (characterRegistry == null)
+        {
+            characterRegistry = FindFirstObjectByType<TacticsCharacterRegistry>();
         }
     }
 
@@ -95,10 +102,18 @@ public sealed class TacticsTurnManager : MonoBehaviour
             cameraDirector = FindFirstObjectByType<TacticsTurnCameraDirector>();
         }
 
-        TacticsCharacterController[] discoveredCharacters = FindObjectsByType<TacticsCharacterController>(FindObjectsSortMode.InstanceID);
-        for (int i = 0; i < discoveredCharacters.Length; i++)
+        if (characterRegistry == null)
         {
-            RegisterParticipant(discoveredCharacters[i]);
+            characterRegistry = FindFirstObjectByType<TacticsCharacterRegistry>();
+        }
+
+        if (characterRegistry != null)
+        {
+            characterRegistry.GetAllCharacters(reusableCharacters);
+            for (int i = 0; i < reusableCharacters.Count; i++)
+            {
+                RegisterParticipant(reusableCharacters[i]);
+            }
         }
 
         if (ActiveParticipant == null && !IsTransitioningTurns && participants.Count > 0)

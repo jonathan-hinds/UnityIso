@@ -60,33 +60,10 @@ public sealed class TacticsAccountSessionService : ITacticsAccountSessionService
         {
             await TacticsUnityServicesBootstrap.EnsureInitializedAsync();
 
-            string cachedUsername = PlayerPrefs.GetString(LastUsernameKey, string.Empty);
-            if (IsAuthenticationAvailable() && AuthenticationService.Instance.SessionTokenExists)
-            {
-                try
-                {
-                    await AuthenticationService.Instance.SignInAnonymouslyAsync();
-                    await LoadProfileAsync(cachedUsername);
-                    statusMessage = $"Signed in as {username}.";
-                    errorMessage = string.Empty;
-                }
-                catch (Exception exception)
-                {
-                    Debug.LogWarning($"Failed to restore cached account session: {exception.Message}");
-                    AuthenticationService.Instance.SignOut();
-                    profile = null;
-                    username = string.Empty;
-                    statusMessage = "Sign in to access online co-op progression.";
-                    errorMessage = string.Empty;
-                }
-            }
-            else
-            {
-                profile = null;
-                username = string.Empty;
-                statusMessage = "Sign in to access online co-op progression.";
-                errorMessage = string.Empty;
-            }
+            ResetAuthenticationState(clearCachedCredentials: true);
+            username = SanitizeUsername(PlayerPrefs.GetString(LastUsernameKey, string.Empty));
+            statusMessage = "Sign in or register to access online co-op progression.";
+            errorMessage = string.Empty;
 
             isInitialized = true;
         });
@@ -114,13 +91,8 @@ public sealed class TacticsAccountSessionService : ITacticsAccountSessionService
 
     public void SignOut()
     {
-        if (IsAuthenticationAvailable() && AuthenticationService.Instance.IsSignedIn)
-        {
-            AuthenticationService.Instance.SignOut();
-        }
-
-        profile = null;
-        statusMessage = "Signed out. Sign in to access online co-op progression.";
+        ResetAuthenticationState(clearCachedCredentials: true);
+        statusMessage = "Signed out. Sign in or register to access online co-op progression.";
         errorMessage = string.Empty;
         NotifyStateChanged();
     }
@@ -229,6 +201,21 @@ public sealed class TacticsAccountSessionService : ITacticsAccountSessionService
     {
         PlayerPrefs.SetString(LastUsernameKey, value ?? string.Empty);
         PlayerPrefs.Save();
+    }
+
+    private void ResetAuthenticationState(bool clearCachedCredentials)
+    {
+        if (IsAuthenticationAvailable())
+        {
+            AuthenticationService.Instance.SignOut(clearCachedCredentials);
+
+            if (clearCachedCredentials && AuthenticationService.Instance.SessionTokenExists)
+            {
+                AuthenticationService.Instance.ClearSessionToken();
+            }
+        }
+
+        profile = null;
     }
 
     private static bool IsAuthenticationAvailable()

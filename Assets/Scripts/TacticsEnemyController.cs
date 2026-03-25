@@ -16,12 +16,16 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
     [SerializeField] private TacticsTurnManager turnManager;
     [SerializeField] private TacticsCombatSystem combatSystem;
     [SerializeField] private TacticsCoopSessionCoordinator coopSessionCoordinator;
+    [SerializeField] private TacticsCharacterRegistry characterRegistry;
     [SerializeField, Min(0f)] private float thinkDelay = 0.2f;
     [SerializeField, Min(0f)] private float endTurnDelay = 0.15f;
 
     private Coroutine turnRoutine;
     private readonly List<TacticsCharacterController> reusableCandidateTargets = new();
     private readonly List<TacticsCharacterController> reusableAnchorTargets = new();
+    private readonly List<TacticsCharacterController> reusableHostileTargets = new();
+    private readonly List<TacticsCharacterController> reusableAlliedTargets = new();
+    private readonly List<TacticsCharacterController> reusableAlliedTargetsIncludingSelf = new();
     private string priorityTargetRuntimeCharacterId = string.Empty;
 
     private readonly struct EnemyAbilityPlan
@@ -86,6 +90,11 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         {
             coopSessionCoordinator = FindFirstObjectByType<TacticsCoopSessionCoordinator>();
         }
+
+        if (characterRegistry == null)
+        {
+            characterRegistry = FindFirstObjectByType<TacticsCharacterRegistry>();
+        }
     }
 
     private void OnEnable()
@@ -103,6 +112,11 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         if (coopSessionCoordinator == null)
         {
             coopSessionCoordinator = FindFirstObjectByType<TacticsCoopSessionCoordinator>();
+        }
+
+        if (characterRegistry == null)
+        {
+            characterRegistry = FindFirstObjectByType<TacticsCharacterRegistry>();
         }
     }
 
@@ -421,20 +435,10 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
             return null;
         }
 
-        TacticsCharacterController[] characters = FindObjectsByType<TacticsCharacterController>(FindObjectsSortMode.None);
-        for (int i = 0; i < characters.Length; i++)
-        {
-            TacticsCharacterController candidate = characters[i];
-            if (candidate != null &&
-                candidate.IsAlive &&
-                candidate.isActiveAndEnabled &&
-                string.Equals(candidate.RuntimeCharacterId, priorityTargetRuntimeCharacterId, System.StringComparison.OrdinalIgnoreCase))
-            {
-                return candidate;
-            }
-        }
-
-        return null;
+        return characterRegistry != null &&
+               characterRegistry.TryGetCharacterByRuntimeId(priorityTargetRuntimeCharacterId, out TacticsCharacterController target)
+            ? target
+            : null;
     }
 
     private bool TryBuildBestImmediateAbilityPlan(out EnemyAbilityPlan bestPlan)
@@ -829,50 +833,30 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
 
     private List<TacticsCharacterController> GetHostileTargets()
     {
-        TacticsCharacterController[] characters = FindObjectsByType<TacticsCharacterController>(FindObjectsSortMode.None);
-        List<TacticsCharacterController> targets = new();
-        for (int i = 0; i < characters.Length; i++)
+        reusableHostileTargets.Clear();
+        if (characterRegistry == null)
         {
-            TacticsCharacterController candidate = characters[i];
-            if (candidate == null ||
-                !candidate.isActiveAndEnabled ||
-                !candidate.IsAlive ||
-                ReferenceEquals(candidate, character) ||
-                candidate.Team == character.Team)
-            {
-                continue;
-            }
-
-            targets.Add(candidate);
+            return reusableHostileTargets;
         }
 
-        return targets;
+        characterRegistry.GetHostileCharacters(character, reusableHostileTargets);
+        return reusableHostileTargets;
     }
 
     private List<TacticsCharacterController> GetAlliedTargets(bool includeSelf)
     {
-        TacticsCharacterController[] characters = FindObjectsByType<TacticsCharacterController>(FindObjectsSortMode.None);
-        List<TacticsCharacterController> targets = new();
-        for (int i = 0; i < characters.Length; i++)
+        List<TacticsCharacterController> results = includeSelf
+            ? reusableAlliedTargetsIncludingSelf
+            : reusableAlliedTargets;
+        results.Clear();
+
+        if (characterRegistry == null)
         {
-            TacticsCharacterController candidate = characters[i];
-            if (candidate == null ||
-                !candidate.isActiveAndEnabled ||
-                !candidate.IsAlive ||
-                candidate.Team != character.Team)
-            {
-                continue;
-            }
-
-            if (!includeSelf && ReferenceEquals(candidate, character))
-            {
-                continue;
-            }
-
-            targets.Add(candidate);
+            return results;
         }
 
-        return targets;
+        characterRegistry.GetAlliedCharacters(character, includeSelf, results);
+        return results;
     }
 
     private bool HasHealingAbility()
@@ -921,18 +905,10 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         }
 
         int threatCount = 0;
-        TacticsCharacterController[] characters = FindObjectsByType<TacticsCharacterController>(FindObjectsSortMode.None);
-        for (int i = 0; i < characters.Length; i++)
+        List<TacticsCharacterController> hostileTargets = GetHostileTargets();
+        for (int i = 0; i < hostileTargets.Count; i++)
         {
-            TacticsCharacterController candidate = characters[i];
-            if (candidate == null ||
-                !candidate.isActiveAndEnabled ||
-                !candidate.IsAlive ||
-                candidate.Team == target.Team)
-            {
-                continue;
-            }
-
+            TacticsCharacterController candidate = hostileTargets[i];
             if (GetTileDistance(candidate.GridPosition, target.GridPosition) <= Mathf.Max(1, candidate.MoveRange + 1))
             {
                 threatCount++;

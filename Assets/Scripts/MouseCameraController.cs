@@ -26,6 +26,7 @@ public class MouseCameraController : MonoBehaviour
     private bool inputEnabled = true;
 
     public bool InputEnabled => inputEnabled;
+    public Vector3 TargetPosition => targetPosition;
 
     private void Awake()
     {
@@ -148,6 +149,12 @@ public class MouseCameraController : MonoBehaviour
 
         float moveLerp = 1f - Mathf.Exp(-panSmoothSpeed * Time.unscaledDeltaTime);
         Vector3 nextPosition = Vector3.Lerp(transform.position, targetPosition, moveLerp);
+
+        if (Vector2.SqrMagnitude((Vector2)(targetPosition - nextPosition)) <= 0.0001f)
+        {
+            nextPosition = targetPosition;
+        }
+
         nextPosition.z = transform.position.z;
         transform.position = nextPosition;
     }

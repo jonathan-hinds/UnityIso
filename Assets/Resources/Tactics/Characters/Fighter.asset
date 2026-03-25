@@ -10,10 +10,10 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 22e7b594db971ee418d48f83c5b2661c, type: 3}
-  m_Name: Ramza
+  m_Name: Fighter
   m_EditorClassIdentifier: 
-  characterId: ramza
-  displayName: Ramza
+  characterId: fighter
+  displayName: Fighter
   team: 0
   spriteSheetResourcePath: Characters/guy1
   walkFramesPerSecond: 5
@@ -28,24 +28,17 @@ MonoBehaviour:
   preferredSpawnTile: {x: 0, y: 0}
   baseStats:
     primaryStats:
-      stamina: 5
+      stamina: 4
       strength: 6
-      agility: 5
-      wisdom: 4
-      intelligence: 4
-    derivedStatModifiers:
-      bonusMaxHitPoints: -4
-      bonusMaxMana: -10
-      bonusMaxStamina: 0
-      bonusBaseDamageMin: -3
-      bonusBaseDamageMax: -1
-      bonusBaseMagicDamageMin: -3
-      bonusBaseMagicDamageMax: -1
+      agility: 3
+      wisdom: 1
+      intelligence: 1
     mobilityStats:
       moveRange: 4
       jumpHeight: 2
   startingAbilities:
   - {fileID: 11400000, guid: 3001edcb51eaa3147bde39d09a4a27fd, type: 2}
+  - {fileID: 11400000, guid: 02966f571ec461044ae5d59c00d435ea, type: 2}
   experienceToNextLevel: 100
   experienceRewardMin: 0
   experienceRewardMax: 0

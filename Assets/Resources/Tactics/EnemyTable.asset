@@ -37,8 +37,8 @@ MonoBehaviour:
         jumpHeight: 2
     startingAbilities:
     - {fileID: 11400000, guid: 3001edcb51eaa3147bde39d09a4a27fd, type: 2}
-    minExperienceReward: 89
-    maxExperienceReward: 115
+    minExperienceReward: 25
+    maxExperienceReward: 40
   - enemyId: shaman
     displayName: Shaman
     spriteSheetResourcePath: Characters/guy4
@@ -65,8 +65,8 @@ MonoBehaviour:
     - {fileID: 11400000, guid: 3001edcb51eaa3147bde39d09a4a27fd, type: 2}
     - {fileID: 11400000, guid: 07ea7b7d353f9a3479eca6d4efcc8860, type: 2}
     - {fileID: 11400000, guid: f6aecb6ac7328f34aa17eeb1085cda3c, type: 2}
-    minExperienceReward: 75
-    maxExperienceReward: 100
+    minExperienceReward: 20
+    maxExperienceReward: 65
   - enemyId: mimic
     displayName: Mimic
     spriteSheetResourcePath: Characters/guy10

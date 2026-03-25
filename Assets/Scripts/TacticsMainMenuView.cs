@@ -1232,7 +1232,29 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         isEditPageVisible = false;
         isHostSetupPageVisible = false;
         isAuthDialogVisible = true;
+        if (accountPasswordField != null)
+        {
+            accountPasswordField.SetValueWithoutNotify(string.Empty);
+        }
+
         RefreshAllUi();
+        accountUsernameField?.Focus();
+    }
+
+    private bool EnsureSignedInForOnlineFlow(string unsignedInStatusMessage)
+    {
+        if (accountSessionService?.IsSignedIn ?? false)
+        {
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(unsignedInStatusMessage))
+        {
+            SetLabelText(accountStatusLabel, unsignedInStatusMessage);
+        }
+
+        ShowAuthDialog();
+        return false;
     }
 
     private void ShowEditPage(bool editOnlineParty)
@@ -1262,13 +1284,10 @@ public sealed class TacticsMainMenuView : MonoBehaviour
 
     private void HandleOnlineCoopModeButtonClicked()
     {
-        if (accountSessionService?.IsSignedIn ?? false)
+        if (EnsureSignedInForOnlineFlow("Sign in or register before continuing to online co-op."))
         {
             ShowOnlinePage();
-            return;
         }
-
-        ShowAuthDialog();
     }
 
     private void HandleSinglePlayerBackButtonClicked()
@@ -1290,11 +1309,21 @@ public sealed class TacticsMainMenuView : MonoBehaviour
 
     private void HandleHostOnlineButtonClicked()
     {
+        if (!EnsureSignedInForOnlineFlow("Sign in or register before hosting an online co-op match."))
+        {
+            return;
+        }
+
         ShowHostSetupPage();
     }
 
     private void HandleJoinOnlineButtonClicked()
     {
+        if (!EnsureSignedInForOnlineFlow("Sign in or register before joining an online co-op match."))
+        {
+            return;
+        }
+
         SessionStartRequested?.Invoke(new TacticsSessionStartRequest(
             TacticsSessionStartMode.JoinCoop,
             GetJoinCode()));
@@ -1307,9 +1336,14 @@ public sealed class TacticsMainMenuView : MonoBehaviour
 
     private void HandleEditOnlineTeamButtonClicked()
     {
-        if (onlinePartySelectionService == null || !(accountSessionService?.IsSignedIn ?? false))
+        if (onlinePartySelectionService == null)
         {
-            SetStatusText("Sign in before editing your online team.");
+            SetStatusText("Online party storage is unavailable.");
+            return;
+        }
+
+        if (!EnsureSignedInForOnlineFlow("Sign in or register before editing your online team."))
+        {
             return;
         }
 

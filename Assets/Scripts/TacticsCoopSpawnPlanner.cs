@@ -3,6 +3,20 @@ using UnityEngine;
 
 public static class TacticsCoopSpawnPlanner
 {
+    private sealed class SpawnRequest
+    {
+        public SpawnRequest(string characterId, int partyIndex, int slotIndex)
+        {
+            CharacterId = characterId;
+            PartyIndex = partyIndex;
+            SlotIndex = slotIndex;
+        }
+
+        public string CharacterId { get; }
+        public int PartyIndex { get; }
+        public int SlotIndex { get; }
+    }
+
     public sealed class PlannedCharacterSpawn
     {
         public PlannedCharacterSpawn(string runtimeId, string characterId, int partyIndex, int slotIndex, Vector2Int spawnTile)
@@ -24,25 +38,60 @@ public static class TacticsCoopSpawnPlanner
     public static List<PlannedCharacterSpawn> BuildPlayerSpawns(
         ProceduralIsometricMapGenerator mapGenerator,
         IReadOnlyList<TacticsCharacterDefinition> hostParty,
-        IReadOnlyList<TacticsCharacterDefinition> clientParty)
+        IReadOnlyList<TacticsCharacterDefinition> clientParty,
+        IReadOnlyCollection<Vector2Int> blockedTiles = null)
     {
         List<PlannedCharacterSpawn> plannedSpawns = new();
-        HashSet<Vector2Int> occupiedTiles = new();
+        if (mapGenerator == null)
+        {
+            return plannedSpawns;
+        }
 
-        AppendPartySpawns(mapGenerator, hostParty, partyIndex: 0, occupiedTiles, plannedSpawns);
-        AppendPartySpawns(mapGenerator, clientParty, partyIndex: 1, occupiedTiles, plannedSpawns);
+        List<SpawnRequest> requests = BuildSpawnRequests(hostParty, clientParty);
+        if (requests.Count == 0)
+        {
+            return plannedSpawns;
+        }
+
+        HashSet<Vector2Int> occupiedTiles = blockedTiles != null
+            ? new HashSet<Vector2Int>(blockedTiles)
+            : new HashSet<Vector2Int>();
+        List<Vector2Int> randomSpawnTiles = mapGenerator.GetRandomSpawnTiles(requests.Count, occupiedTiles);
+
+        for (int i = 0; i < requests.Count; i++)
+        {
+            SpawnRequest request = requests[i];
+            Vector2Int spawnTile = i < randomSpawnTiles.Count
+                ? randomSpawnTiles[i]
+                : FindAvailableSpawnTile(mapGenerator, occupiedTiles);
+            occupiedTiles.Add(spawnTile);
+            plannedSpawns.Add(new PlannedCharacterSpawn(
+                BuildRuntimeCharacterId(request.PartyIndex, request.SlotIndex, request.CharacterId),
+                request.CharacterId,
+                request.PartyIndex,
+                request.SlotIndex,
+                spawnTile));
+        }
 
         return plannedSpawns;
     }
 
-    private static void AppendPartySpawns(
-        ProceduralIsometricMapGenerator mapGenerator,
+    private static List<SpawnRequest> BuildSpawnRequests(
+        IReadOnlyList<TacticsCharacterDefinition> hostParty,
+        IReadOnlyList<TacticsCharacterDefinition> clientParty)
+    {
+        List<SpawnRequest> requests = new();
+        AppendPartyRequests(hostParty, partyIndex: 0, requests);
+        AppendPartyRequests(clientParty, partyIndex: 1, requests);
+        return requests;
+    }
+
+    private static void AppendPartyRequests(
         IReadOnlyList<TacticsCharacterDefinition> party,
         int partyIndex,
-        HashSet<Vector2Int> occupiedTiles,
-        List<PlannedCharacterSpawn> plannedSpawns)
+        List<SpawnRequest> requests)
     {
-        if (mapGenerator == null || party == null || occupiedTiles == null || plannedSpawns == null)
+        if (party == null || requests == null)
         {
             return;
         }
@@ -55,39 +104,12 @@ public static class TacticsCoopSpawnPlanner
                 continue;
             }
 
-            Vector2Int requestedTile = ResolvePartySpawnAnchor(mapGenerator, definition.PreferredSpawnTile, partyIndex);
-            Vector2Int resolvedTile = FindAvailableSpawnTile(mapGenerator, requestedTile, occupiedTiles);
-            occupiedTiles.Add(resolvedTile);
-            plannedSpawns.Add(new PlannedCharacterSpawn(
-                BuildRuntimeCharacterId(partyIndex, slotIndex, definition.CharacterId),
-                definition.CharacterId,
-                partyIndex,
-                slotIndex,
-                resolvedTile));
+            requests.Add(new SpawnRequest(definition.CharacterId, partyIndex, slotIndex));
         }
-    }
-
-    private static Vector2Int ResolvePartySpawnAnchor(
-        ProceduralIsometricMapGenerator mapGenerator,
-        Vector2Int preferredTile,
-        int partyIndex)
-    {
-        if (mapGenerator == null || partyIndex == 0)
-        {
-            return preferredTile;
-        }
-
-        Vector2Int fallback = preferredTile == default
-            ? mapGenerator.GetCenterTile()
-            : preferredTile;
-        return new Vector2Int(
-            Mathf.Clamp((mapGenerator.Width - 1) - fallback.x, 0, Mathf.Max(0, mapGenerator.Width - 1)),
-            Mathf.Clamp((mapGenerator.Length - 1) - fallback.y, 0, Mathf.Max(0, mapGenerator.Length - 1)));
     }
 
     private static Vector2Int FindAvailableSpawnTile(
         ProceduralIsometricMapGenerator mapGenerator,
-        Vector2Int requestedTile,
         HashSet<Vector2Int> occupiedTiles)
     {
         if (mapGenerator == null)
@@ -95,12 +117,7 @@ public static class TacticsCoopSpawnPlanner
             return Vector2Int.zero;
         }
 
-        if (IsSpawnTileAvailable(mapGenerator, requestedTile, occupiedTiles))
-        {
-            return requestedTile;
-        }
-
-        Vector2Int center = requestedTile == default ? mapGenerator.GetCenterTile() : requestedTile;
+        Vector2Int center = mapGenerator.GetCenterTile();
         int maxRadius = Mathf.Max(mapGenerator.Width, mapGenerator.Length);
         for (int radius = 0; radius <= maxRadius; radius++)
         {
@@ -117,7 +134,7 @@ public static class TacticsCoopSpawnPlanner
             }
         }
 
-        return mapGenerator.GetCenterTile();
+        return center;
     }
 
     private static bool IsSpawnTileAvailable(

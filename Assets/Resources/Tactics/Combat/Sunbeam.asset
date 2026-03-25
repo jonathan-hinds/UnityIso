@@ -10,30 +10,30 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e7b9484a5008cb04fb02b3a3ce7d7f91, type: 3}
-  m_Name: Blast
+  m_Name: Sunbeam
   m_EditorClassIdentifier: 
-  abilityId: blast
-  displayName: Blast
-  description: A magical blast.
-  rangeType: 1
-  range: 4
+  abilityId: sunbeam
+  displayName: Sunbeam
+  description: Beam targets in the area with a ray of damge.
+  rangeType: 5
+  range: 3
   areaOfEffectSize: 3
   targetRule: 0
   damageType: 1
-  projectilePrefab: {fileID: 1919018610427331710, guid: 439d3e2a12bf4294f899bf6d43ef53c7, type: 3}
+  projectilePrefab: {fileID: 0}
   effects:
   - effectKind: 0
     dealDamage:
       damageFormula: 0
       flatAmount: 0
-      bonusMultiplier: 1
+      bonusMultiplier: 1.2
       scaling:
-      - stat: 4
-        rank: 5
+      - stat: 3
+        rank: 4
     restoreHitPoints:
       healingFormula: 0
       flatAmount: 0
       bonusMultiplier: 1
       scaling: []
   costResourceType: 2
-  costAmount: 6
+  costAmount: 10
