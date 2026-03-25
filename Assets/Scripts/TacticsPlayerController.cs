@@ -729,7 +729,10 @@ public class TacticsPlayerController : MonoBehaviour
                 continue;
             }
 
+            bool showOwnedIndicator = coopSessionCoordinator != null &&
+                                      coopSessionCoordinator.ShouldShowLocalOwnershipIndicator(character);
             bool isTargeted = validTargetTiles != null && validTargetTiles.Contains(character.GridPosition);
+            character.SetLocallyOwned(showOwnedIndicator);
             character.SetTargeted(isTargeted);
         }
     }

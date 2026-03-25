@@ -828,6 +828,7 @@
 
 .host-setup-content {
     flex-grow: 1;
+    min-height: 0;
 }
 
 .host-intro-panel {
@@ -852,10 +853,17 @@
     flex-wrap: wrap;
     flex-direction: row;
     align-content: flex-start;
+    min-height: 0;
 }
 
 .host-section {
     min-height: 168px;
+}
+
+.host-section--party {
+    width: 100%;
+    min-height: 236px;
+    margin-bottom: 12px;
 }
 
 .host-section--half {
@@ -947,6 +955,142 @@
 .host-enemy-scroll-view {
     flex-grow: 1;
     min-height: 170px;
+}
+
+.lobby-player-scroll-view {
+    flex-grow: 1;
+    min-height: 150px;
+}
+
+.lobby-player-card-container {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    padding-right: 8px;
+}
+
+.lobby-player-card {
+    width: 49.3%;
+    min-width: 320px;
+    min-height: 154px;
+    margin-right: 10px;
+    margin-bottom: 10px;
+    padding-left: 16px;
+    padding-right: 16px;
+    padding-top: 14px;
+    padding-bottom: 14px;
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-right-width: 1px;
+    border-top-color: rgba(255, 217, 184, 0.16);
+    border-bottom-color: rgba(255, 217, 184, 0.16);
+    border-left-color: rgba(255, 217, 184, 0.10);
+    border-right-color: rgba(255, 217, 184, 0.10);
+    background-color: rgba(64, 24, 24, 0.86);
+}
+
+.lobby-player-card--host {
+    background-color: rgba(82, 31, 24, 0.90);
+    border-top-color: rgba(255, 189, 122, 0.48);
+    border-bottom-color: rgba(255, 189, 122, 0.48);
+}
+
+.lobby-player-card--local {
+    border-left-color: rgba(255, 206, 148, 0.34);
+    border-right-color: rgba(255, 206, 148, 0.34);
+}
+
+.lobby-player-card-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+}
+
+.lobby-player-name {
+    flex-shrink: 1;
+    color: var(--menu-ink);
+    font-size: 16px;
+    -unity-font-style: bold;
+    letter-spacing: 2px;
+    white-space: normal;
+}
+
+.lobby-player-role {
+    color: rgba(255, 198, 132, 0.96);
+    font-size: 11px;
+    letter-spacing: 3px;
+    margin-bottom: 10px;
+}
+
+.lobby-player-ready {
+    min-width: 118px;
+    padding-left: 10px;
+    padding-right: 10px;
+    padding-top: 7px;
+    padding-bottom: 7px;
+    font-size: 11px;
+    -unity-font-style: bold;
+    letter-spacing: 2px;
+    -unity-text-align: middle-center;
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-right-width: 1px;
+}
+
+.lobby-player-ready--yes {
+    color: rgba(255, 244, 224, 1);
+    background-color: rgba(120, 53, 34, 0.96);
+    border-top-color: rgba(255, 191, 122, 0.58);
+    border-bottom-color: rgba(255, 191, 122, 0.58);
+    border-left-color: rgba(255, 191, 122, 0.44);
+    border-right-color: rgba(255, 191, 122, 0.44);
+}
+
+.lobby-player-ready--no {
+    color: rgba(243, 205, 176, 0.92);
+    background-color: rgba(44, 19, 21, 0.92);
+    border-top-color: rgba(255, 217, 184, 0.16);
+    border-bottom-color: rgba(255, 217, 184, 0.16);
+    border-left-color: rgba(255, 217, 184, 0.12);
+    border-right-color: rgba(255, 217, 184, 0.12);
+}
+
+.lobby-player-team-list {
+    flex-grow: 1;
+    min-height: 0;
+}
+
+.lobby-player-operative,
+.lobby-player-team-empty {
+    margin-bottom: 6px;
+    padding-left: 10px;
+    padding-right: 10px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 0;
+    border-right-width: 0;
+    border-top-color: rgba(255, 217, 184, 0.10);
+    border-bottom-color: rgba(255, 217, 184, 0.10);
+    background-color: rgba(255, 214, 168, 0.035);
+}
+
+.lobby-player-operative {
+    color: var(--menu-ink);
+    font-size: 12px;
+    letter-spacing: 2px;
+    white-space: normal;
+}
+
+.lobby-player-team-empty {
+    color: var(--menu-soft-ink);
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    white-space: normal;
 }
 
 .host-enemy-entry-container {

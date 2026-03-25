@@ -37,8 +37,7 @@ public static class TacticsCoopSpawnPlanner
 
     public static List<PlannedCharacterSpawn> BuildPlayerSpawns(
         ProceduralIsometricMapGenerator mapGenerator,
-        IReadOnlyList<TacticsCharacterDefinition> hostParty,
-        IReadOnlyList<TacticsCharacterDefinition> clientParty,
+        IReadOnlyList<IReadOnlyList<TacticsCharacterDefinition>> parties,
         IReadOnlyCollection<Vector2Int> blockedTiles = null)
     {
         List<PlannedCharacterSpawn> plannedSpawns = new();
@@ -47,7 +46,7 @@ public static class TacticsCoopSpawnPlanner
             return plannedSpawns;
         }
 
-        List<SpawnRequest> requests = BuildSpawnRequests(hostParty, clientParty);
+        List<SpawnRequest> requests = BuildSpawnRequests(parties);
         if (requests.Count == 0)
         {
             return plannedSpawns;
@@ -77,12 +76,19 @@ public static class TacticsCoopSpawnPlanner
     }
 
     private static List<SpawnRequest> BuildSpawnRequests(
-        IReadOnlyList<TacticsCharacterDefinition> hostParty,
-        IReadOnlyList<TacticsCharacterDefinition> clientParty)
+        IReadOnlyList<IReadOnlyList<TacticsCharacterDefinition>> parties)
     {
         List<SpawnRequest> requests = new();
-        AppendPartyRequests(hostParty, partyIndex: 0, requests);
-        AppendPartyRequests(clientParty, partyIndex: 1, requests);
+        if (parties == null)
+        {
+            return requests;
+        }
+
+        for (int partyIndex = 0; partyIndex < parties.Count; partyIndex++)
+        {
+            AppendPartyRequests(parties[partyIndex], partyIndex, requests);
+        }
+
         return requests;
     }
 

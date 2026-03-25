@@ -15,13 +15,16 @@ using Unity.Burst;
 [DisallowMultipleComponent]
 public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
 {
-    private const int ExpectedPlayerCount = 2;
-    private const int HostPartyIndex = 0;
-    private const int ClientPartyIndex = 1;
+    private const int DefaultOfflinePartyIndex = 0;
+    private const int MinLobbyPlayersToStart = 2;
+    private const int MaxLobbyPlayers = 4;
     private const NetworkDelivery NamedMessageDelivery = NetworkDelivery.ReliableFragmentedSequenced;
     private const string RelayConnectionType = "dtls";
 
     private const string PartySelectionMessageName = "tactics.party.selection";
+    private const string LobbyStateMessageName = "tactics.lobby.state";
+    private const string LobbyReadyStateRequestMessageName = "tactics.lobby.ready.request";
+    private const string LobbyStartRequestMessageName = "tactics.lobby.start.request";
     private const string BattleStartMessageName = "tactics.battle.start";
     private const string MoveRequestMessageName = "tactics.command.move.request";
     private const string MoveCommandMessageName = "tactics.command.move.execute";
@@ -37,6 +40,8 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
     private const string ExitSessionCommandMessageName = "tactics.session.exit.command";
 
     private readonly Dictionary<ulong, List<TacticsCoopCharacterLoadout>> partySelectionsByClientId = new();
+    private readonly Dictionary<ulong, bool> readyStatesByClientId = new();
+    private readonly Dictionary<ulong, string> usernamesByClientId = new();
     private readonly Queue<ReplicatedCommandEnvelope> pendingReplicatedCommands = new();
 
     private NetworkManager networkManager;
@@ -46,13 +51,16 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
     private TacticsPartySelectionService partySelectionService;
     private TacticsCharacterProgressionService progressionService;
     private TacticsPlayerCurrencyService currencyService;
+    private ITacticsAccountSessionService accountSessionService;
     private bool handlersRegistered;
     private bool isMatchStarting;
     private bool pendingClientPartySubmission;
     private string activeRelayJoinCode = string.Empty;
     private TacticsMatchGenerationSettings pendingHostMatchSettings;
+    private TacticsCoopLobbyState currentLobbyState;
 
     public event Action<string> StatusChanged;
+    public event Action<TacticsCoopLobbyState> LobbyStateChanged;
     public event Action<TacticsCoopBattleSetup> BattleSetupReady;
     public event Action SessionEnded;
 
@@ -60,16 +68,19 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
     public bool IsHostAuthority => networkManager != null && (networkManager.IsHost || networkManager.IsServer);
     public bool CanRunAutomatedTurns => !IsOnlineSession || IsHostAuthority;
     public string ActiveRelayJoinCode => activeRelayJoinCode;
+    public ulong LocalClientId => networkManager != null ? networkManager.LocalClientId : ulong.MaxValue;
+    public bool IsLobbyActive => currentLobbyState != null;
+    public TacticsCoopLobbyState CurrentLobbyState => currentLobbyState?.Clone();
     public int LocalPartyIndex
     {
         get
         {
             if (!IsOnlineSession)
             {
-                return HostPartyIndex;
+                return DefaultOfflinePartyIndex;
             }
 
-            return IsHostAuthority ? HostPartyIndex : ClientPartyIndex;
+            return GetPartyIndexForClientId(networkManager.LocalClientId);
         }
     }
 
@@ -98,6 +109,11 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         currencyService = service;
     }
 
+    public void AssignAccountSessionService(ITacticsAccountSessionService service)
+    {
+        accountSessionService = service;
+    }
+
     public async Task<bool> StartHostAsync(TacticsMatchGenerationSettings matchSettings)
     {
         EnsureNetworkStack();
@@ -119,9 +135,9 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         }
 
         RegisterNetworkCallbacks();
-        partySelectionsByClientId[networkManager.LocalClientId] = GetLocalPartyLoadout();
-        EmitStatus($"Relay host ready. Share join code {activeRelayJoinCode}. Waiting for a second player...");
-        TryStartBattleIfReady();
+        CacheLocalLobbyPlayerState();
+        RebuildLobbyStateAndNotify();
+        EmitStatus($"Relay host ready. Share join code {activeRelayJoinCode}. Waiting for allies to join the lobby...");
         return true;
     }
 
@@ -163,6 +179,55 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         }
 
         ProcessPendingReplicatedCommands();
+    }
+
+    public void UpdateLobbyMatchSettings(TacticsMatchGenerationSettings matchSettings)
+    {
+        if (!IsHostAuthority || matchSettings == null)
+        {
+            return;
+        }
+
+        pendingHostMatchSettings = matchSettings.Clone();
+        pendingHostMatchSettings.Sanitize();
+        RebuildLobbyStateAndNotify(broadcastToClients: true);
+    }
+
+    public bool SetLocalReadyState(bool isReady)
+    {
+        if (!IsOnlineSession)
+        {
+            return false;
+        }
+
+        if (IsHostAuthority)
+        {
+            readyStatesByClientId[networkManager.LocalClientId] = isReady;
+            RebuildLobbyStateAndNotify(broadcastToClients: true);
+            return true;
+        }
+
+        SendMessageToServer(LobbyReadyStateRequestMessageName, JsonUtility.ToJson(new LobbyReadyStateRequestMessage
+        {
+            isReady = isReady
+        }));
+        return true;
+    }
+
+    public bool RequestStartMatch()
+    {
+        if (!IsOnlineSession)
+        {
+            return false;
+        }
+
+        if (IsHostAuthority)
+        {
+            return TryStartBattleIfReady();
+        }
+
+        SendMessageToServer(LobbyStartRequestMessageName, "{}");
+        return true;
     }
 
     public bool RequestMove(TacticsCharacterController character, Vector2Int targetTile)
@@ -382,11 +447,14 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
     private void ResetSessionState()
     {
         partySelectionsByClientId.Clear();
+        readyStatesByClientId.Clear();
+        usernamesByClientId.Clear();
         pendingReplicatedCommands.Clear();
         isMatchStarting = false;
         pendingClientPartySubmission = false;
         activeRelayJoinCode = string.Empty;
         pendingHostMatchSettings = null;
+        currentLobbyState = null;
     }
 
     private void StopActiveSession()
@@ -412,6 +480,9 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
 
         CustomMessagingManager messaging = networkManager.CustomMessagingManager;
         messaging.RegisterNamedMessageHandler(PartySelectionMessageName, HandlePartySelectionMessage);
+        messaging.RegisterNamedMessageHandler(LobbyStateMessageName, HandleLobbyStateMessage);
+        messaging.RegisterNamedMessageHandler(LobbyReadyStateRequestMessageName, HandleLobbyReadyStateRequestMessage);
+        messaging.RegisterNamedMessageHandler(LobbyStartRequestMessageName, HandleLobbyStartRequestMessage);
         messaging.RegisterNamedMessageHandler(BattleStartMessageName, HandleBattleStartMessage);
         messaging.RegisterNamedMessageHandler(MoveRequestMessageName, HandleMoveRequestMessage);
         messaging.RegisterNamedMessageHandler(MoveCommandMessageName, HandleMoveCommandMessage);
@@ -442,6 +513,9 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         if (messaging != null)
         {
             messaging.UnregisterNamedMessageHandler(PartySelectionMessageName);
+            messaging.UnregisterNamedMessageHandler(LobbyStateMessageName);
+            messaging.UnregisterNamedMessageHandler(LobbyReadyStateRequestMessageName);
+            messaging.UnregisterNamedMessageHandler(LobbyStartRequestMessageName);
             messaging.UnregisterNamedMessageHandler(BattleStartMessageName);
             messaging.UnregisterNamedMessageHandler(MoveRequestMessageName);
             messaging.UnregisterNamedMessageHandler(MoveCommandMessageName);
@@ -475,22 +549,32 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
 
         if (IsHostAuthority && clientId != networkManager.LocalClientId)
         {
-            EmitStatus("Second player connected. Waiting for their team selection...");
-            TryStartBattleIfReady();
+            readyStatesByClientId[clientId] = false;
+            usernamesByClientId[clientId] = BuildFallbackUsername(clientId);
+            partySelectionsByClientId[clientId] = new List<TacticsCoopCharacterLoadout>();
+            RebuildLobbyStateAndNotify(broadcastToClients: true);
+            EmitStatus("A player joined the lobby. Waiting for their party selection.");
         }
     }
 
     private void HandleClientDisconnected(ulong clientId)
     {
         partySelectionsByClientId.Remove(clientId);
+        readyStatesByClientId.Remove(clientId);
+        usernamesByClientId.Remove(clientId);
         if (!IsOnlineSession)
         {
             return;
         }
 
+        if (IsHostAuthority)
+        {
+            RebuildLobbyStateAndNotify(broadcastToClients: true);
+        }
+
         EmitStatus(clientId == networkManager.LocalClientId
             ? "Disconnected from co-op session."
-            : "A player disconnected from the co-op session.");
+            : "A player disconnected from the co-op lobby.");
     }
 
     private void HandlePartySelectionMessage(ulong senderClientId, FastBufferReader reader)
@@ -502,8 +586,57 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
 
         string payload = ReadPayload(ref reader);
         PartySelectionMessage message = JsonUtility.FromJson<PartySelectionMessage>(payload);
-        partySelectionsByClientId[senderClientId] = message?.characters ?? new List<TacticsCoopCharacterLoadout>();
-        EmitStatus("Both clients are connected. Finalizing battle setup...");
+        partySelectionsByClientId[senderClientId] = SanitizePartyLoadout(message?.characters);
+        readyStatesByClientId[senderClientId] = false;
+        usernamesByClientId[senderClientId] = SanitizeUsername(message?.username, senderClientId);
+        RebuildLobbyStateAndNotify(broadcastToClients: true);
+        EmitStatus($"{usernamesByClientId[senderClientId]} joined the lobby and synced their party.");
+    }
+
+    private void HandleLobbyStateMessage(ulong senderClientId, FastBufferReader reader)
+    {
+        if (IsHostAuthority)
+        {
+            return;
+        }
+
+        string payload = ReadPayload(ref reader);
+        TacticsCoopLobbyState lobbyState = JsonUtility.FromJson<TacticsCoopLobbyState>(payload);
+        currentLobbyState = lobbyState?.Clone();
+        LobbyStateChanged?.Invoke(CurrentLobbyState);
+    }
+
+    private void HandleLobbyReadyStateRequestMessage(ulong senderClientId, FastBufferReader reader)
+    {
+        if (!IsHostAuthority)
+        {
+            return;
+        }
+
+        string payload = ReadPayload(ref reader);
+        LobbyReadyStateRequestMessage message = JsonUtility.FromJson<LobbyReadyStateRequestMessage>(payload);
+        bool requestedReady = message != null && message.isReady;
+        if (requestedReady &&
+            (!partySelectionsByClientId.TryGetValue(senderClientId, out List<TacticsCoopCharacterLoadout> partyMembers) ||
+             !HasRequiredPartyMembers(partyMembers)))
+        {
+            readyStatesByClientId[senderClientId] = false;
+            EmitStatus($"{ResolveUsername(senderClientId)} must select a full party before readying up.");
+            RebuildLobbyStateAndNotify(broadcastToClients: true);
+            return;
+        }
+
+        readyStatesByClientId[senderClientId] = requestedReady;
+        RebuildLobbyStateAndNotify(broadcastToClients: true);
+    }
+
+    private void HandleLobbyStartRequestMessage(ulong senderClientId, FastBufferReader reader)
+    {
+        if (!IsHostAuthority || senderClientId != networkManager?.LocalClientId)
+        {
+            return;
+        }
+
         TryStartBattleIfReady();
     }
 
@@ -814,63 +947,71 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         };
     }
 
-    private void TryStartBattleIfReady()
+    private bool TryStartBattleIfReady()
     {
         if (!IsHostAuthority || isMatchStarting || networkManager == null)
         {
-            return;
+            return false;
         }
 
-        if (networkManager.ConnectedClientsIds.Count < ExpectedPlayerCount)
+        if (networkManager.ConnectedClientsIds.Count < MinLobbyPlayersToStart)
         {
-            return;
+            EmitStatus("At least two players must be in the lobby before the match can start.");
+            return false;
         }
 
         for (int i = 0; i < networkManager.ConnectedClientsIds.Count; i++)
         {
             ulong clientId = networkManager.ConnectedClientsIds[i];
-            if (!partySelectionsByClientId.TryGetValue(clientId, out List<TacticsCoopCharacterLoadout> partyIds) || partyIds == null || partyIds.Count == 0)
+            if (!partySelectionsByClientId.TryGetValue(clientId, out List<TacticsCoopCharacterLoadout> partyMembers) ||
+                !HasRequiredPartyMembers(partyMembers))
             {
-                return;
+                EmitStatus($"{ResolveUsername(clientId)} must sync a full party before the match can start.");
+                return false;
             }
-        }
 
-        ulong hostClientId = networkManager.LocalClientId;
-        ulong remoteClientId = 0;
-        for (int i = 0; i < networkManager.ConnectedClientsIds.Count; i++)
-        {
-            ulong clientId = networkManager.ConnectedClientsIds[i];
-            if (clientId != hostClientId)
+            if (!readyStatesByClientId.TryGetValue(clientId, out bool isReady) || !isReady)
             {
-                remoteClientId = clientId;
-                break;
+                EmitStatus($"{ResolveUsername(clientId)} is not ready yet.");
+                return false;
             }
         }
 
         TacticsCoopBattleSetup battleSetup = new TacticsCoopBattleSetup
         {
-            hostPartyMembers = new List<TacticsCoopCharacterLoadout>(partySelectionsByClientId[hostClientId]),
-            clientPartyMembers = remoteClientId != 0 && partySelectionsByClientId.TryGetValue(remoteClientId, out List<TacticsCoopCharacterLoadout> remoteParty)
-                ? new List<TacticsCoopCharacterLoadout>(remoteParty)
-                : new List<TacticsCoopCharacterLoadout>(),
             matchSettings = pendingHostMatchSettings?.Clone()
         };
 
+        for (int i = 0; i < networkManager.ConnectedClientsIds.Count; i++)
+        {
+            ulong clientId = networkManager.ConnectedClientsIds[i];
+            battleSetup.players.Add(new TacticsCoopBattlePlayer
+            {
+                clientId = clientId,
+                username = ResolveUsername(clientId),
+                isHost = clientId == networkManager.LocalClientId,
+                partyMembers = CloneLoadoutList(partySelectionsByClientId[clientId])
+            });
+        }
+
         isMatchStarting = true;
-        EmitStatus("Both players are ready. Starting co-op battle...");
-        BroadcastMessage(BattleStartMessageName, JsonUtility.ToJson(battleSetup), includeHost: false);
-        BattleSetupReady?.Invoke(battleSetup);
+        RebuildLobbyStateAndNotify(broadcastToClients: true);
+        EmitStatus("All players are ready. Starting co-op battle...");
+        string payload = JsonUtility.ToJson(battleSetup);
+        BroadcastMessage(BattleStartMessageName, payload, includeHost: false);
+        BattleSetupReady?.Invoke(battleSetup.Clone());
+        return true;
     }
 
     private List<TacticsCoopCharacterLoadout> GetLocalPartyLoadout()
     {
-        List<TacticsCoopCharacterLoadout> result = new();
         TacticsPartySelection selection = partySelectionService?.LoadSelection();
         if (selection == null)
         {
-            return result;
+            return new List<TacticsCoopCharacterLoadout>();
         }
 
+        List<TacticsCoopCharacterLoadout> result = new(selection.Capacity);
         for (int i = 0; i < selection.Capacity; i++)
         {
             string characterId = selection.GetCharacterId(i);
@@ -886,7 +1027,87 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
             }
         }
 
-        return result;
+        return SanitizePartyLoadout(result, selection.Capacity);
+    }
+
+    private void CacheLocalLobbyPlayerState()
+    {
+        if (networkManager == null)
+        {
+            return;
+        }
+
+        ulong clientId = networkManager.LocalClientId;
+        partySelectionsByClientId[clientId] = GetLocalPartyLoadout();
+        readyStatesByClientId[clientId] = false;
+        usernamesByClientId[clientId] = ResolveLocalUsername();
+    }
+
+    private List<TacticsCoopCharacterLoadout> SanitizePartyLoadout(
+        IReadOnlyList<TacticsCoopCharacterLoadout> loadout,
+        int capacity = TacticsPartySelection.DefaultCapacity)
+    {
+        return TacticsPartyCompositionRules.SanitizeLoadout(loadout, partySelectionService?.LoadRoster(), capacity);
+    }
+
+    private bool HasRequiredPartyMembers(IReadOnlyList<TacticsCoopCharacterLoadout> loadout)
+    {
+        int capacity = partySelectionService?.LoadSelection()?.Capacity ?? TacticsPartySelection.DefaultCapacity;
+        return TacticsPartyCompositionRules.HasRequiredMembers(loadout, partySelectionService?.LoadRoster(), capacity);
+    }
+
+    private void RebuildLobbyStateAndNotify(bool broadcastToClients = false)
+    {
+        if (networkManager == null)
+        {
+            currentLobbyState = null;
+            LobbyStateChanged?.Invoke(null);
+            return;
+        }
+
+        TacticsCoopLobbyState state = BuildLobbyState();
+        currentLobbyState = state;
+        LobbyStateChanged?.Invoke(CurrentLobbyState);
+
+        if (broadcastToClients && IsHostAuthority)
+        {
+            BroadcastMessage(LobbyStateMessageName, JsonUtility.ToJson(state), includeHost: false);
+        }
+    }
+
+    private TacticsCoopLobbyState BuildLobbyState()
+    {
+        TacticsCoopLobbyState state = new TacticsCoopLobbyState
+        {
+            hostClientId = networkManager != null ? networkManager.LocalClientId : 0,
+            maxPlayers = MaxLobbyPlayers,
+            minPlayersToStart = MinLobbyPlayersToStart,
+            isMatchStarting = isMatchStarting,
+            relayJoinCode = activeRelayJoinCode,
+            matchSettings = pendingHostMatchSettings?.Clone()
+        };
+
+        if (networkManager == null)
+        {
+            return state;
+        }
+
+        for (int i = 0; i < networkManager.ConnectedClientsIds.Count; i++)
+        {
+            ulong clientId = networkManager.ConnectedClientsIds[i];
+            state.players.Add(new TacticsCoopLobbyPlayerState
+            {
+                clientId = clientId,
+                username = ResolveUsername(clientId),
+                isHost = clientId == networkManager.LocalClientId,
+                isReady = readyStatesByClientId.TryGetValue(clientId, out bool isReady) && isReady,
+                partyMembers = partySelectionsByClientId.TryGetValue(clientId, out List<TacticsCoopCharacterLoadout> loadout)
+                    ? CloneLoadoutList(loadout)
+                    : new List<TacticsCoopCharacterLoadout>()
+            });
+        }
+
+        return state;
     }
 
     private async Task<bool> TryConfigureHostTransportAsync()
@@ -906,7 +1127,7 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
                 return false;
             }
 
-            Allocation allocation = await RelayService.Instance.CreateAllocationAsync(Mathf.Max(1, ExpectedPlayerCount - 1));
+            Allocation allocation = await RelayService.Instance.CreateAllocationAsync(Mathf.Max(1, MaxLobbyPlayers - 1));
             activeRelayJoinCode = await RelayService.Instance.GetJoinCodeAsync(allocation.AllocationId);
             transport.SetRelayServerData(allocation.ToRelayServerData(RelayConnectionType));
             return true;
@@ -974,7 +1195,12 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         }
 
         return TryGetPartyIndex(character.RuntimeCharacterId, out int partyIndex) &&
-               partyIndex == LocalPartyIndex;
+               partyIndex == GetPartyIndexForClientId(networkManager.LocalClientId);
+    }
+
+    public bool ShouldShowLocalOwnershipIndicator(TacticsCharacterController character)
+    {
+        return IsOnlineSession && CanLocalPlayerControlCharacter(character);
     }
 
     private bool CanInitiateCommandForCharacter(TacticsCharacterController character)
@@ -999,10 +1225,7 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
             return false;
         }
 
-        int expectedPartyIndex = clientId == networkManager?.LocalClientId
-            ? HostPartyIndex
-            : ClientPartyIndex;
-        return partyIndex == expectedPartyIndex;
+        return partyIndex == GetPartyIndexForClientId(clientId);
     }
 
     private static bool TryGetPartyIndex(string runtimeCharacterId, out int partyIndex)
@@ -1020,6 +1243,66 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         }
 
         return int.TryParse(tokens[1], out partyIndex);
+    }
+
+    private int GetPartyIndexForClientId(ulong clientId)
+    {
+        if (networkManager == null)
+        {
+            return DefaultOfflinePartyIndex;
+        }
+
+        for (int i = 0; i < networkManager.ConnectedClientsIds.Count; i++)
+        {
+            if (networkManager.ConnectedClientsIds[i] == clientId)
+            {
+                return i;
+            }
+        }
+
+        return DefaultOfflinePartyIndex;
+    }
+
+    private string ResolveLocalUsername()
+    {
+        return SanitizeUsername(accountSessionService?.Username, networkManager != null ? networkManager.LocalClientId : 0);
+    }
+
+    private string ResolveUsername(ulong clientId)
+    {
+        return usernamesByClientId.TryGetValue(clientId, out string username)
+            ? SanitizeUsername(username, clientId)
+            : BuildFallbackUsername(clientId);
+    }
+
+    private static string SanitizeUsername(string username, ulong clientId)
+    {
+        return string.IsNullOrWhiteSpace(username) ? BuildFallbackUsername(clientId) : username.Trim();
+    }
+
+    private static string BuildFallbackUsername(ulong clientId)
+    {
+        return clientId == 0 ? "Host" : $"Player {clientId + 1}";
+    }
+
+    private static List<TacticsCoopCharacterLoadout> CloneLoadoutList(List<TacticsCoopCharacterLoadout> loadout)
+    {
+        List<TacticsCoopCharacterLoadout> clone = new();
+        if (loadout == null)
+        {
+            return clone;
+        }
+
+        for (int i = 0; i < loadout.Count; i++)
+        {
+            TacticsCoopCharacterLoadout entry = loadout[i];
+            if (entry != null)
+            {
+                clone.Add(entry.Clone());
+            }
+        }
+
+        return clone;
     }
 
     private void BroadcastMessage(string messageName, string payload, bool includeHost)
@@ -1202,9 +1485,11 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
 
     private void SendLocalPartySelectionToServer()
     {
-        EmitStatus("Connected. Sending team selection to host...");
+        CacheLocalLobbyPlayerState();
+        EmitStatus("Connected. Syncing party and lobby state with the host...");
         SendMessageToServer(PartySelectionMessageName, JsonUtility.ToJson(new PartySelectionMessage
         {
+            username = ResolveLocalUsername(),
             characters = GetLocalPartyLoadout()
         }));
     }
@@ -1213,8 +1498,11 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
     {
         pendingReplicatedCommands.Clear();
         partySelectionsByClientId.Clear();
+        readyStatesByClientId.Clear();
+        usernamesByClientId.Clear();
         isMatchStarting = false;
         pendingClientPartySubmission = false;
+        currentLobbyState = null;
         UnregisterNetworkCallbacks();
 
         if (networkManager != null && networkManager.IsListening)
@@ -1223,13 +1511,21 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         }
 
         EmitStatus("Returning to home screen...");
+        LobbyStateChanged?.Invoke(null);
         SessionEnded?.Invoke();
     }
 
     [Serializable]
     private sealed class PartySelectionMessage
     {
+        public string username;
         public List<TacticsCoopCharacterLoadout> characters = new();
+    }
+
+    [Serializable]
+    private sealed class LobbyReadyStateRequestMessage
+    {
+        public bool isReady;
     }
 
     [Serializable]

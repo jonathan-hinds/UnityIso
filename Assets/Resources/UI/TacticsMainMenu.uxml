@@ -76,6 +76,7 @@
                         <ui:Button name="copy-relay-code-button" class="menu-button menu-button--secondary menu-button--compact relay-copy-button" text="Copy" />
                     </ui:VisualElement>
                     <ui:VisualElement class="editor-button-row">
+                        <ui:Button name="lobby-ready-button" class="menu-button menu-button--secondary menu-button--compact editor-button" text="Ready Up" style="display: none;" />
                         <ui:Button name="host-setup-back-button" class="menu-button menu-button--secondary menu-button--compact editor-button" text="Back" />
                         <ui:Button name="host-setup-confirm-button" class="menu-button menu-button--primary menu-button--compact editor-button editor-button-save" text="Host Match" />
                     </ui:VisualElement>
@@ -84,7 +85,17 @@
                 <ui:VisualElement class="host-setup-content">
                     <ui:VisualElement class="host-intro-panel">
                         <ui:Label class="section-label" text="Co-op Match Configuration" />
-                        <ui:Label class="section-copy" text="Shape the battlefield before the relay opens. The host publishes one authoritative battle setup so both allied parties enter the same encounter." />
+                        <ui:Label class="section-copy" text="Shape the battlefield, review every allied party, and launch the encounter only when the full lobby is ready. The host owns match start, while every player can ready up from the same war-room." />
+                    </ui:VisualElement>
+
+                    <ui:VisualElement class="editor-section host-section host-section--party">
+                        <ui:VisualElement class="host-section-header">
+                            <ui:Label class="section-label" text="Party Lobby" />
+                        </ui:VisualElement>
+                        <ui:Label class="section-copy" text="Each card shows the player name, the operatives they are bringing into the match, and whether they have readied up." />
+                        <ui:ScrollView class="lobby-player-scroll-view" mode="Vertical">
+                            <ui:VisualElement name="lobby-player-card-container" class="lobby-player-card-container" />
+                        </ui:ScrollView>
                     </ui:VisualElement>
 
                     <ui:VisualElement class="host-grid">

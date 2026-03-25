@@ -133,6 +133,8 @@ public sealed class TacticsPartySelectionService
         }
 
         TacticsPartySelection sanitized = new TacticsPartySelection(sanitizedIds, partyCapacity);
-        return sanitized.ResolveDefinitions(roster).Count > 0 ? sanitized : fallbackSelection;
+        return TacticsPartyCompositionRules.HasRequiredMembers(sanitized, roster, partyCapacity)
+            ? sanitized
+            : fallbackSelection;
     }
 }

@@ -62,6 +62,8 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     private const string RelayCodeContainerName = "relay-code-container";
     private const string RelayCodeLabelName = "relay-code-label";
     private const string CopyRelayCodeButtonName = "copy-relay-code-button";
+    private const string LobbyReadyButtonName = "lobby-ready-button";
+    private const string LobbyPlayerCardContainerName = "lobby-player-card-container";
     private const string DragGhostName = "drag-ghost";
     private const string AccountStatusLabelName = "account-status-label";
     private const string AccountUsernameFieldName = "account-username-field";
@@ -123,6 +125,8 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     private VisualElement relayCodeContainer;
     private Label relayCodeLabel;
     private Button copyRelayCodeButton;
+    private Button lobbyReadyButton;
+    private VisualElement lobbyPlayerCardContainer;
     private Label dragGhost;
     private Label accountStatusLabel;
     private TextField accountUsernameField;
@@ -137,6 +141,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     private TacticsCharacterProgressionService localProgressionService;
     private TacticsCharacterProgressionService onlineProgressionService;
     private ITacticsAccountSessionService accountSessionService;
+    private TacticsCoopSessionCoordinator coopSessionCoordinator;
     private TacticsEnemyTable enemyTable;
     private TacticsCharacterRoster roster;
     private Dictionary<string, TacticsCharacterDefinition> definitionsById = new(StringComparer.OrdinalIgnoreCase);
@@ -146,6 +151,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     private readonly List<SlotWidget> slotWidgets = new();
     private readonly List<RosterCardWidget> rosterCardWidgets = new();
     private readonly List<HostEnemyEntryWidget> hostEnemyEntryWidgets = new();
+    private readonly List<LobbyPlayerCardWidget> lobbyPlayerCardWidgets = new();
     private readonly List<EnemyCatalogOption> enemyCatalogOptions = new();
     private readonly List<TacticsCharacterCardPreview> previews = new();
     private TacticsMatchGenerationSettings workingMatchSettings;
@@ -160,6 +166,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     private bool isMenuInteractable = true;
     private bool isDragging;
     private string hostRelayJoinCode = string.Empty;
+    private TacticsCoopLobbyState lobbyState;
     private string dragCharacterId = string.Empty;
     private string selectedInspectorCharacterId = string.Empty;
     private string hoveredInspectorCharacterId = string.Empty;
@@ -219,7 +226,8 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         TacticsCharacterProgressionService localCharacterProgressionService,
         TacticsCharacterProgressionService onlineCharacterProgressionService,
         TacticsEnemyTable availableEnemyTable,
-        ITacticsAccountSessionService sessionService)
+        ITacticsAccountSessionService sessionService,
+        TacticsCoopSessionCoordinator sessionCoordinator)
     {
         EnsurePreviewSettingsInitialized();
         sourceMapGenerator = mapGenerator;
@@ -228,6 +236,26 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         localProgressionService = localCharacterProgressionService ?? new TacticsCharacterProgressionService(new TacticsSinglePlayerCharacterProgressionStore());
         onlineProgressionService = onlineCharacterProgressionService;
         enemyTable = availableEnemyTable;
+        if (!ReferenceEquals(coopSessionCoordinator, sessionCoordinator))
+        {
+            if (coopSessionCoordinator != null)
+            {
+                coopSessionCoordinator.LobbyStateChanged -= HandleLobbyStateChanged;
+            }
+
+            coopSessionCoordinator = sessionCoordinator;
+            if (coopSessionCoordinator != null)
+            {
+                coopSessionCoordinator.LobbyStateChanged -= HandleLobbyStateChanged;
+                coopSessionCoordinator.LobbyStateChanged += HandleLobbyStateChanged;
+                lobbyState = coopSessionCoordinator.CurrentLobbyState;
+            }
+            else
+            {
+                lobbyState = null;
+            }
+        }
+
         if (!ReferenceEquals(accountSessionService, sessionService))
         {
             if (accountSessionService != null)
@@ -404,6 +432,8 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         relayCodeContainer = rootElement.Q<VisualElement>(RelayCodeContainerName);
         relayCodeLabel = rootElement.Q<Label>(RelayCodeLabelName);
         copyRelayCodeButton = rootElement.Q<Button>(CopyRelayCodeButtonName);
+        lobbyReadyButton = rootElement.Q<Button>(LobbyReadyButtonName);
+        lobbyPlayerCardContainer = rootElement.Q<VisualElement>(LobbyPlayerCardContainerName);
         dragGhost = rootElement.Q<Label>(DragGhostName);
         accountStatusLabel = rootElement.Q<Label>(AccountStatusLabelName);
         accountUsernameField = rootElement.Q<TextField>(AccountUsernameFieldName);
@@ -504,6 +534,12 @@ public sealed class TacticsMainMenuView : MonoBehaviour
             copyRelayCodeButton.clicked += HandleCopyRelayCodeButtonClicked;
         }
 
+        if (lobbyReadyButton != null)
+        {
+            lobbyReadyButton.clicked -= HandleLobbyReadyButtonClicked;
+            lobbyReadyButton.clicked += HandleLobbyReadyButtonClicked;
+        }
+
         if (editOnlineTeamButton != null)
         {
             editOnlineTeamButton.clicked -= HandleEditOnlineTeamButtonClicked;
@@ -550,7 +586,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
                 }
 
                 workingMatchSettings.seed = evt.newValue;
-                RefreshHostSetupUi();
+                HandleHostSettingsEdited();
             });
         }
 
@@ -564,7 +600,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
                 }
 
                 workingMatchSettings.width = evt.newValue;
-                RefreshHostSetupUi();
+                HandleHostSettingsEdited();
             });
         }
 
@@ -578,7 +614,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
                 }
 
                 workingMatchSettings.length = evt.newValue;
-                RefreshHostSetupUi();
+                HandleHostSettingsEdited();
             });
         }
 
@@ -592,7 +628,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
                 }
 
                 workingMatchSettings.noiseScale = evt.newValue;
-                RefreshHostSetupUi();
+                HandleHostSettingsEdited();
             });
         }
 
@@ -606,7 +642,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
                 }
 
                 workingMatchSettings.noiseOctaves = evt.newValue;
-                RefreshHostSetupUi();
+                HandleHostSettingsEdited();
             });
         }
 
@@ -620,7 +656,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
                 }
 
                 workingMatchSettings.minElevation = evt.newValue;
-                RefreshHostSetupUi();
+                HandleHostSettingsEdited();
             });
         }
 
@@ -634,7 +670,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
                 }
 
                 workingMatchSettings.maxElevation = evt.newValue;
-                RefreshHostSetupUi();
+                HandleHostSettingsEdited();
             });
         }
     }
@@ -711,6 +747,11 @@ public sealed class TacticsMainMenuView : MonoBehaviour
             copyRelayCodeButton.clicked -= HandleCopyRelayCodeButtonClicked;
         }
 
+        if (lobbyReadyButton != null)
+        {
+            lobbyReadyButton.clicked -= HandleLobbyReadyButtonClicked;
+        }
+
         if (editOnlineTeamButton != null)
         {
             editOnlineTeamButton.clicked -= HandleEditOnlineTeamButtonClicked;
@@ -781,6 +822,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         RefreshCharacterInspector();
         RefreshEditorStatus();
         RefreshHostSetupUi();
+        RefreshLobbyUi();
 
         if (mainPage != null)
         {
@@ -1387,6 +1429,8 @@ public sealed class TacticsMainMenuView : MonoBehaviour
             return;
         }
 
+        ShowHostSetupPage();
+
         SessionStartRequested?.Invoke(new TacticsSessionStartRequest(
             TacticsSessionStartMode.JoinCoop,
             GetJoinCode()));
@@ -1508,11 +1552,27 @@ public sealed class TacticsMainMenuView : MonoBehaviour
 
     private void HandleHostSetupBackButtonClicked()
     {
+        if (coopSessionCoordinator != null && coopSessionCoordinator.IsOnlineSession)
+        {
+            coopSessionCoordinator.RequestReturnToHome();
+            return;
+        }
+
         ShowOnlinePage();
     }
 
     private void HandleHostSetupConfirmButtonClicked()
     {
+        if (coopSessionCoordinator != null && coopSessionCoordinator.IsOnlineSession)
+        {
+            if (coopSessionCoordinator.IsHostAuthority)
+            {
+                coopSessionCoordinator.RequestStartMatch();
+            }
+
+            return;
+        }
+
         if (!TryBuildHostRequest(out TacticsSessionStartRequest request, out string validationMessage))
         {
             SetStatusText(validationMessage);
@@ -1543,7 +1603,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
             enemyId = nextEnemyId,
             count = 1
         });
-        RefreshHostSetupUi();
+        HandleHostSettingsEdited();
     }
 
     private void HandleCopyRelayCodeButtonClicked()
@@ -1556,6 +1616,33 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         GUIUtility.systemCopyBuffer = hostRelayJoinCode;
         SetStatusText($"Relay code {hostRelayJoinCode} copied to clipboard.");
         RefreshHostSetupUi();
+    }
+
+    private void HandleLobbyReadyButtonClicked()
+    {
+        if (coopSessionCoordinator == null || !coopSessionCoordinator.IsOnlineSession)
+        {
+            return;
+        }
+
+        bool isReady = GetLocalLobbyPlayerState()?.isReady ?? false;
+        coopSessionCoordinator.SetLocalReadyState(!isReady);
+    }
+
+    private void HandleLobbyStateChanged(TacticsCoopLobbyState state)
+    {
+        lobbyState = state?.Clone();
+        hostRelayJoinCode = string.IsNullOrWhiteSpace(lobbyState?.relayJoinCode)
+            ? string.Empty
+            : lobbyState.relayJoinCode.Trim().ToUpperInvariant();
+        isHostSessionStarted = coopSessionCoordinator != null && coopSessionCoordinator.IsOnlineSession;
+
+        if (lobbyState?.matchSettings != null && (!IsLocalLobbyHost() || workingMatchSettings == null))
+        {
+            workingMatchSettings = lobbyState.matchSettings.Clone();
+        }
+
+        RefreshAllUi();
     }
 
     private void BuildEnemyCatalog()
@@ -1585,12 +1672,33 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         isHostSessionStarted = false;
     }
 
+    private void HandleHostSettingsEdited()
+    {
+        if (workingMatchSettings == null)
+        {
+            return;
+        }
+
+        NormalizeEditableMatchSettings(workingMatchSettings);
+        if (IsLocalLobbyHost())
+        {
+            coopSessionCoordinator?.UpdateLobbyMatchSettings(workingMatchSettings);
+        }
+
+        RefreshHostSetupUi();
+    }
+
     private void RefreshHostSetupUi()
     {
         CacheElements();
         if (workingMatchSettings == null)
         {
             return;
+        }
+
+        if (lobbyState?.matchSettings != null && !IsLocalLobbyHost())
+        {
+            workingMatchSettings = lobbyState.matchSettings.Clone();
         }
 
         NormalizeEditableMatchSettings(workingMatchSettings);
@@ -1619,26 +1727,55 @@ public sealed class TacticsMainMenuView : MonoBehaviour
 
         if (relayCodeContainer != null)
         {
-            relayCodeContainer.style.display = isHostSessionStarted ? DisplayStyle.Flex : DisplayStyle.None;
+            relayCodeContainer.style.display = IsLocalLobbyHost() && !string.IsNullOrWhiteSpace(hostRelayJoinCode)
+                ? DisplayStyle.Flex
+                : DisplayStyle.None;
         }
 
+        bool lobbyConnected = coopSessionCoordinator != null && coopSessionCoordinator.IsOnlineSession;
+        bool lobbyHost = IsLocalLobbyHost();
+        bool matchStarting = lobbyState != null && lobbyState.isMatchStarting;
+        bool canEditSettings = isMenuInteractable && (!lobbyConnected || lobbyHost) && !matchStarting;
         bool canHost = ValidateHostMatchSettings(workingMatchSettings, out string validationMessage);
-        if (!isHostSessionStarted)
+        if (!lobbyConnected)
         {
             SetLabelText(hostSetupStatusLabel, validationMessage);
         }
+        else if (lobbyState != null)
+        {
+            SetLabelText(hostSetupStatusLabel, BuildLobbyStatusMessage(lobbyState));
+        }
 
-        hostSetupBackButton?.SetEnabled(isMenuInteractable && !isHostSessionStarted);
-        seedField?.SetEnabled(isMenuInteractable && !isHostSessionStarted);
-        widthField?.SetEnabled(isMenuInteractable && !isHostSessionStarted);
-        lengthField?.SetEnabled(isMenuInteractable && !isHostSessionStarted);
-        noiseScaleField?.SetEnabled(isMenuInteractable && !isHostSessionStarted);
-        noiseOctavesSlider?.SetEnabled(isMenuInteractable && !isHostSessionStarted);
-        minElevationField?.SetEnabled(isMenuInteractable && !isHostSessionStarted);
-        maxElevationField?.SetEnabled(isMenuInteractable && !isHostSessionStarted);
-        hostSetupConfirmButton?.SetEnabled(isMenuInteractable && !isHostSessionStarted && canHost);
-        addEnemyButton?.SetEnabled(isMenuInteractable && !isHostSessionStarted && CanAddMoreEnemies());
-        copyRelayCodeButton?.SetEnabled(isMenuInteractable && isHostSessionStarted && !string.IsNullOrWhiteSpace(hostRelayJoinCode));
+        hostSetupBackButton?.SetEnabled(isMenuInteractable);
+        seedField?.SetEnabled(canEditSettings);
+        widthField?.SetEnabled(canEditSettings);
+        lengthField?.SetEnabled(canEditSettings);
+        noiseScaleField?.SetEnabled(canEditSettings);
+        noiseOctavesSlider?.SetEnabled(canEditSettings);
+        minElevationField?.SetEnabled(canEditSettings);
+        maxElevationField?.SetEnabled(canEditSettings);
+        addEnemyButton?.SetEnabled(canEditSettings && CanAddMoreEnemies());
+        copyRelayCodeButton?.SetEnabled(isMenuInteractable && IsLocalLobbyHost() && !string.IsNullOrWhiteSpace(hostRelayJoinCode));
+
+        if (hostSetupConfirmButton != null)
+        {
+            hostSetupConfirmButton.text = lobbyConnected ? "Start Match" : "Host Match";
+            hostSetupConfirmButton.style.display = lobbyConnected && !lobbyHost ? DisplayStyle.None : DisplayStyle.Flex;
+            hostSetupConfirmButton.SetEnabled(isMenuInteractable && (!lobbyConnected ? canHost : lobbyHost && !matchStarting));
+        }
+
+        if (lobbyReadyButton != null)
+        {
+            TacticsCoopLobbyPlayerState localPlayer = GetLocalLobbyPlayerState();
+            bool hasCompleteLocalParty = TacticsPartyCompositionRules.HasRequiredMembers(
+                localPlayer?.partyMembers,
+                roster,
+                TacticsPartySelection.DefaultCapacity);
+            bool canReady = lobbyConnected && !matchStarting && hasCompleteLocalParty;
+            lobbyReadyButton.style.display = canReady ? DisplayStyle.Flex : DisplayStyle.None;
+            lobbyReadyButton.text = localPlayer != null && localPlayer.isReady ? "Unready" : "Ready Up";
+            lobbyReadyButton.SetEnabled(isMenuInteractable && canReady);
+        }
     }
 
     private void RebuildHostEnemyEntries()
@@ -1663,6 +1800,185 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         }
     }
 
+    private void RefreshLobbyUi()
+    {
+        if (lobbyPlayerCardContainer == null)
+        {
+            return;
+        }
+
+        lobbyPlayerCardWidgets.Clear();
+        lobbyPlayerCardContainer.Clear();
+
+        IReadOnlyList<TacticsCoopLobbyPlayerState> players = lobbyState != null && lobbyState.players != null
+            ? lobbyState.players
+            : Array.Empty<TacticsCoopLobbyPlayerState>();
+        for (int i = 0; i < players.Count; i++)
+        {
+            TacticsCoopLobbyPlayerState player = players[i];
+            if (player == null)
+            {
+                continue;
+            }
+
+            lobbyPlayerCardWidgets.Add(CreateLobbyPlayerCard(player));
+        }
+    }
+
+    private LobbyPlayerCardWidget CreateLobbyPlayerCard(TacticsCoopLobbyPlayerState player)
+    {
+        VisualElement card = new VisualElement();
+        card.AddToClassList("lobby-player-card");
+        if (player.isHost)
+        {
+            card.AddToClassList("lobby-player-card--host");
+        }
+
+        if (player.clientId == coopSessionCoordinator?.LocalClientId)
+        {
+            card.AddToClassList("lobby-player-card--local");
+        }
+
+        VisualElement header = new VisualElement();
+        header.AddToClassList("lobby-player-card-header");
+
+        Label usernameLabel = new Label(player.username);
+        usernameLabel.AddToClassList("lobby-player-name");
+        header.Add(usernameLabel);
+
+        Label readyLabel = new Label(player.isReady ? "READY" : "NOT READY");
+        readyLabel.AddToClassList("lobby-player-ready");
+        readyLabel.AddToClassList(player.isReady ? "lobby-player-ready--yes" : "lobby-player-ready--no");
+        header.Add(readyLabel);
+
+        card.Add(header);
+
+        Label roleLabel = new Label(player.isHost ? "Party Leader" : "Allied Member");
+        roleLabel.AddToClassList("lobby-player-role");
+        card.Add(roleLabel);
+
+        VisualElement teamList = new VisualElement();
+        teamList.AddToClassList("lobby-player-team-list");
+        if (player.partyMembers == null || player.partyMembers.Count == 0)
+        {
+            Label emptyLabel = new Label("No operatives selected yet.");
+            emptyLabel.AddToClassList("lobby-player-team-empty");
+            teamList.Add(emptyLabel);
+        }
+        else
+        {
+            for (int i = 0; i < player.partyMembers.Count; i++)
+            {
+                TacticsCoopCharacterLoadout loadout = player.partyMembers[i];
+                if (loadout == null || string.IsNullOrWhiteSpace(loadout.characterId))
+                {
+                    continue;
+                }
+
+                Label operativeLabel = new Label(BuildLobbyOperativeSummary(loadout));
+                operativeLabel.AddToClassList("lobby-player-operative");
+                teamList.Add(operativeLabel);
+            }
+        }
+
+        card.Add(teamList);
+        lobbyPlayerCardContainer.Add(card);
+
+        return new LobbyPlayerCardWidget
+        {
+            Root = card,
+            UsernameLabel = usernameLabel,
+            ReadyLabel = readyLabel
+        };
+    }
+
+    private string BuildLobbyStatusMessage(TacticsCoopLobbyState state)
+    {
+        if (state == null)
+        {
+            return string.Empty;
+        }
+
+        if (state.isMatchStarting)
+        {
+            return "Synchronizing the full party and launching the match...";
+        }
+
+        int playerCount = state.players != null ? state.players.Count : 0;
+        int readyCount = 0;
+        int requiredPartySize = TacticsPartyCompositionRules.ResolveRequiredMemberCount(
+            roster,
+            TacticsPartySelection.DefaultCapacity);
+        if (state.players != null)
+        {
+            for (int i = 0; i < state.players.Count; i++)
+            {
+                TacticsCoopLobbyPlayerState player = state.players[i];
+                if (player == null)
+                {
+                    continue;
+                }
+
+                if (!TacticsPartyCompositionRules.HasRequiredMembers(player.partyMembers, roster, TacticsPartySelection.DefaultCapacity))
+                {
+                    int assignedCount = TacticsPartyCompositionRules.CountValidLoadoutMembers(player.partyMembers, roster);
+                    return $"{player.username} needs a full party before the match can start ({assignedCount}/{requiredPartySize} selected).";
+                }
+
+                if (player.isReady)
+                {
+                    readyCount++;
+                }
+            }
+        }
+
+        if (playerCount < Mathf.Max(2, state.minPlayersToStart))
+        {
+            return $"Lobby open. {playerCount}/{state.maxPlayers} players connected. Waiting for at least one ally.";
+        }
+
+        return IsLocalLobbyHost()
+            ? $"Lobby ready check: {readyCount}/{playerCount} players ready. Start the match when everyone is set."
+            : $"Lobby ready check: {readyCount}/{playerCount} players ready. Waiting for the host to launch the match.";
+    }
+
+    private bool IsLocalLobbyHost()
+    {
+        return coopSessionCoordinator != null &&
+               coopSessionCoordinator.IsOnlineSession &&
+               coopSessionCoordinator.IsHostAuthority;
+    }
+
+    private TacticsCoopLobbyPlayerState GetLocalLobbyPlayerState()
+    {
+        if (lobbyState?.players == null || coopSessionCoordinator == null)
+        {
+            return null;
+        }
+
+        ulong localClientId = coopSessionCoordinator.LocalClientId;
+        for (int i = 0; i < lobbyState.players.Count; i++)
+        {
+            TacticsCoopLobbyPlayerState player = lobbyState.players[i];
+            if (player != null && player.clientId == localClientId)
+            {
+                return player;
+            }
+        }
+
+        return null;
+    }
+
+    private string BuildLobbyOperativeSummary(TacticsCoopCharacterLoadout loadout)
+    {
+        string characterId = NormalizeCharacterId(loadout.characterId);
+        string displayName = definitionsById != null && definitionsById.TryGetValue(characterId, out TacticsCharacterDefinition definition) && definition != null
+            ? definition.DisplayName
+            : characterId;
+        int level = loadout.progression.WithCharacterId(characterId).Sanitize().Level;
+        return $"{displayName.ToUpperInvariant()}  LV {level:00}";
+    }
+
     private HostEnemyEntryWidget CreateHostEnemyEntryWidget(int index, TacticsMatchEnemySettings enemySettings)
     {
         VisualElement row = new VisualElement();
@@ -1681,7 +1997,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
             }
 
             workingMatchSettings.enemies[index].enemyId = GetEnemyIdFromDisplayName(evt.newValue);
-            RefreshHostSetupUi();
+            HandleHostSettingsEdited();
         });
 
         IntegerField countField = new IntegerField("Count");
@@ -1696,7 +2012,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
             }
 
             workingMatchSettings.enemies[index].count = evt.newValue;
-            RefreshHostSetupUi();
+            HandleHostSettingsEdited();
         });
 
         Button removeButton = new Button(() =>
@@ -1707,7 +2023,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
             }
 
             workingMatchSettings.enemies.RemoveAt(index);
-            RefreshHostSetupUi();
+            HandleHostSettingsEdited();
         })
         {
             text = "Remove"
@@ -2399,33 +2715,21 @@ public sealed class TacticsMainMenuView : MonoBehaviour
 
     private bool CanSaveWorkingSelection()
     {
-        return CountAssignedMembers(workingSelection) >= GetRequiredTeamSize();
+        return TacticsPartyCompositionRules.HasRequiredMembers(
+            workingSelection,
+            roster,
+            workingSelection != null ? workingSelection.Capacity : TacticsPartySelection.DefaultCapacity);
     }
 
     private int GetRequiredTeamSize()
     {
-        int availableCount = roster?.PlayableCharacters?.Count ?? 0;
         int capacity = workingSelection != null ? workingSelection.Capacity : TacticsPartySelection.DefaultCapacity;
-        return Mathf.Min(capacity, availableCount);
+        return TacticsPartyCompositionRules.ResolveRequiredMemberCount(roster, capacity);
     }
 
     private static int CountAssignedMembers(TacticsPartySelection selection)
     {
-        if (selection == null)
-        {
-            return 0;
-        }
-
-        int count = 0;
-        for (int i = 0; i < selection.Capacity; i++)
-        {
-            if (!string.IsNullOrEmpty(selection.GetCharacterId(i)))
-            {
-                count++;
-            }
-        }
-
-        return count;
+        return TacticsPartyCompositionRules.CountAssignedMembers(selection);
     }
 
     private static bool SelectionsMatch(TacticsPartySelection left, TacticsPartySelection right)
@@ -2548,6 +2852,13 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         public DropdownField EnemyDropdown;
         public IntegerField CountField;
         public Button RemoveButton;
+    }
+
+    private sealed class LobbyPlayerCardWidget
+    {
+        public VisualElement Root;
+        public Label UsernameLabel;
+        public Label ReadyLabel;
     }
 
     private sealed class CharacterInspectorWidget

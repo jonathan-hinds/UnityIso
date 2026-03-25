@@ -213,6 +213,11 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         characterAnimator?.SetTargeted(isTargeted);
     }
 
+    public void SetLocallyOwned(bool isLocallyOwned)
+    {
+        characterAnimator?.SetLocallyOwned(isLocallyOwned);
+    }
+
     public void SetTargetHoverPreview(bool isActive)
     {
         characterAnimator?.SetTargetHoverPreview(isActive);

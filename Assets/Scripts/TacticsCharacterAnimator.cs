@@ -40,6 +40,7 @@ public class TacticsCharacterAnimator : MonoBehaviour
     [Header("Selection Indicator")]
     [SerializeField] private Color activeCharacterCarrotColor = new Color(1f, 0.9f, 0.2f, 1f);
     [SerializeField] private Color selectedCharacterCarrotColor = new Color(1f, 0.2f, 0.2f, 1f);
+    [SerializeField] private Color locallyOwnedCharacterCarrotColor = new Color(0.22f, 0.84f, 0.3f, 1f);
     [SerializeField, Min(0.01f)] private float selectionCarrotWidth = 0.2f;
     [SerializeField, Min(0.01f)] private float selectionCarrotHeight = 0.1f;
     [SerializeField, Range(0.5f, 1f)] private float selectionCarrotInnerScale = 0.72f;
@@ -86,6 +87,7 @@ public class TacticsCharacterAnimator : MonoBehaviour
     private bool isTurnHighlighted;
     private bool isSelected;
     private bool isTargeted;
+    private bool isLocallyOwned;
     private bool isTargetHoverPreviewActive;
     private bool isPresentationVisible = true;
     private int occlusionDetectedFrameCount;
@@ -287,6 +289,12 @@ public class TacticsCharacterAnimator : MonoBehaviour
     public void SetTargeted(bool isTargeted)
     {
         this.isTargeted = isTargeted;
+        UpdateSelectionIndicatorVisuals();
+    }
+
+    public void SetLocallyOwned(bool isLocallyOwned)
+    {
+        this.isLocallyOwned = isLocallyOwned;
         UpdateSelectionIndicatorVisuals();
     }
 
@@ -560,7 +568,7 @@ public class TacticsCharacterAnimator : MonoBehaviour
 
         bool isActiveCharacter = isTurnHighlighted;
         bool isSelectedCharacter = isSelected || isTargeted;
-        bool shouldShowCarrot = isActiveCharacter || isSelectedCharacter;
+        bool shouldShowCarrot = isActiveCharacter || isSelectedCharacter || isLocallyOwned;
         if (!shouldShowCarrot ||
             targetRenderer == null ||
             selectionCarrotRenderer == null ||
@@ -575,7 +583,11 @@ public class TacticsCharacterAnimator : MonoBehaviour
 
         selectionCarrotRenderer.sprite = GetSelectionCarrotSprite();
         selectionCarrotBorderRenderer.sprite = GetSelectionCarrotBorderSprite();
-        Color fillColor = isActiveCharacter ? activeCharacterCarrotColor : selectedCharacterCarrotColor;
+        Color fillColor = isActiveCharacter
+            ? activeCharacterCarrotColor
+            : isSelectedCharacter
+                ? selectedCharacterCarrotColor
+                : locallyOwnedCharacterCarrotColor;
         Color borderColor = selectedCharacterCarrotColor;
         bool shouldShowBorder = isSelectedCharacter;
 
