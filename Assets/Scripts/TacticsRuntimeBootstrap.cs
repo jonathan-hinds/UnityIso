@@ -77,7 +77,14 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         coopSessionCoordinator.SessionEnded -= HandleSessionEnded;
         coopSessionCoordinator.SessionEnded += HandleSessionEnded;
         mainMenuView = EnsureMainMenuView();
-        mainMenuView.AssignDependencies(mapGenerator, localPartySelectionService, accountPartySelectionService, enemyTable, accountSessionService);
+        mainMenuView.AssignDependencies(
+            mapGenerator,
+            localPartySelectionService,
+            accountPartySelectionService,
+            localProgressionService,
+            accountProgressionService,
+            enemyTable,
+            accountSessionService);
         ShowMainMenu();
         await accountSessionService.InitializeAsync();
         RefreshAccountScopedServices();
@@ -130,7 +137,14 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         mainMenuView.SessionStartRequested += HandleSessionStartRequested;
         mainMenuView.QuitRequested -= HandleApplicationQuitRequested;
         mainMenuView.QuitRequested += HandleApplicationQuitRequested;
-        mainMenuView.AssignDependencies(mapGenerator, localPartySelectionService, accountPartySelectionService, enemyTable, accountSessionService);
+        mainMenuView.AssignDependencies(
+            mapGenerator,
+            localPartySelectionService,
+            accountPartySelectionService,
+            localProgressionService,
+            accountProgressionService,
+            enemyTable,
+            accountSessionService);
         mainMenuView.SetStatusText(string.Empty);
         mainMenuView.Show();
         SetCameraInputEnabled(false);
@@ -1153,7 +1167,14 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             coopSessionCoordinator?.AssignCurrencyService(null);
         }
 
-        mainMenuView?.AssignDependencies(mapGenerator, localPartySelectionService, accountPartySelectionService, enemyTable, accountSessionService);
+        mainMenuView?.AssignDependencies(
+            mapGenerator,
+            localPartySelectionService,
+            accountPartySelectionService,
+            localProgressionService,
+            accountProgressionService,
+            enemyTable,
+            accountSessionService);
     }
 
     private void UseSinglePlayerServices()

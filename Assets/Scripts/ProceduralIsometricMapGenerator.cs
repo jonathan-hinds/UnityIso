@@ -22,6 +22,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         public float tileWidth;
         public float tileHeight;
         public float elevationStep;
+        public bool renderSideFaces;
     }
 
     public readonly struct OcclusionVolume
@@ -114,6 +115,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
     [SerializeField, Min(0.1f)] private float tileWidth = 1f;
     [SerializeField, Min(0.1f)] private float tileHeight = 0.5f;
     [SerializeField, Min(0.05f)] private float elevationStep = 0.5f;
+    [SerializeField] private bool renderSideFaces = true;
     [SerializeField] private Vector3 mapOffset = Vector3.zero;
 
     [Header("Scene")]
@@ -246,7 +248,8 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
             cliffShadowColor = cliffShadowColor,
             tileWidth = tileWidth,
             tileHeight = tileHeight,
-            elevationStep = elevationStep
+            elevationStep = elevationStep,
+            renderSideFaces = renderSideFaces
         };
     }
 
@@ -265,6 +268,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         tileWidth = Mathf.Max(0.1f, profile.tileWidth);
         tileHeight = Mathf.Max(0.1f, profile.tileHeight);
         elevationStep = Mathf.Max(0.05f, profile.elevationStep);
+        renderSideFaces = profile.renderSideFaces;
     }
 
     public void ConfigureSingleTilePreview(TileVisualProfile profile)
@@ -289,6 +293,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         autoFrameCamera = false;
         cameraPadding = 0f;
         mapOffset = Vector3.zero;
+        renderSideFaces = false;
         enemySpawnEntries.Clear();
         chestSpawnSettings = new ChestSpawnSettings();
     }
@@ -360,35 +365,38 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                 int upperLeftNeighborHeight = GetHeight(currentHeights, x, y + 1);
                 int upperRightNeighborHeight = GetHeight(currentHeights, x + 1, y);
 
-                CreateTilePart(
-                    generatedRoot,
-                    leftSideSprite != null ? leftSideSprite : cachedDefaultLeftSideSprite,
-                    GridToWorld(x, y, height),
-                    $"Left_{x}_{y}_{height}",
-                    x,
-                    y,
-                    height,
-                    0,
-                    IsometricMapElevationElementType.SideFace,
-                    ref tileOcclusionBounds,
-                    ref tileOcclusionSortingOrder,
-                    ref tileOcclusionSortingLayerId);
+                if (renderSideFaces)
+                {
+                    CreateTilePart(
+                        generatedRoot,
+                        leftSideSprite != null ? leftSideSprite : cachedDefaultLeftSideSprite,
+                        GridToWorld(x, y, height),
+                        $"Left_{x}_{y}_{height}",
+                        x,
+                        y,
+                        height,
+                        0,
+                        IsometricMapElevationElementType.SideFace,
+                        ref tileOcclusionBounds,
+                        ref tileOcclusionSortingOrder,
+                        ref tileOcclusionSortingLayerId);
 
-                CreateTilePart(
-                    generatedRoot,
-                    rightSideSprite != null ? rightSideSprite : cachedDefaultRightSideSprite,
-                    GridToWorld(x, y, height),
-                    $"Right_{x}_{y}_{height}",
-                    x,
-                    y,
-                    height,
-                    1,
-                    IsometricMapElevationElementType.SideFace,
-                    ref tileOcclusionBounds,
-                    ref tileOcclusionSortingOrder,
-                    ref tileOcclusionSortingLayerId);
+                    CreateTilePart(
+                        generatedRoot,
+                        rightSideSprite != null ? rightSideSprite : cachedDefaultRightSideSprite,
+                        GridToWorld(x, y, height),
+                        $"Right_{x}_{y}_{height}",
+                        x,
+                        y,
+                        height,
+                        1,
+                        IsometricMapElevationElementType.SideFace,
+                        ref tileOcclusionBounds,
+                        ref tileOcclusionSortingOrder,
+                        ref tileOcclusionSortingLayerId);
+                }
 
-                if (addCliffEdgeShadows)
+                if (renderSideFaces && addCliffEdgeShadows)
                 {
                     if (upperLeftNeighborHeight < height)
                     {
@@ -461,7 +469,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                         2,
                         IsometricMapElevationElementType.SliceCap);
 
-                    if (lowerLeftNeighborHeight < layer)
+                    if (renderSideFaces && lowerLeftNeighborHeight < layer)
                     {
                         CreateTilePart(
                             generatedRoot,
@@ -478,7 +486,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                             ref tileOcclusionSortingLayerId);
                     }
 
-                    if (lowerRightNeighborHeight < layer)
+                    if (renderSideFaces && lowerRightNeighborHeight < layer)
                     {
                         CreateTilePart(
                             generatedRoot,

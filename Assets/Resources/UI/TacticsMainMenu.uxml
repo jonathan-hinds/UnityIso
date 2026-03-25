@@ -137,19 +137,51 @@
                     </ui:VisualElement>
                 </ui:VisualElement>
 
-                <ui:VisualElement name="editor-content" class="editor-content">
-                    <ui:VisualElement class="editor-section editor-section--slots">
-                        <ui:Label class="section-label" text="Deployment Slots" />
-                        <ui:Label class="section-copy" text="Drag a playable character into one of three active squad positions. Dropping an assigned unit back into the roster clears that slot." />
-                        <ui:VisualElement name="team-slot-container" class="team-slot-container" />
+                <ui:VisualElement name="editor-content" class="editor-content editor-content--columns">
+                    <ui:VisualElement class="editor-column editor-column--left">
+                        <ui:VisualElement class="editor-section editor-section--slots">
+                            <ui:Label class="section-label" text="Deployment Slots" />
+                            <ui:Label class="section-copy editor-helper-copy" text="Drag a playable character into one of three active squad positions. Dropping an assigned unit back into the roster clears that slot." />
+                            <ui:VisualElement name="team-slot-container" class="team-slot-container" />
+                        </ui:VisualElement>
+
+                        <ui:VisualElement class="editor-section editor-section--roster">
+                            <ui:Label class="section-label" text="Available Operatives" />
+                            <ui:Label class="section-copy editor-helper-copy" text="Hover any operative to preview a southwest run cycle on the same isometric tile language used by the battlefield." />
+                            <ui:ScrollView name="roster-scroll-view" class="roster-scroll-view" mode="Vertical">
+                                <ui:VisualElement name="character-grid-container" class="character-grid-container" />
+                            </ui:ScrollView>
+                        </ui:VisualElement>
                     </ui:VisualElement>
 
-                    <ui:VisualElement class="editor-section editor-section--roster">
-                        <ui:Label class="section-label" text="Available Operatives" />
-                        <ui:Label class="section-copy" text="Hover any operative to preview a southwest run cycle on the same isometric tile language used by the battlefield." />
-                        <ui:ScrollView name="roster-scroll-view" class="roster-scroll-view" mode="Vertical">
-                            <ui:VisualElement name="character-grid-container" class="character-grid-container" />
-                        </ui:ScrollView>
+                    <ui:VisualElement name="character-inspector-panel" class="editor-section editor-section--intel">
+                        <ui:Label class="section-label" text="Operative Intel" />
+                        <ui:Label name="character-detail-subtitle" class="section-copy character-detail-subtitle editor-helper-copy" text="Hover or select an operative to review their battle readiness, growth, and core abilities." />
+                        <ui:VisualElement class="character-detail-header">
+                            <ui:Image name="character-detail-preview" class="character-detail-preview" />
+                            <ui:VisualElement class="character-detail-heading">
+                                <ui:Label name="character-detail-kicker" class="character-detail-kicker" text="ROSTER ANALYSIS" />
+                                <ui:Label name="character-detail-name" class="character-detail-name" text="No Operative Selected" />
+                                <ui:Label name="character-detail-level" class="character-detail-level" text="LV. 1" />
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+                        <ui:VisualElement name="character-detail-summary" class="character-detail-summary" />
+                        <ui:VisualElement class="character-detail-groups">
+                            <ui:VisualElement class="character-detail-group">
+                                <ui:Label class="character-detail-group-label" text="Primary Stats" />
+                                <ui:VisualElement name="character-detail-primary-stats" class="character-stat-grid" />
+                            </ui:VisualElement>
+                            <ui:VisualElement class="character-detail-group">
+                                <ui:Label class="character-detail-group-label" text="Combat Profile" />
+                                <ui:VisualElement name="character-detail-derived-stats" class="character-stat-grid" />
+                            </ui:VisualElement>
+                            <ui:VisualElement class="character-detail-group character-detail-group--abilities">
+                                <ui:Label class="character-detail-group-label" text="Abilities" />
+                                <ui:ScrollView name="character-detail-abilities-scroll-view" class="character-detail-abilities-scroll-view" mode="Vertical">
+                                    <ui:VisualElement name="character-detail-abilities" class="character-detail-abilities" />
+                                </ui:ScrollView>
+                            </ui:VisualElement>
+                        </ui:VisualElement>
                     </ui:VisualElement>
                 </ui:VisualElement>
 

@@ -33,6 +33,16 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     private const string OnlineTeamSummaryLabelName = "online-team-summary-label";
     private const string TeamSlotContainerName = "team-slot-container";
     private const string RosterGridContainerName = "character-grid-container";
+    private const string CharacterInspectorPanelName = "character-inspector-panel";
+    private const string CharacterDetailSubtitleName = "character-detail-subtitle";
+    private const string CharacterDetailPreviewName = "character-detail-preview";
+    private const string CharacterDetailKickerName = "character-detail-kicker";
+    private const string CharacterDetailNameName = "character-detail-name";
+    private const string CharacterDetailLevelName = "character-detail-level";
+    private const string CharacterDetailSummaryName = "character-detail-summary";
+    private const string CharacterDetailPrimaryStatsName = "character-detail-primary-stats";
+    private const string CharacterDetailDerivedStatsName = "character-detail-derived-stats";
+    private const string CharacterDetailAbilitiesName = "character-detail-abilities";
     private const string EditorBackButtonName = "editor-back-button";
     private const string EditorSaveButtonName = "editor-save-button";
     private const string EditorStatusLabelName = "editor-status-label";
@@ -66,7 +76,8 @@ public sealed class TacticsMainMenuView : MonoBehaviour
 
     [Header("Preview Tuning")]
     [SerializeField] private TacticsCharacterCardPreview.PreviewSettings previewSettings = default;
-    [SerializeField] private Vector2 previewWindowSize = new Vector2(225f, 256f);
+    [SerializeField] private Vector2 previewWindowSize = new Vector2(176f, 196f);
+    [SerializeField] private Vector2 slotPreviewWindowSize = new Vector2(128f, 148f);
 
     private UIDocument uiDocument;
     private VisualElement rootElement;
@@ -92,6 +103,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     private Label onlineTeamSummaryLabel;
     private VisualElement teamSlotContainer;
     private VisualElement rosterGridContainer;
+    private CharacterInspectorWidget characterInspector;
     private Button editorBackButton;
     private Button editorSaveButton;
     private Label editorStatusLabel;
@@ -122,6 +134,8 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     private ProceduralIsometricMapGenerator sourceMapGenerator;
     private TacticsPartySelectionService localPartySelectionService;
     private TacticsPartySelectionService onlinePartySelectionService;
+    private TacticsCharacterProgressionService localProgressionService;
+    private TacticsCharacterProgressionService onlineProgressionService;
     private ITacticsAccountSessionService accountSessionService;
     private TacticsEnemyTable enemyTable;
     private TacticsCharacterRoster roster;
@@ -147,6 +161,8 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     private bool isDragging;
     private string hostRelayJoinCode = string.Empty;
     private string dragCharacterId = string.Empty;
+    private string selectedInspectorCharacterId = string.Empty;
+    private string hoveredInspectorCharacterId = string.Empty;
     private int dragSourceSlotIndex = -1;
     private int previewCounter;
 
@@ -200,6 +216,8 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         ProceduralIsometricMapGenerator mapGenerator,
         TacticsPartySelectionService localSelectionService,
         TacticsPartySelectionService onlineSelectionService,
+        TacticsCharacterProgressionService localCharacterProgressionService,
+        TacticsCharacterProgressionService onlineCharacterProgressionService,
         TacticsEnemyTable availableEnemyTable,
         ITacticsAccountSessionService sessionService)
     {
@@ -207,6 +225,8 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         sourceMapGenerator = mapGenerator;
         localPartySelectionService = localSelectionService ?? new TacticsPartySelectionService(new TacticsSinglePlayerPartySelectionStore());
         this.onlinePartySelectionService = onlineSelectionService;
+        localProgressionService = localCharacterProgressionService ?? new TacticsCharacterProgressionService(new TacticsSinglePlayerCharacterProgressionStore());
+        onlineProgressionService = onlineCharacterProgressionService;
         enemyTable = availableEnemyTable;
         if (!ReferenceEquals(accountSessionService, sessionService))
         {
@@ -352,6 +372,19 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         onlineTeamSummaryLabel = rootElement.Q<Label>(OnlineTeamSummaryLabelName);
         teamSlotContainer = rootElement.Q<VisualElement>(TeamSlotContainerName);
         rosterGridContainer = rootElement.Q<VisualElement>(RosterGridContainerName);
+        characterInspector = new CharacterInspectorWidget
+        {
+            Root = rootElement.Q<VisualElement>(CharacterInspectorPanelName),
+            SubtitleLabel = rootElement.Q<Label>(CharacterDetailSubtitleName),
+            PreviewImage = rootElement.Q<Image>(CharacterDetailPreviewName),
+            KickerLabel = rootElement.Q<Label>(CharacterDetailKickerName),
+            NameLabel = rootElement.Q<Label>(CharacterDetailNameName),
+            LevelLabel = rootElement.Q<Label>(CharacterDetailLevelName),
+            SummaryContainer = rootElement.Q<VisualElement>(CharacterDetailSummaryName),
+            PrimaryStatsContainer = rootElement.Q<VisualElement>(CharacterDetailPrimaryStatsName),
+            DerivedStatsContainer = rootElement.Q<VisualElement>(CharacterDetailDerivedStatsName),
+            AbilitiesContainer = rootElement.Q<VisualElement>(CharacterDetailAbilitiesName)
+        };
         editorBackButton = rootElement.Q<Button>(EditorBackButtonName);
         editorSaveButton = rootElement.Q<Button>(EditorSaveButtonName);
         editorStatusLabel = rootElement.Q<Label>(EditorStatusLabelName);
@@ -745,6 +778,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         RefreshAccountUi();
         RefreshSlotWidgets();
         RefreshRosterWidgets();
+        RefreshCharacterInspector();
         RefreshEditorStatus();
         RefreshHostSetupUi();
 
@@ -875,14 +909,15 @@ public sealed class TacticsMainMenuView : MonoBehaviour
                 widget.MetaLabel.text = "Drag a party member here";
                 widget.PreviewImage.image = null;
                 widget.Preview?.SetHovered(false);
-                widget.Preview?.Dispose();
+                DisposePreview(widget.Preview);
                 widget.Preview = null;
                 widget.CurrentCharacterId = string.Empty;
                 continue;
             }
 
+            TacticsCharacterProgressionSnapshot progression = GetProgressionSnapshot(definition);
             widget.NameLabel.text = definition.DisplayName.ToUpperInvariant();
-            widget.MetaLabel.text = $"Slot {widget.SlotIndex + 1:00}  /  Ready";
+            widget.MetaLabel.text = $"LV {progression.Level:00}  /  READY";
             EnsureSlotPreview(widget, definition);
         }
     }
@@ -894,7 +929,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
             RosterCardWidget widget = rosterCardWidgets[i];
             bool isAssigned = workingSelection != null && workingSelection.Contains(widget.Definition.CharacterId);
             widget.Root.EnableInClassList("roster-card--assigned", isAssigned);
-            widget.StatusLabel.text = isAssigned ? "IN PARTY" : "AVAILABLE";
+            widget.StatusLabel.text = $"{(isAssigned ? "IN PARTY" : "AVAILABLE")}  /  LV {GetProgressionSnapshot(widget.Definition).Level:00}";
         }
     }
 
@@ -932,7 +967,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
             scaleMode = ScaleMode.ScaleToFit
         };
         previewImage.AddToClassList("team-slot-preview");
-        ApplySharedPreviewImageSizing(previewImage);
+        ApplySlotPreviewImageSizing(previewImage);
         root.Add(previewImage);
 
         Label nameLabel = new Label();
@@ -1031,7 +1066,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
             return;
         }
 
-        widget.Preview?.Dispose();
+        DisposePreview(widget.Preview);
         widget.CurrentCharacterId = definition.CharacterId;
         widget.Preview = CreatePreview(definition);
         widget.PreviewImage.image = widget.Preview?.Texture;
@@ -1051,12 +1086,21 @@ public sealed class TacticsMainMenuView : MonoBehaviour
 
     private void ApplySharedPreviewImageSizing(Image previewImage)
     {
+        ApplyPreviewImageSizing(previewImage, GetSanitizedPreviewWindowSize());
+    }
+
+    private void ApplySlotPreviewImageSizing(Image previewImage)
+    {
+        ApplyPreviewImageSizing(previewImage, GetSanitizedSlotPreviewWindowSize());
+    }
+
+    private static void ApplyPreviewImageSizing(Image previewImage, Vector2 size)
+    {
         if (previewImage == null)
         {
             return;
         }
 
-        Vector2 size = GetSanitizedPreviewWindowSize();
         previewImage.style.width = size.x;
         previewImage.style.height = size.y;
         previewImage.style.minWidth = size.x;
@@ -1074,8 +1118,24 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         Func<int> getSourceSlotIndex,
         Action<bool> setHovered)
     {
-        element.RegisterCallback<PointerEnterEvent>(_ => setHovered?.Invoke(true));
-        element.RegisterCallback<PointerLeaveEvent>(_ => setHovered?.Invoke(false));
+        element.RegisterCallback<PointerEnterEvent>(_ =>
+        {
+            string characterId = NormalizeCharacterId(getCharacterId?.Invoke());
+            setHovered?.Invoke(true);
+            if (!string.IsNullOrEmpty(characterId))
+            {
+                SetHoveredInspectorCharacter(characterId);
+            }
+        });
+        element.RegisterCallback<PointerLeaveEvent>(_ =>
+        {
+            string characterId = NormalizeCharacterId(getCharacterId?.Invoke());
+            setHovered?.Invoke(false);
+            if (!string.IsNullOrEmpty(characterId))
+            {
+                ClearHoveredInspectorCharacter(characterId);
+            }
+        });
         element.RegisterCallback<PointerDownEvent>(evt =>
         {
             if (evt.button != 0)
@@ -1089,6 +1149,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
                 return;
             }
 
+            SetSelectedInspectorCharacter(characterId);
             BeginDrag(characterId, getSourceSlotIndex != null ? getSourceSlotIndex.Invoke() : -1, evt.position);
             element.CapturePointer(evt.pointerId);
             evt.StopPropagation();
@@ -1261,6 +1322,8 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     {
         isEditingOnlineParty = editOnlineParty && onlinePartySelectionService != null;
         workingSelection = GetSavedSelectionForCurrentEditor() ?? TacticsPartySelection.CreateDefault(roster);
+        selectedInspectorCharacterId = string.Empty;
+        hoveredInspectorCharacterId = string.Empty;
         isEditPageVisible = true;
         isHostSetupPageVisible = false;
         isAuthDialogVisible = false;
@@ -1906,9 +1969,425 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         return isEditingOnlineParty ? onlinePartySelectionService : localPartySelectionService;
     }
 
+    private TacticsCharacterProgressionService GetEditorProgressionService()
+    {
+        return isEditingOnlineParty ? onlineProgressionService : localProgressionService;
+    }
+
     private TacticsPartySelection GetSavedSelectionForCurrentEditor()
     {
         return (isEditingOnlineParty ? savedOnlineSelection : savedLocalSelection) ?? TacticsPartySelection.CreateDefault(roster);
+    }
+
+    private void RefreshCharacterInspector()
+    {
+        if (characterInspector?.Root == null)
+        {
+            return;
+        }
+
+        NormalizeInspectorState();
+        TacticsCharacterDefinition definition = ResolveInspectorDefinition();
+        if (definition == null)
+        {
+            ApplyEmptyInspectorState();
+            return;
+        }
+
+        TacticsCharacterProgressionSnapshot progression = GetProgressionSnapshot(definition);
+        TacticsCharacterStats effectiveStats = progression.ApplyTo(definition.BaseStats);
+        TacticsCharacterDerivedStats derivedStats = effectiveStats.CalculateDerivedStats();
+
+        characterInspector.KickerLabel.text = workingSelection != null && workingSelection.Contains(definition.CharacterId)
+            ? "DEPLOYMENT READY"
+            : "ROSTER ANALYSIS";
+        characterInspector.NameLabel.text = definition.DisplayName.ToUpperInvariant();
+        characterInspector.LevelLabel.text = $"LV. {progression.Level:00}";
+        characterInspector.SubtitleLabel.text = BuildInspectorSubtitle(definition, progression, effectiveStats);
+
+        EnsureInspectorPreview(definition);
+        PopulateInspectorSummary(definition, progression, effectiveStats, derivedStats);
+        PopulatePrimaryStats(definition, progression, effectiveStats);
+        PopulateDerivedStats(effectiveStats, derivedStats);
+        PopulateAbilities(definition);
+    }
+
+    private void ApplyEmptyInspectorState()
+    {
+        if (characterInspector == null)
+        {
+            return;
+        }
+
+        characterInspector.KickerLabel.text = "ROSTER ANALYSIS";
+        characterInspector.NameLabel.text = "NO OPERATIVE SELECTED";
+        characterInspector.LevelLabel.text = "LV. --";
+        characterInspector.SubtitleLabel.text = "Hover or select an operative to review their battle readiness, growth, and core abilities.";
+        characterInspector.SummaryContainer?.Clear();
+        characterInspector.PrimaryStatsContainer?.Clear();
+        characterInspector.DerivedStatsContainer?.Clear();
+        characterInspector.AbilitiesContainer?.Clear();
+
+        if (characterInspector.PreviewImage != null)
+        {
+            characterInspector.PreviewImage.image = null;
+        }
+
+        DisposePreview(characterInspector.Preview);
+        characterInspector.Preview = null;
+        characterInspector.CurrentCharacterId = string.Empty;
+        AddSummaryLine(characterInspector.SummaryContainer, "No unit focus is active yet.");
+        AddStatRow(characterInspector.PrimaryStatsContainer, "STAMINA", "--");
+        AddStatRow(characterInspector.DerivedStatsContainer, "MELEE", "--");
+        AddAbilityCard("No abilities available to preview yet.", string.Empty, string.Empty);
+    }
+
+    private void PopulateInspectorSummary(
+        TacticsCharacterDefinition definition,
+        TacticsCharacterProgressionSnapshot progression,
+        TacticsCharacterStats effectiveStats,
+        TacticsCharacterDerivedStats derivedStats)
+    {
+        if (characterInspector?.SummaryContainer == null)
+        {
+            return;
+        }
+
+        characterInspector.SummaryContainer.Clear();
+        AddSummaryLine(characterInspector.SummaryContainer, $"Move {effectiveStats.MoveRange}  /  Jump {effectiveStats.JumpHeight}  /  XP {progression.CurrentExperience}/{definition.ExperienceToNextLevel}");
+        AddSummaryLine(characterInspector.SummaryContainer, $"HP {derivedStats.maxHitPoints}  /  Stamina {derivedStats.maxStamina}  /  Mana {derivedStats.maxMana}");
+        AddSummaryLine(characterInspector.SummaryContainer, workingSelection != null && workingSelection.Contains(definition.CharacterId)
+            ? "Assigned to the current battle plan."
+            : "Available for deployment in the current battle plan.");
+    }
+
+    private void PopulatePrimaryStats(
+        TacticsCharacterDefinition definition,
+        TacticsCharacterProgressionSnapshot progression,
+        TacticsCharacterStats effectiveStats)
+    {
+        if (characterInspector?.PrimaryStatsContainer == null)
+        {
+            return;
+        }
+
+        characterInspector.PrimaryStatsContainer.Clear();
+        AddStatRow(characterInspector.PrimaryStatsContainer, "STAMINA", FormatStatValue(effectiveStats.primaryStats.stamina, progression.GetAllocatedValue(TacticsAbilityScalingStat.Stamina)));
+        AddStatRow(characterInspector.PrimaryStatsContainer, "STRENGTH", FormatStatValue(effectiveStats.primaryStats.strength, progression.GetAllocatedValue(TacticsAbilityScalingStat.Strength)));
+        AddStatRow(characterInspector.PrimaryStatsContainer, "AGILITY", FormatStatValue(effectiveStats.primaryStats.agility, progression.GetAllocatedValue(TacticsAbilityScalingStat.Agility)));
+        AddStatRow(characterInspector.PrimaryStatsContainer, "WISDOM", FormatStatValue(effectiveStats.primaryStats.wisdom, progression.GetAllocatedValue(TacticsAbilityScalingStat.Wisdom)));
+        AddStatRow(characterInspector.PrimaryStatsContainer, "INT", FormatStatValue(effectiveStats.primaryStats.intelligence, progression.GetAllocatedValue(TacticsAbilityScalingStat.Intelligence)));
+        AddStatRow(characterInspector.PrimaryStatsContainer, "POINTS", progression.UnspentAttributePoints.ToString("00"));
+    }
+
+    private void PopulateDerivedStats(TacticsCharacterStats effectiveStats, TacticsCharacterDerivedStats derivedStats)
+    {
+        if (characterInspector?.DerivedStatsContainer == null)
+        {
+            return;
+        }
+
+        characterInspector.DerivedStatsContainer.Clear();
+        AddStatRow(characterInspector.DerivedStatsContainer, "MOVE", effectiveStats.MoveRange.ToString("00"));
+        AddStatRow(characterInspector.DerivedStatsContainer, "JUMP", effectiveStats.JumpHeight.ToString("00"));
+        AddStatRow(characterInspector.DerivedStatsContainer, "MELEE", $"{derivedStats.baseMeleeDamageMin}-{derivedStats.baseMeleeDamageMax}");
+        AddStatRow(characterInspector.DerivedStatsContainer, "MAGIC", $"{derivedStats.baseMagicDamageMin}-{derivedStats.baseMagicDamageMax}");
+        AddStatRow(characterInspector.DerivedStatsContainer, "MELEE CRIT", FormatPercent(derivedStats.meleeCriticalHitChance));
+        AddStatRow(characterInspector.DerivedStatsContainer, "MAGIC CRIT", FormatPercent(derivedStats.magicCriticalHitChance));
+    }
+
+    private void PopulateAbilities(TacticsCharacterDefinition definition)
+    {
+        if (characterInspector?.AbilitiesContainer == null)
+        {
+            return;
+        }
+
+        characterInspector.AbilitiesContainer.Clear();
+        IReadOnlyList<TacticsAbilityDefinition> abilities = definition?.StartingAbilities ?? Array.Empty<TacticsAbilityDefinition>();
+        if (abilities.Count == 0)
+        {
+            AddAbilityCard("No abilities configured.", string.Empty, "This operative relies on their standard combat actions.");
+            return;
+        }
+
+        for (int i = 0; i < abilities.Count; i++)
+        {
+            TacticsAbilityDefinition ability = abilities[i];
+            if (ability == null)
+            {
+                continue;
+            }
+
+            string meta = $"{DescribeAbilityRange(ability)}  /  {DescribeAbilityTarget(ability)}";
+            string description = ability.HasResourceCost
+                ? $"{ability.Description} Cost: {DescribeAbilityCost(ability)}."
+                : ability.Description;
+            AddAbilityCard(ability.DisplayName.ToUpperInvariant(), meta, description);
+        }
+    }
+
+    private void EnsureInspectorPreview(TacticsCharacterDefinition definition)
+    {
+        if (characterInspector == null || characterInspector.PreviewImage == null)
+        {
+            return;
+        }
+
+        if (characterInspector.CurrentCharacterId == definition.CharacterId && characterInspector.Preview != null)
+        {
+            characterInspector.PreviewImage.image = characterInspector.Preview.Texture;
+            return;
+        }
+
+        DisposePreview(characterInspector.Preview);
+        characterInspector.CurrentCharacterId = definition.CharacterId;
+        characterInspector.Preview = CreatePreview(definition);
+        characterInspector.PreviewImage.image = characterInspector.Preview?.Texture;
+    }
+
+    private void AddSummaryLine(VisualElement container, string text)
+    {
+        if (container == null)
+        {
+            return;
+        }
+
+        Label label = new Label(text);
+        label.AddToClassList("character-detail-summary-line");
+        container.Add(label);
+    }
+
+    private void AddStatRow(VisualElement container, string label, string value)
+    {
+        if (container == null)
+        {
+            return;
+        }
+
+        VisualElement row = new VisualElement();
+        row.AddToClassList("character-stat-row");
+
+        Label labelElement = new Label(label);
+        labelElement.AddToClassList("character-stat-row-label");
+        row.Add(labelElement);
+
+        Label valueElement = new Label(value);
+        valueElement.AddToClassList("character-stat-row-value");
+        row.Add(valueElement);
+
+        container.Add(row);
+    }
+
+    private void AddAbilityCard(string name, string meta, string description)
+    {
+        if (characterInspector?.AbilitiesContainer == null)
+        {
+            return;
+        }
+
+        VisualElement card = new VisualElement();
+        card.AddToClassList("character-ability-card");
+
+        Label nameLabel = new Label(name);
+        nameLabel.AddToClassList("character-ability-name");
+        card.Add(nameLabel);
+
+        if (!string.IsNullOrWhiteSpace(meta))
+        {
+            Label metaLabel = new Label(meta);
+            metaLabel.AddToClassList("character-ability-meta");
+            card.Add(metaLabel);
+        }
+
+        if (!string.IsNullOrWhiteSpace(description))
+        {
+            Label descriptionLabel = new Label(description);
+            descriptionLabel.AddToClassList("character-ability-description");
+            card.Add(descriptionLabel);
+        }
+
+        characterInspector.AbilitiesContainer.Add(card);
+    }
+
+    private void SetSelectedInspectorCharacter(string characterId)
+    {
+        selectedInspectorCharacterId = NormalizeCharacterId(characterId);
+        RefreshCharacterInspector();
+    }
+
+    private void SetHoveredInspectorCharacter(string characterId)
+    {
+        hoveredInspectorCharacterId = NormalizeCharacterId(characterId);
+        RefreshCharacterInspector();
+    }
+
+    private void ClearHoveredInspectorCharacter(string characterId)
+    {
+        string normalizedCharacterId = NormalizeCharacterId(characterId);
+        if (!string.Equals(hoveredInspectorCharacterId, normalizedCharacterId, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        hoveredInspectorCharacterId = string.Empty;
+        RefreshCharacterInspector();
+    }
+
+    private void NormalizeInspectorState()
+    {
+        if (!TryGetDefinition(hoveredInspectorCharacterId, out _))
+        {
+            hoveredInspectorCharacterId = string.Empty;
+        }
+
+        if (!TryGetDefinition(selectedInspectorCharacterId, out _))
+        {
+            selectedInspectorCharacterId = FindFallbackInspectorCharacterId();
+        }
+    }
+
+    private TacticsCharacterDefinition ResolveInspectorDefinition()
+    {
+        if (TryGetDefinition(hoveredInspectorCharacterId, out TacticsCharacterDefinition hoveredDefinition))
+        {
+            return hoveredDefinition;
+        }
+
+        if (TryGetDefinition(selectedInspectorCharacterId, out TacticsCharacterDefinition selectedDefinition))
+        {
+            return selectedDefinition;
+        }
+
+        string fallbackCharacterId = FindFallbackInspectorCharacterId();
+        return TryGetDefinition(fallbackCharacterId, out TacticsCharacterDefinition fallbackDefinition)
+            ? fallbackDefinition
+            : null;
+    }
+
+    private string FindFallbackInspectorCharacterId()
+    {
+        if (workingSelection != null)
+        {
+            for (int i = 0; i < workingSelection.Capacity; i++)
+            {
+                string assignedCharacterId = NormalizeCharacterId(workingSelection.GetCharacterId(i));
+                if (TryGetDefinition(assignedCharacterId, out _))
+                {
+                    return assignedCharacterId;
+                }
+            }
+        }
+
+        IReadOnlyList<TacticsCharacterDefinition> playableCharacters = roster?.PlayableCharacters ?? Array.Empty<TacticsCharacterDefinition>();
+        for (int i = 0; i < playableCharacters.Count; i++)
+        {
+            TacticsCharacterDefinition definition = playableCharacters[i];
+            if (definition != null)
+            {
+                return NormalizeCharacterId(definition.CharacterId);
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private bool TryGetDefinition(string characterId, out TacticsCharacterDefinition definition)
+    {
+        definition = null;
+        string normalizedCharacterId = NormalizeCharacterId(characterId);
+        return !string.IsNullOrEmpty(normalizedCharacterId) &&
+               definitionsById != null &&
+               definitionsById.TryGetValue(normalizedCharacterId, out definition);
+    }
+
+    private TacticsCharacterProgressionSnapshot GetProgressionSnapshot(TacticsCharacterDefinition definition)
+    {
+        if (definition == null)
+        {
+            return TacticsCharacterProgressionSnapshot.CreateDefault(string.Empty);
+        }
+
+        TacticsCharacterProgressionService progressionService = GetEditorProgressionService();
+        return progressionService != null
+            ? progressionService.GetProgression(definition)
+            : TacticsCharacterProgressionSnapshot.CreateDefault(definition.CharacterId);
+    }
+
+    private static string NormalizeCharacterId(string characterId)
+    {
+        return string.IsNullOrWhiteSpace(characterId) ? string.Empty : characterId.Trim();
+    }
+
+    private static string BuildInspectorSubtitle(
+        TacticsCharacterDefinition definition,
+        TacticsCharacterProgressionSnapshot progression,
+        TacticsCharacterStats effectiveStats)
+    {
+        return $"Level {progression.Level} tactician with {effectiveStats.MoveRange} move, {effectiveStats.JumpHeight} jump, and {definition.StartingAbilities.Count} combat art{(definition.StartingAbilities.Count == 1 ? string.Empty : "s")}.";
+    }
+
+    private static string FormatStatValue(int value, int bonusValue)
+    {
+        return bonusValue > 0 ? $"{value:00}  +{bonusValue}" : value.ToString("00");
+    }
+
+    private static string FormatPercent(float value)
+    {
+        return $"{Mathf.RoundToInt(Mathf.Clamp01(value) * 100f)}%";
+    }
+
+    private static string DescribeAbilityRange(TacticsAbilityDefinition ability)
+    {
+        if (ability == null)
+        {
+            return "Standard";
+        }
+
+        return ability.RangeType switch
+        {
+            TacticsAbilityRangeType.Melee => "Melee",
+            TacticsAbilityRangeType.Ranged => $"Range {ability.Range}",
+            TacticsAbilityRangeType.AbsoluteRanged => $"Absolute {ability.Range}",
+            TacticsAbilityRangeType.SurroundingAoE => $"AoE {ability.AreaOfEffectSize}",
+            TacticsAbilityRangeType.RangedAoE => $"Range {ability.Range} AoE {ability.AreaOfEffectSize}",
+            TacticsAbilityRangeType.AbsoluteAoE => $"Absolute {ability.Range} AoE {ability.AreaOfEffectSize}",
+            _ => "Standard"
+        };
+    }
+
+    private static string DescribeAbilityTarget(TacticsAbilityDefinition ability)
+    {
+        if (ability == null)
+        {
+            return "Target";
+        }
+
+        return ability.TargetRule switch
+        {
+            TacticsAbilityTargetRule.HostileUnit => ability.DamageType == TacticsAbilityDamageType.Magic ? "Hostile / Magic" : "Hostile / Melee",
+            TacticsAbilityTargetRule.AlliedUnit => "Ally",
+            TacticsAbilityTargetRule.AlliedUnitOrSelf => "Ally or Self",
+            TacticsAbilityTargetRule.Self => "Self",
+            _ => "Target"
+        };
+    }
+
+    private static string DescribeAbilityCost(TacticsAbilityDefinition ability)
+    {
+        if (ability == null || !ability.HasResourceCost)
+        {
+            return "No cost";
+        }
+
+        string resourceLabel = ability.CostResourceType switch
+        {
+            TacticsAbilityResourceType.Stamina => "Stamina",
+            TacticsAbilityResourceType.Mana => "Mana",
+            _ => "Resource"
+        };
+
+        return $"{ability.CostAmount} {resourceLabel}";
     }
 
     private bool CanSaveWorkingSelection()
@@ -1973,6 +2452,27 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         }
 
         previews.Clear();
+
+        if (characterInspector != null)
+        {
+            characterInspector.Preview = null;
+            characterInspector.CurrentCharacterId = string.Empty;
+            if (characterInspector.PreviewImage != null)
+            {
+                characterInspector.PreviewImage.image = null;
+            }
+        }
+    }
+
+    private void DisposePreview(TacticsCharacterCardPreview preview)
+    {
+        if (preview == null)
+        {
+            return;
+        }
+
+        preview.Dispose();
+        previews.Remove(preview);
     }
 
     private void EnsurePreviewSettingsInitialized()
@@ -1989,6 +2489,14 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         }
 
         previewWindowSize = new Vector2(Mathf.Max(96f, size.x), Mathf.Max(96f, size.y));
+
+        Vector2 slotSize = slotPreviewWindowSize;
+        if (slotSize.x <= 0f && slotSize.y <= 0f)
+        {
+            slotSize = new Vector2(128f, 148f);
+        }
+
+        slotPreviewWindowSize = new Vector2(Mathf.Max(72f, slotSize.x), Mathf.Max(72f, slotSize.y));
     }
 
     private void OnValidate()
@@ -1999,6 +2507,11 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     private Vector2 GetSanitizedPreviewWindowSize()
     {
         return new Vector2(Mathf.Max(96f, previewWindowSize.x), Mathf.Max(96f, previewWindowSize.y));
+    }
+
+    private Vector2 GetSanitizedSlotPreviewWindowSize()
+    {
+        return new Vector2(Mathf.Max(72f, slotPreviewWindowSize.x), Mathf.Max(72f, slotPreviewWindowSize.y));
     }
 
     private sealed class SlotWidget
@@ -2028,6 +2541,22 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         public DropdownField EnemyDropdown;
         public IntegerField CountField;
         public Button RemoveButton;
+    }
+
+    private sealed class CharacterInspectorWidget
+    {
+        public string CurrentCharacterId;
+        public VisualElement Root;
+        public Label SubtitleLabel;
+        public Image PreviewImage;
+        public Label KickerLabel;
+        public Label NameLabel;
+        public Label LevelLabel;
+        public VisualElement SummaryContainer;
+        public VisualElement PrimaryStatsContainer;
+        public VisualElement DerivedStatsContainer;
+        public VisualElement AbilitiesContainer;
+        public TacticsCharacterCardPreview Preview;
     }
 
     private readonly struct EnemyCatalogOption
