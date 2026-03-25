@@ -395,6 +395,30 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         return restoredAmount;
     }
 
+    public int RestoreResource(TacticsAbilityResourceType resourceType, int amount)
+    {
+        if (!IsAlive || amount <= 0)
+        {
+            return 0;
+        }
+
+        int restoredAmount = resourceType switch
+        {
+            TacticsAbilityResourceType.Stamina => RestoreRuntimeResource(ref runtimeResources.stamina, MaxStamina, amount),
+            TacticsAbilityResourceType.Mana => RestoreRuntimeResource(ref runtimeResources.mana, MaxMana, amount),
+            _ => 0
+        };
+
+        if (restoredAmount <= 0)
+        {
+            return 0;
+        }
+
+        TacticsCombatTextSystem.ShowResourceRestore(this, resourceType, restoredAmount);
+        NotifyTurnStateChanged();
+        return restoredAmount;
+    }
+
     public bool HasResourcesForAbility(TacticsAbilityDefinition ability)
     {
         if (ability == null || !ability.HasResourceCost)
@@ -826,6 +850,11 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         };
     }
 
+    public int GetMissingResource(TacticsAbilityResourceType resourceType)
+    {
+        return Mathf.Max(0, GetMaxResource(resourceType) - GetCurrentResource(resourceType));
+    }
+
     private void ApplyCharacterData(TacticsCharacterData data, TacticsCharacterProgressionSnapshot startingProgression)
     {
         if (data == null)
@@ -995,6 +1024,18 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
 
         int restoreAmount = Mathf.Max(1, Mathf.CeilToInt(maxValue * percent));
         currentValue = Mathf.Min(maxValue, currentValue + restoreAmount);
+    }
+
+    private static int RestoreRuntimeResource(ref int currentValue, int maxValue, int amount)
+    {
+        if (maxValue <= 0 || amount <= 0 || currentValue >= maxValue)
+        {
+            return 0;
+        }
+
+        int restoredAmount = Mathf.Min(amount, maxValue - currentValue);
+        currentValue = Mathf.Min(maxValue, currentValue + restoredAmount);
+        return restoredAmount;
     }
 
     private void RebuildAbilities(TacticsCharacterData data)

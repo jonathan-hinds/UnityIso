@@ -110,6 +110,10 @@ public static class TacticsAbilityPreviewCalculator
                 case TacticsAbilityEffectKind.RestoreHitPoints:
                     lines.Add(BuildHealingPreviewLine(source, effect.RestoreHitPoints));
                     break;
+
+                case TacticsAbilityEffectKind.RestoreResource:
+                    lines.Add(BuildResourceRestorePreviewLine(source, effect.RestoreResource));
+                    break;
             }
         }
 
@@ -121,9 +125,7 @@ public static class TacticsAbilityPreviewCalculator
         TacticsAbilityDefinition ability,
         TacticsDealDamageEffectData damage)
     {
-        int bonus = TacticsAbilityScalingCalculator.EvaluateDamageBonus(source, damage.Scaling);
-        (int baseMin, int baseMax) = GetBaseAmountRange(source, ability != null ? ability.DamageType : TacticsAbilityDamageType.Melee, damage.DamageFormula, damage.FlatAmount);
-        (int amountMin, int amountMax) = ApplyBonusAndMultiplier(baseMin, baseMax, bonus, damage.BonusMultiplier);
+        (int amountMin, int amountMax) = TacticsAbilityEffectMath.GetDamageAmountRange(source, ability, damage);
 
         StringBuilder builder = new();
         builder.Append("Deals ");
@@ -160,9 +162,7 @@ public static class TacticsAbilityPreviewCalculator
         TacticsCharacterController source,
         TacticsRestoreHitPointsEffectData restoreHitPoints)
     {
-        int bonus = TacticsAbilityScalingCalculator.EvaluateDamageBonus(source, restoreHitPoints.Scaling);
-        (int baseMin, int baseMax) = GetBaseAmountRange(source, TacticsAbilityDamageType.Magic, restoreHitPoints.HealingFormula, restoreHitPoints.FlatAmount);
-        (int amountMin, int amountMax) = ApplyBonusAndMultiplier(baseMin, baseMax, bonus, restoreHitPoints.BonusMultiplier);
+        (int amountMin, int amountMax) = TacticsAbilityEffectMath.GetRestoreHitPointsAmountRange(source, restoreHitPoints);
 
         StringBuilder builder = new();
         builder.Append("Restores ");
@@ -180,33 +180,37 @@ public static class TacticsAbilityPreviewCalculator
         return builder.ToString();
     }
 
-    private static (int min, int max) GetBaseAmountRange(
+    private static string BuildResourceRestorePreviewLine(
         TacticsCharacterController source,
-        TacticsAbilityDamageType damageType,
-        TacticsDamageFormula formula,
-        int flatAmount)
+        TacticsRestoreResourceEffectData restoreResource)
     {
-        if (formula == TacticsDamageFormula.FlatValue)
+        (int amountMin, int amountMax) = TacticsAbilityEffectMath.GetRestoreResourceAmountRange(source, restoreResource);
+
+        StringBuilder builder = new();
+        builder.Append("Restores ");
+        builder.Append(FormatRange(amountMin, amountMax));
+        builder.Append(' ');
+        builder.Append(GetResourceLabel(restoreResource.ResourceType));
+
+        string scalingText = BuildScalingText(restoreResource.Scaling);
+        if (!string.IsNullOrWhiteSpace(scalingText))
         {
-            int value = Mathf.Max(0, flatAmount);
-            return (value, value);
+            builder.Append(" (");
+            builder.Append(scalingText);
+            builder.Append(')');
         }
 
-        if (source == null)
-        {
-            return (0, 0);
-        }
-
-        return damageType == TacticsAbilityDamageType.Magic
-            ? (Mathf.Max(0, source.BaseMagicDamageMin), Mathf.Max(source.BaseMagicDamageMin, source.BaseMagicDamageMax))
-            : (Mathf.Max(0, source.BaseMeleeDamageMin), Mathf.Max(source.BaseMeleeDamageMin, source.BaseMeleeDamageMax));
+        return builder.ToString();
     }
 
-    private static (int min, int max) ApplyBonusAndMultiplier(int baseMin, int baseMax, int bonus, float multiplier)
+    private static string GetResourceLabel(TacticsAbilityResourceType resourceType)
     {
-        int minAmount = Mathf.Max(0, Mathf.RoundToInt((baseMin + bonus) * multiplier));
-        int maxAmount = Mathf.Max(0, Mathf.RoundToInt((baseMax + bonus) * multiplier));
-        return (minAmount, Mathf.Max(minAmount, maxAmount));
+        return resourceType switch
+        {
+            TacticsAbilityResourceType.Mana => "MP",
+            TacticsAbilityResourceType.Stamina => "ST",
+            _ => "resource"
+        };
     }
 
     private static string BuildScalingText(IReadOnlyList<TacticsAbilityScalingDefinitionData> scalingDefinitions)

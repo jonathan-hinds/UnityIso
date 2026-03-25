@@ -154,7 +154,8 @@ public enum TacticsAbilityRangeType
 public enum TacticsAbilityEffectKind
 {
     DealDamage = 0,
-    RestoreHitPoints = 1
+    RestoreHitPoints = 1,
+    RestoreResource = 2
 }
 
 public enum TacticsAbilityDamageType
@@ -201,10 +202,12 @@ public struct TacticsAbilityEffectDefinitionData
     [SerializeField] private TacticsAbilityEffectKind effectKind;
     [SerializeField] private TacticsDealDamageEffectData dealDamage;
     [SerializeField] private TacticsRestoreHitPointsEffectData restoreHitPoints;
+    [SerializeField] private TacticsRestoreResourceEffectData restoreResource;
 
     public TacticsAbilityEffectKind EffectKind => effectKind;
     public TacticsDealDamageEffectData DealDamage => dealDamage;
     public TacticsRestoreHitPointsEffectData RestoreHitPoints => restoreHitPoints;
+    public TacticsRestoreResourceEffectData RestoreResource => restoreResource;
 
     public static TacticsAbilityEffectDefinitionData CreateDealDamage()
     {
@@ -242,10 +245,29 @@ public struct TacticsAbilityEffectDefinitionData
         };
     }
 
+    public static TacticsAbilityEffectDefinitionData CreateRestoreResource()
+    {
+        return new TacticsAbilityEffectDefinitionData
+        {
+            effectKind = TacticsAbilityEffectKind.RestoreResource,
+            restoreResource = TacticsRestoreResourceEffectData.Default()
+        };
+    }
+
+    public static TacticsAbilityEffectDefinitionData CreateRestoreResource(TacticsRestoreResourceEffectData restoreEffect)
+    {
+        return new TacticsAbilityEffectDefinitionData
+        {
+            effectKind = TacticsAbilityEffectKind.RestoreResource,
+            restoreResource = restoreEffect
+        };
+    }
+
     public void Sanitize()
     {
         dealDamage.Sanitize();
         restoreHitPoints.Sanitize();
+        restoreResource.Sanitize();
     }
 }
 
@@ -347,6 +369,66 @@ public struct TacticsRestoreHitPointsEffectData
 }
 
 [Serializable]
+public struct TacticsRestoreResourceEffectData
+{
+    [SerializeField] private TacticsAbilityResourceType resourceType;
+    [SerializeField] private TacticsDamageFormula restoreFormula;
+    [SerializeField, Min(0)] private int flatAmount;
+    [SerializeField, Min(0.01f)] private float bonusMultiplier;
+    [SerializeField] private List<TacticsAbilityScalingDefinitionData> scaling;
+
+    public TacticsAbilityResourceType ResourceType => resourceType;
+    public TacticsDamageFormula RestoreFormula => restoreFormula;
+    public int FlatAmount => Mathf.Max(0, flatAmount);
+    public float BonusMultiplier => bonusMultiplier <= 0f ? 1f : bonusMultiplier;
+    public IReadOnlyList<TacticsAbilityScalingDefinitionData> Scaling => scaling;
+
+    public static TacticsRestoreResourceEffectData Default()
+    {
+        return new TacticsRestoreResourceEffectData
+        {
+            resourceType = TacticsAbilityResourceType.Stamina,
+            restoreFormula = TacticsDamageFormula.FlatValue,
+            flatAmount = 1,
+            bonusMultiplier = 1f,
+            scaling = new List<TacticsAbilityScalingDefinitionData>()
+        };
+    }
+
+    public void Sanitize()
+    {
+        if (resourceType == TacticsAbilityResourceType.None)
+        {
+            resourceType = TacticsAbilityResourceType.Stamina;
+        }
+
+        flatAmount = Mathf.Max(0, flatAmount);
+        bonusMultiplier = bonusMultiplier <= 0f ? 1f : bonusMultiplier;
+        scaling ??= new List<TacticsAbilityScalingDefinitionData>();
+    }
+
+    public static TacticsRestoreResourceEffectData Create(
+        TacticsAbilityResourceType resourceType,
+        TacticsDamageFormula formula,
+        int flatAmount = 0,
+        params TacticsAbilityScalingDefinitionData[] scalingDefinitions)
+    {
+        return new TacticsRestoreResourceEffectData
+        {
+            resourceType = resourceType == TacticsAbilityResourceType.None
+                ? TacticsAbilityResourceType.Stamina
+                : resourceType,
+            restoreFormula = formula,
+            flatAmount = Mathf.Max(0, flatAmount),
+            bonusMultiplier = 1f,
+            scaling = scalingDefinitions != null
+                ? new List<TacticsAbilityScalingDefinitionData>(scalingDefinitions)
+                : new List<TacticsAbilityScalingDefinitionData>()
+        };
+    }
+}
+
+[Serializable]
 public struct TacticsAbilityScalingDefinitionData
 {
     [SerializeField] private TacticsAbilityScalingStat stat;
@@ -401,5 +483,169 @@ public static class TacticsAbilityScalingCalculator
             TacticsAbilityScalingRank.E => 0.15f,
             _ => 0f
         };
+    }
+}
+
+public static class TacticsAbilityEffectMath
+{
+    public static int EvaluateDamageAmount(
+        TacticsCharacterController source,
+        TacticsAbilityDefinition ability,
+        TacticsDealDamageEffectData damage,
+        bool useAverageRoll)
+    {
+        if (source == null)
+        {
+            return 0;
+        }
+
+        float baseAmount = damage.DamageFormula switch
+        {
+            TacticsDamageFormula.FlatValue => damage.FlatAmount,
+            _ => useAverageRoll
+                ? GetAverageBaseDamage(source, ability != null ? ability.DamageType : TacticsAbilityDamageType.Melee)
+                : source.RollBaseDamage(ability != null ? ability.DamageType : TacticsAbilityDamageType.Melee)
+        };
+
+        float scalingBonus = TacticsAbilityScalingCalculator.EvaluateDamageBonus(source, damage.Scaling);
+        return Mathf.Max(0, Mathf.RoundToInt((baseAmount + scalingBonus) * damage.BonusMultiplier));
+    }
+
+    public static int EvaluateRestoreHitPointsAmount(
+        TacticsCharacterController source,
+        TacticsRestoreHitPointsEffectData restoreHitPoints,
+        bool useAverageRoll)
+    {
+        if (source == null)
+        {
+            return 0;
+        }
+
+        float baseAmount = restoreHitPoints.HealingFormula switch
+        {
+            TacticsDamageFormula.AttackerBaseDamage => useAverageRoll
+                ? GetAverageBaseDamage(source, TacticsAbilityDamageType.Magic)
+                : source.RollBaseDamage(TacticsAbilityDamageType.Magic),
+            _ => restoreHitPoints.FlatAmount
+        };
+
+        float scalingBonus = TacticsAbilityScalingCalculator.EvaluateDamageBonus(source, restoreHitPoints.Scaling);
+        return Mathf.Max(0, Mathf.RoundToInt((baseAmount + scalingBonus) * restoreHitPoints.BonusMultiplier));
+    }
+
+    public static int EvaluateRestoreResourceAmount(
+        TacticsCharacterController source,
+        TacticsRestoreResourceEffectData restoreResource,
+        bool useAverageRoll)
+    {
+        if (source == null || restoreResource.ResourceType == TacticsAbilityResourceType.None)
+        {
+            return 0;
+        }
+
+        float baseAmount = restoreResource.RestoreFormula switch
+        {
+            TacticsDamageFormula.AttackerBaseDamage => useAverageRoll
+                ? GetAverageBaseDamage(source, ResolveScalingDamageType(restoreResource.ResourceType))
+                : source.RollBaseDamage(ResolveScalingDamageType(restoreResource.ResourceType)),
+            _ => restoreResource.FlatAmount
+        };
+
+        float scalingBonus = TacticsAbilityScalingCalculator.EvaluateDamageBonus(source, restoreResource.Scaling);
+        return Mathf.Max(0, Mathf.RoundToInt((baseAmount + scalingBonus) * restoreResource.BonusMultiplier));
+    }
+
+    public static (int min, int max) GetDamageAmountRange(
+        TacticsCharacterController source,
+        TacticsAbilityDefinition ability,
+        TacticsDealDamageEffectData damage)
+    {
+        int bonus = source != null
+            ? TacticsAbilityScalingCalculator.EvaluateDamageBonus(source, damage.Scaling)
+            : 0;
+        (int baseMin, int baseMax) = GetBaseAmountRange(
+            source,
+            ability != null ? ability.DamageType : TacticsAbilityDamageType.Melee,
+            damage.DamageFormula,
+            damage.FlatAmount);
+        return ApplyBonusAndMultiplier(baseMin, baseMax, bonus, damage.BonusMultiplier);
+    }
+
+    public static (int min, int max) GetRestoreHitPointsAmountRange(
+        TacticsCharacterController source,
+        TacticsRestoreHitPointsEffectData restoreHitPoints)
+    {
+        int bonus = source != null
+            ? TacticsAbilityScalingCalculator.EvaluateDamageBonus(source, restoreHitPoints.Scaling)
+            : 0;
+        (int baseMin, int baseMax) = GetBaseAmountRange(
+            source,
+            TacticsAbilityDamageType.Magic,
+            restoreHitPoints.HealingFormula,
+            restoreHitPoints.FlatAmount);
+        return ApplyBonusAndMultiplier(baseMin, baseMax, bonus, restoreHitPoints.BonusMultiplier);
+    }
+
+    public static (int min, int max) GetRestoreResourceAmountRange(
+        TacticsCharacterController source,
+        TacticsRestoreResourceEffectData restoreResource)
+    {
+        int bonus = source != null
+            ? TacticsAbilityScalingCalculator.EvaluateDamageBonus(source, restoreResource.Scaling)
+            : 0;
+        (int baseMin, int baseMax) = GetBaseAmountRange(
+            source,
+            ResolveScalingDamageType(restoreResource.ResourceType),
+            restoreResource.RestoreFormula,
+            restoreResource.FlatAmount);
+        return ApplyBonusAndMultiplier(baseMin, baseMax, bonus, restoreResource.BonusMultiplier);
+    }
+
+    public static float GetAverageBaseDamage(TacticsCharacterController source, TacticsAbilityDamageType damageType)
+    {
+        if (source == null)
+        {
+            return 0f;
+        }
+
+        return damageType == TacticsAbilityDamageType.Magic
+            ? (source.BaseMagicDamageMin + source.BaseMagicDamageMax) * 0.5f
+            : (source.BaseMeleeDamageMin + source.BaseMeleeDamageMax) * 0.5f;
+    }
+
+    private static TacticsAbilityDamageType ResolveScalingDamageType(TacticsAbilityResourceType resourceType)
+    {
+        return resourceType == TacticsAbilityResourceType.Mana
+            ? TacticsAbilityDamageType.Magic
+            : TacticsAbilityDamageType.Melee;
+    }
+
+    private static (int min, int max) GetBaseAmountRange(
+        TacticsCharacterController source,
+        TacticsAbilityDamageType damageType,
+        TacticsDamageFormula formula,
+        int flatAmount)
+    {
+        if (formula == TacticsDamageFormula.FlatValue)
+        {
+            int value = Mathf.Max(0, flatAmount);
+            return (value, value);
+        }
+
+        if (source == null)
+        {
+            return (0, 0);
+        }
+
+        return damageType == TacticsAbilityDamageType.Magic
+            ? (Mathf.Max(0, source.BaseMagicDamageMin), Mathf.Max(source.BaseMagicDamageMin, source.BaseMagicDamageMax))
+            : (Mathf.Max(0, source.BaseMeleeDamageMin), Mathf.Max(source.BaseMeleeDamageMin, source.BaseMeleeDamageMax));
+    }
+
+    private static (int min, int max) ApplyBonusAndMultiplier(int baseMin, int baseMax, int bonus, float multiplier)
+    {
+        int minAmount = Mathf.Max(0, Mathf.RoundToInt((baseMin + bonus) * multiplier));
+        int maxAmount = Mathf.Max(0, Mathf.RoundToInt((baseMax + bonus) * multiplier));
+        return (minAmount, Mathf.Max(minAmount, maxAmount));
     }
 }

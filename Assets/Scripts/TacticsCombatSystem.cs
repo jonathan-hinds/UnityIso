@@ -39,6 +39,7 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         abilityCatalog ??= TacticsAbilityCatalogResources.LoadCatalog();
         effectProcessors[TacticsAbilityEffectKind.DealDamage] = new TacticsDealDamageEffectProcessor();
         effectProcessors[TacticsAbilityEffectKind.RestoreHitPoints] = new TacticsRestoreHitPointsEffectProcessor();
+        effectProcessors[TacticsAbilityEffectKind.RestoreResource] = new TacticsRestoreResourceEffectProcessor();
     }
 
     public void AssignMapGenerator(ProceduralIsometricMapGenerator generator)
@@ -859,14 +860,7 @@ public sealed class TacticsDealDamageEffectProcessor : ITacticsAbilityEffectProc
         TacticsAbilityDamageType damageType = context.Ability != null
             ? context.Ability.DamageType
             : TacticsAbilityDamageType.Melee;
-        int amount = damage.DamageFormula switch
-        {
-            TacticsDamageFormula.FlatValue => damage.FlatAmount,
-            _ => context.Source.RollBaseDamage(damageType)
-        };
-
-        amount += TacticsAbilityScalingCalculator.EvaluateDamageBonus(context.Source, damage.Scaling);
-        amount = Mathf.Max(0, Mathf.RoundToInt(amount * damage.BonusMultiplier));
+        int amount = TacticsAbilityEffectMath.EvaluateDamageAmount(context.Source, context.Ability, damage, useAverageRoll: false);
         if (amount <= 0)
         {
             return;
@@ -917,14 +911,7 @@ public sealed class TacticsRestoreHitPointsEffectProcessor : ITacticsAbilityEffe
     public void Apply(TacticsAbilityExecutionContext context, TacticsAbilityEffectDefinitionData effect)
     {
         TacticsRestoreHitPointsEffectData restoreHitPoints = effect.RestoreHitPoints;
-        int amount = restoreHitPoints.HealingFormula switch
-        {
-            TacticsDamageFormula.AttackerBaseDamage => context.Source.RollBaseDamage(TacticsAbilityDamageType.Magic),
-            _ => restoreHitPoints.FlatAmount
-        };
-
-        amount += TacticsAbilityScalingCalculator.EvaluateDamageBonus(context.Source, restoreHitPoints.Scaling);
-        amount = Mathf.Max(0, Mathf.RoundToInt(amount * restoreHitPoints.BonusMultiplier));
+        int amount = TacticsAbilityEffectMath.EvaluateRestoreHitPointsAmount(context.Source, restoreHitPoints, useAverageRoll: false);
         if (amount <= 0)
         {
             return;
@@ -940,6 +927,59 @@ public sealed class TacticsRestoreHitPointsEffectProcessor : ITacticsAbilityEffe
             }
 
             target.RestoreHitPoints(amount);
+        }
+    }
+}
+
+public sealed class TacticsRestoreResourceEffectProcessor : ITacticsAbilityEffectProcessor
+{
+    public bool CanApply(TacticsAbilityExecutionContext context, TacticsAbilityEffectDefinitionData effect)
+    {
+        if (context.Source == null || context.Targets == null || context.Targets.Count == 0)
+        {
+            return false;
+        }
+
+        TacticsAbilityResourceType resourceType = effect.RestoreResource.ResourceType;
+        if (resourceType == TacticsAbilityResourceType.None)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < context.Targets.Count; i++)
+        {
+            TacticsCharacterController target = context.Targets[i];
+            if (target != null &&
+                target.isActiveAndEnabled &&
+                target.IsAlive &&
+                target.GetCurrentResource(resourceType) < target.GetMaxResource(resourceType))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public void Apply(TacticsAbilityExecutionContext context, TacticsAbilityEffectDefinitionData effect)
+    {
+        TacticsRestoreResourceEffectData restoreResource = effect.RestoreResource;
+        int amount = TacticsAbilityEffectMath.EvaluateRestoreResourceAmount(context.Source, restoreResource, useAverageRoll: false);
+        if (amount <= 0)
+        {
+            return;
+        }
+
+        IReadOnlyList<TacticsCharacterController> targets = context.Targets;
+        for (int i = 0; i < targets.Count; i++)
+        {
+            TacticsCharacterController target = targets[i];
+            if (target == null || !target.isActiveAndEnabled || !target.IsAlive)
+            {
+                continue;
+            }
+
+            target.RestoreResource(restoreResource.ResourceType, amount);
         }
     }
 }

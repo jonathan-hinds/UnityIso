@@ -27,6 +27,7 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
     private readonly List<TacticsCharacterController> reusableAlliedTargets = new();
     private readonly List<TacticsCharacterController> reusableAlliedTargetsIncludingSelf = new();
     private string priorityTargetRuntimeCharacterId = string.Empty;
+    private TacticsEnemyStrategicContext strategicContext;
 
     private readonly struct EnemyAbilityPlan
     {
@@ -191,6 +192,8 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
             yield break;
         }
 
+        strategicContext = BuildStrategicContext();
+
         bool attemptedAction = false;
         if (TryBuildPriorityTargetAbilityPlan(out EnemyAbilityPlan priorityPlan))
         {
@@ -233,6 +236,7 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         }
 
         priorityTargetRuntimeCharacterId = string.Empty;
+        strategicContext = null;
 
         while (combatSystem != null && combatSystem.State == TacticsCombatState.ResolvingAbility)
         {
@@ -539,15 +543,18 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         float rangeBias = ability.UsesAbilityRange ? ability.Range * 0.35f : 0f;
         float movementPenalty = requiresMovement ? 0.75f : 0f;
         float distancePenalty = Mathf.Abs(distanceToTarget - preferredDistance) * 1.5f;
+        float coordinationBonus = strategicContext != null
+            ? strategicContext.ScoreFocusFire(sourceTile, target) + strategicContext.ScoreFormation(ability, sourceTile, target)
+            : 0f;
         float selfPreservationBias = character.CurrentHitPoints <= Mathf.CeilToInt(character.MaxHitPoints * 0.35f) &&
-                                     IsHealingAbility(ability)
+                                     IsSupportAbility(ability)
             ? 10f
             : 0f;
         float resourcePenalty = ability.HasResourceCost
             ? (ability.CostAmount / Mathf.Max(1f, character.GetMaxResource(ability.CostResourceType))) * 3f
             : 0f;
 
-        return tacticalValue + rangeBias + selfPreservationBias - movementPenalty - distancePenalty - resourcePenalty;
+        return tacticalValue + coordinationBonus + rangeBias + selfPreservationBias - movementPenalty - distancePenalty - resourcePenalty;
     }
 
     private float EvaluateAbilityTacticalValue(TacticsAbilityDefinition ability, IReadOnlyList<TacticsCharacterController> affectedTargets)
@@ -570,6 +577,10 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
 
                 case TacticsAbilityEffectKind.RestoreHitPoints:
                     totalValue += ScoreHealingEffect(effect.RestoreHitPoints, affectedTargets);
+                    break;
+
+                case TacticsAbilityEffectKind.RestoreResource:
+                    totalValue += ScoreResourceRestoreEffect(effect.RestoreResource, affectedTargets);
                     break;
             }
         }
@@ -638,7 +649,46 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
             float emergencyBonus = GetHealthRatio(target) <= 0.35f ? 16f : 0f;
             float threatBonus = GetNearbyThreatCount(target) * 3.5f;
             float selfPreservationBonus = ReferenceEquals(target, character) ? 6f : 0f;
-            totalValue += effectiveHealing + healthUrgency + emergencyBonus + threatBonus + selfPreservationBonus;
+            float teamBonus = strategicContext != null
+                ? strategicContext.ScoreHealingTarget(target, effectiveHealing, ReferenceEquals(target, character))
+                : 0f;
+            totalValue += effectiveHealing + healthUrgency + emergencyBonus + threatBonus + selfPreservationBonus + teamBonus;
+        }
+
+        return totalValue;
+    }
+
+    private float ScoreResourceRestoreEffect(
+        TacticsRestoreResourceEffectData restoreResource,
+        IReadOnlyList<TacticsCharacterController> affectedTargets)
+    {
+        float averageRestore = GetAverageRestoreResourceAmount(restoreResource);
+        if (averageRestore <= 0f || restoreResource.ResourceType == TacticsAbilityResourceType.None)
+        {
+            return 0f;
+        }
+
+        float totalValue = 0f;
+        for (int i = 0; i < affectedTargets.Count; i++)
+        {
+            TacticsCharacterController target = affectedTargets[i];
+            if (target == null || !target.IsAlive)
+            {
+                continue;
+            }
+
+            int missingResource = target.GetMissingResource(restoreResource.ResourceType);
+            if (missingResource <= 0)
+            {
+                continue;
+            }
+
+            float effectiveRestore = Mathf.Min(missingResource, averageRestore);
+            float urgency = GetResourceRatio(target, restoreResource.ResourceType) <= 0.35f ? 12f : 0f;
+            float teamBonus = strategicContext != null
+                ? strategicContext.ScoreResourceSupportTarget(target, restoreResource.ResourceType, effectiveRestore, ReferenceEquals(target, character))
+                : 0f;
+            totalValue += effectiveRestore + urgency + teamBonus;
         }
 
         return totalValue;
@@ -646,31 +696,17 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
 
     private float GetAverageDamageAmount(TacticsAbilityDefinition ability, TacticsDealDamageEffectData damage)
     {
-        if (ability == null || character == null)
-        {
-            return 0f;
-        }
-
-        float baseDamage = ability.DamageType == TacticsAbilityDamageType.Magic
-            ? (character.BaseMagicDamageMin + character.BaseMagicDamageMax) * 0.5f
-            : (character.BaseMeleeDamageMin + character.BaseMeleeDamageMax) * 0.5f;
-        float effectBase = damage.DamageFormula == TacticsDamageFormula.FlatValue ? damage.FlatAmount : baseDamage;
-        float scalingBonus = TacticsAbilityScalingCalculator.EvaluateDamageBonus(character, damage.Scaling);
-        return Mathf.Max(0f, (effectBase + scalingBonus) * damage.BonusMultiplier);
+        return TacticsAbilityEffectMath.EvaluateDamageAmount(character, ability, damage, useAverageRoll: true);
     }
 
     private float GetAverageHealingAmount(TacticsRestoreHitPointsEffectData restoreHitPoints)
     {
-        if (character == null)
-        {
-            return 0f;
-        }
+        return TacticsAbilityEffectMath.EvaluateRestoreHitPointsAmount(character, restoreHitPoints, useAverageRoll: true);
+    }
 
-        float effectBase = restoreHitPoints.HealingFormula == TacticsDamageFormula.AttackerBaseDamage
-            ? (character.BaseMagicDamageMin + character.BaseMagicDamageMax) * 0.5f
-            : restoreHitPoints.FlatAmount;
-        float scalingBonus = TacticsAbilityScalingCalculator.EvaluateDamageBonus(character, restoreHitPoints.Scaling);
-        return Mathf.Max(0f, (effectBase + scalingBonus) * restoreHitPoints.BonusMultiplier);
+    private float GetAverageRestoreResourceAmount(TacticsRestoreResourceEffectData restoreResource)
+    {
+        return TacticsAbilityEffectMath.EvaluateRestoreResourceAmount(character, restoreResource, useAverageRoll: true);
     }
 
     private float GetBestAbilityOpportunityScore(Vector2Int sourceTile)
@@ -698,9 +734,15 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         float anchorDistance = anchorTarget != null ? GetTileDistance(sourceTile, anchorTarget.GridPosition) : 0f;
         float hostilePressure = ScorePressurePosition(sourceTile);
         float supportPressure = ScoreSupportPosition(sourceTile);
+        float teamCoordination = strategicContext != null
+            ? strategicContext.ScoreSupportPosition(sourceTile, HasHealingAbility(), HasResourceRestoreAbility()) +
+              strategicContext.ScoreFormation(null, sourceTile, anchorTarget) +
+              (anchorTarget != null ? strategicContext.ScoreFocusFire(sourceTile, anchorTarget) : 0f)
+            : 0f;
         return immediateOpportunityScore +
                hostilePressure +
-               supportPressure -
+               supportPressure +
+               teamCoordination -
                (anchorDistance * 0.2f) -
                (pathIndex * 0.05f);
     }
@@ -721,7 +763,7 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
 
     private float ScoreSupportPosition(Vector2Int sourceTile)
     {
-        if (!HasHealingAbility())
+        if (!HasHealingAbility() && !HasResourceRestoreAbility())
         {
             return 0f;
         }
@@ -740,6 +782,34 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
             float distance = GetTileDistance(sourceTile, ally.GridPosition);
             float urgency = (1f - GetHealthRatio(ally)) * 8f;
             bestScore = Mathf.Max(bestScore, urgency + (missingHitPoints * 0.15f) - (distance * 0.2f));
+        }
+
+        if (HasResourceRestoreAbility())
+        {
+            for (int i = 0; i < allies.Count; i++)
+            {
+                TacticsCharacterController ally = allies[i];
+                float staminaNeed = 0f;
+                if (ally != null && ally.MaxStamina > 0)
+                {
+                    staminaNeed = (1f - GetResourceRatio(ally, TacticsAbilityResourceType.Stamina)) * 6f;
+                }
+
+                float manaNeed = 0f;
+                if (ally != null && ally.MaxMana > 0)
+                {
+                    manaNeed = (1f - GetResourceRatio(ally, TacticsAbilityResourceType.Mana)) * 6f;
+                }
+
+                float bestNeed = Mathf.Max(staminaNeed, manaNeed);
+                if (bestNeed <= 0f)
+                {
+                    continue;
+                }
+
+                float distance = GetTileDistance(sourceTile, ally.GridPosition);
+                bestScore = Mathf.Max(bestScore, bestNeed - (distance * 0.2f));
+            }
         }
 
         return bestScore;
@@ -793,9 +863,14 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         reusableAnchorTargets.Clear();
         AddTargetsIfMissing(reusableAnchorTargets, GetHostileTargets());
         AddTargetsIfMissing(reusableAnchorTargets, GetAlliedTargets(includeSelf: false));
-        if (HasHealingAbility())
+        if (HasHealingAbility() || HasResourceRestoreAbility())
         {
             AddTargetsIfMissing(reusableAnchorTargets, GetAlliedTargets(includeSelf: true));
+        }
+
+        if (strategicContext != null && strategicContext.FocusTarget != null && !reusableAnchorTargets.Contains(strategicContext.FocusTarget))
+        {
+            reusableAnchorTargets.Add(strategicContext.FocusTarget);
         }
 
         return reusableAnchorTargets;
@@ -878,6 +953,25 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         return false;
     }
 
+    private bool HasResourceRestoreAbility()
+    {
+        IReadOnlyList<TacticsAbilityDefinition> abilities = character != null ? character.Abilities : null;
+        if (abilities == null)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < abilities.Count; i++)
+        {
+            if (IsResourceRestoreAbility(abilities[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static bool IsHealingAbility(TacticsAbilityDefinition ability)
     {
         if (ability == null)
@@ -895,6 +989,30 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         }
 
         return false;
+    }
+
+    private static bool IsResourceRestoreAbility(TacticsAbilityDefinition ability)
+    {
+        if (ability == null)
+        {
+            return false;
+        }
+
+        IReadOnlyList<TacticsAbilityEffectDefinitionData> effects = ability.Effects;
+        for (int i = 0; i < effects.Count; i++)
+        {
+            if (effects[i].EffectKind == TacticsAbilityEffectKind.RestoreResource)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsSupportAbility(TacticsAbilityDefinition ability)
+    {
+        return IsHealingAbility(ability) || IsResourceRestoreAbility(ability);
     }
 
     private int GetNearbyThreatCount(TacticsCharacterController target)
@@ -926,6 +1044,29 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         }
 
         return Mathf.Clamp01(target.CurrentHitPoints / (float)target.MaxHitPoints);
+    }
+
+    private static float GetResourceRatio(TacticsCharacterController target, TacticsAbilityResourceType resourceType)
+    {
+        if (target == null)
+        {
+            return 0f;
+        }
+
+        int maxResource = target.GetMaxResource(resourceType);
+        if (maxResource <= 0)
+        {
+            return 0f;
+        }
+
+        return Mathf.Clamp01(target.GetCurrentResource(resourceType) / (float)maxResource);
+    }
+
+    private TacticsEnemyStrategicContext BuildStrategicContext()
+    {
+        return character != null && characterRegistry != null
+            ? new TacticsEnemyStrategicContext(character, characterRegistry)
+            : null;
     }
 
     private static void AddTargetsIfMissing(List<TacticsCharacterController> destination, List<TacticsCharacterController> source)
@@ -982,5 +1123,432 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         return coopSessionCoordinator != null
             ? coopSessionCoordinator.RequestEndTurn(character)
             : character.TryEndTurn();
+    }
+}
+
+public sealed class TacticsEnemyStrategicContext
+{
+    private readonly TacticsCharacterController actor;
+    private readonly List<TacticsCharacterController> allies = new();
+    private readonly List<TacticsCharacterController> hostiles = new();
+
+    public TacticsEnemyStrategicContext(TacticsCharacterController actor, TacticsCharacterRegistry registry)
+    {
+        this.actor = actor;
+
+        if (actor == null || registry == null)
+        {
+            return;
+        }
+
+        registry.GetAlliedCharacters(actor, includeSelf: true, allies);
+        registry.GetHostileCharacters(actor, hostiles);
+        FocusTarget = ResolveFocusTarget();
+    }
+
+    public IReadOnlyList<TacticsCharacterController> Allies => allies;
+    public IReadOnlyList<TacticsCharacterController> Hostiles => hostiles;
+    public TacticsCharacterController FocusTarget { get; }
+
+    public float ScoreFocusFire(Vector2Int sourceTile, TacticsCharacterController target)
+    {
+        if (actor == null || target == null || target.Team == actor.Team)
+        {
+            return 0f;
+        }
+
+        float score = ReferenceEquals(target, FocusTarget) ? 10f : 0f;
+        score += CountAlliesThreateningTarget(target) * 2.5f;
+        score -= GetTileDistance(sourceTile, target.GridPosition) * 0.15f;
+        return score;
+    }
+
+    public float ScoreFormation(TacticsAbilityDefinition ability, Vector2Int sourceTile, TacticsCharacterController primaryTarget)
+    {
+        if (actor == null)
+        {
+            return 0f;
+        }
+
+        float preferredDistance = GetPreferredCombatDistance(actor);
+        bool actorIsBackliner = preferredDistance > 1.5f || IsSupportUnit(actor);
+        float bestScore = 0f;
+
+        for (int i = 0; i < allies.Count; i++)
+        {
+            TacticsCharacterController ally = allies[i];
+            if (ally == null || ReferenceEquals(ally, actor))
+            {
+                continue;
+            }
+
+            float allyPreferredDistance = GetPreferredCombatDistance(ally);
+            bool allyIsFrontliner = allyPreferredDistance <= 1.5f && !IsSupportUnit(ally);
+            bool complementaryPair = actorIsBackliner ? allyIsFrontliner : (allyPreferredDistance > 1.5f || IsSupportUnit(ally));
+            if (!complementaryPair)
+            {
+                continue;
+            }
+
+            int allyDistance = GetTileDistance(sourceTile, ally.GridPosition);
+            float distanceScore = actorIsBackliner
+                ? Mathf.Clamp(4f - Mathf.Abs(allyDistance - 3f), -2f, 4f)
+                : Mathf.Clamp(3f - Mathf.Abs(allyDistance - 2f), -2f, 3f);
+            float sharedPressureBonus = 0f;
+            if (primaryTarget != null && primaryTarget.Team != actor.Team)
+            {
+                int allyTargetDistance = GetTileDistance(ally.GridPosition, primaryTarget.GridPosition);
+                sharedPressureBonus = Mathf.Max(0f, 3f - (allyTargetDistance * 0.5f));
+            }
+
+            bestScore = Mathf.Max(bestScore, distanceScore + sharedPressureBonus);
+        }
+
+        return bestScore;
+    }
+
+    public float ScoreSupportPosition(Vector2Int sourceTile, bool canRestoreHitPoints, bool canRestoreResources)
+    {
+        if (!canRestoreHitPoints && !canRestoreResources)
+        {
+            return 0f;
+        }
+
+        float bestScore = 0f;
+        for (int i = 0; i < allies.Count; i++)
+        {
+            TacticsCharacterController ally = allies[i];
+            if (ally == null)
+            {
+                continue;
+            }
+
+            float needScore = 0f;
+            if (canRestoreHitPoints)
+            {
+                needScore += (1f - GetHealthRatio(ally)) * 8f;
+            }
+
+            if (canRestoreResources)
+            {
+                needScore += Mathf.Max(
+                    ScoreResourceNeed(ally, TacticsAbilityResourceType.Stamina, restoredAmount: 0f),
+                    ScoreResourceNeed(ally, TacticsAbilityResourceType.Mana, restoredAmount: 0f));
+            }
+
+            if (needScore <= 0f)
+            {
+                continue;
+            }
+
+            float distance = GetTileDistance(sourceTile, ally.GridPosition);
+            bestScore = Mathf.Max(bestScore, needScore - (distance * 0.35f));
+        }
+
+        return bestScore;
+    }
+
+    public float ScoreHealingTarget(TacticsCharacterController target, float effectiveHealing, bool isSelfTarget)
+    {
+        if (target == null || target.Team != actor.Team || effectiveHealing <= 0f)
+        {
+            return 0f;
+        }
+
+        float healthUrgency = (1f - GetHealthRatio(target)) * 14f;
+        float offensiveValue = GetOffensivePotential(target) * 0.15f;
+        float threatBonus = CountNearbyHostiles(target) * 2.25f;
+        float selfBonus = isSelfTarget ? 5f : 2f;
+        return effectiveHealing + healthUrgency + offensiveValue + threatBonus + selfBonus;
+    }
+
+    public float ScoreResourceSupportTarget(
+        TacticsCharacterController target,
+        TacticsAbilityResourceType resourceType,
+        float restoredAmount,
+        bool isSelfTarget)
+    {
+        if (target == null || target.Team != actor.Team || resourceType == TacticsAbilityResourceType.None)
+        {
+            return 0f;
+        }
+
+        return ScoreResourceNeed(target, resourceType, restoredAmount) + (isSelfTarget ? 3f : 1.5f);
+    }
+
+    private TacticsCharacterController ResolveFocusTarget()
+    {
+        TacticsCharacterController bestTarget = null;
+        float bestScore = float.MinValue;
+
+        for (int i = 0; i < hostiles.Count; i++)
+        {
+            TacticsCharacterController hostile = hostiles[i];
+            if (hostile == null)
+            {
+                continue;
+            }
+
+            float score = (1f - GetHealthRatio(hostile)) * 18f;
+            score += GetOffensivePotential(hostile) * 0.2f;
+            score += CountAlliesThreateningTarget(hostile) * 2f;
+            score -= GetTileDistance(actor.GridPosition, hostile.GridPosition) * 0.1f;
+            if (score > bestScore)
+            {
+                bestScore = score;
+                bestTarget = hostile;
+            }
+        }
+
+        return bestTarget;
+    }
+
+    private float ScoreResourceNeed(TacticsCharacterController target, TacticsAbilityResourceType resourceType, float restoredAmount)
+    {
+        int maxResource = target.GetMaxResource(resourceType);
+        if (maxResource <= 0)
+        {
+            return 0f;
+        }
+
+        int currentResource = target.GetCurrentResource(resourceType);
+        int missingResource = target.GetMissingResource(resourceType);
+        if (missingResource <= 0 && restoredAmount <= 0f)
+        {
+            return 0f;
+        }
+
+        float effectiveRestore = restoredAmount > 0f ? Mathf.Min(missingResource, restoredAmount) : missingResource;
+        float spenderProfile = GetResourceSpendProfile(target, resourceType);
+        float unlockBonus = GetUnlockedAbilityBonus(target, resourceType, currentResource, currentResource + Mathf.RoundToInt(restoredAmount));
+        float pressureBonus = GetOffensivePotential(target) * 0.12f;
+        float urgency = (missingResource / (float)maxResource) * 12f;
+        return effectiveRestore * 0.4f + spenderProfile * 0.16f + unlockBonus + pressureBonus + urgency;
+    }
+
+    private float GetUnlockedAbilityBonus(
+        TacticsCharacterController target,
+        TacticsAbilityResourceType resourceType,
+        int beforeAmount,
+        int afterAmount)
+    {
+        float bestBonus = 0f;
+        IReadOnlyList<TacticsAbilityDefinition> abilities = target != null ? target.Abilities : null;
+        if (abilities == null)
+        {
+            return 0f;
+        }
+
+        for (int i = 0; i < abilities.Count; i++)
+        {
+            TacticsAbilityDefinition ability = abilities[i];
+            if (ability == null ||
+                ability.CostResourceType != resourceType ||
+                ability.CostAmount <= beforeAmount ||
+                ability.CostAmount > afterAmount)
+            {
+                continue;
+            }
+
+            bestBonus = Mathf.Max(bestBonus, GetAbilityStrategicValue(target, ability) * 0.45f + 5f);
+        }
+
+        return bestBonus;
+    }
+
+    private float GetResourceSpendProfile(TacticsCharacterController target, TacticsAbilityResourceType resourceType)
+    {
+        float profile = 0f;
+        IReadOnlyList<TacticsAbilityDefinition> abilities = target != null ? target.Abilities : null;
+        if (abilities == null)
+        {
+            return 0f;
+        }
+
+        for (int i = 0; i < abilities.Count; i++)
+        {
+            TacticsAbilityDefinition ability = abilities[i];
+            if (ability == null || ability.CostResourceType != resourceType || ability.CostAmount <= 0)
+            {
+                continue;
+            }
+
+            profile += ability.CostAmount + (GetAbilityStrategicValue(target, ability) * 0.35f);
+        }
+
+        return profile;
+    }
+
+    private float GetAbilityStrategicValue(TacticsCharacterController unit, TacticsAbilityDefinition ability)
+    {
+        if (unit == null || ability == null)
+        {
+            return 0f;
+        }
+
+        float value = 0f;
+        IReadOnlyList<TacticsAbilityEffectDefinitionData> effects = ability.Effects;
+        for (int i = 0; i < effects.Count; i++)
+        {
+            TacticsAbilityEffectDefinitionData effect = effects[i];
+            switch (effect.EffectKind)
+            {
+                case TacticsAbilityEffectKind.DealDamage:
+                    value += TacticsAbilityEffectMath.EvaluateDamageAmount(unit, ability, effect.DealDamage, useAverageRoll: true);
+                    break;
+
+                case TacticsAbilityEffectKind.RestoreHitPoints:
+                    value += TacticsAbilityEffectMath.EvaluateRestoreHitPointsAmount(unit, effect.RestoreHitPoints, useAverageRoll: true) * 0.85f;
+                    break;
+
+                case TacticsAbilityEffectKind.RestoreResource:
+                    value += TacticsAbilityEffectMath.EvaluateRestoreResourceAmount(unit, effect.RestoreResource, useAverageRoll: true) * 0.75f;
+                    break;
+            }
+        }
+
+        if (ability.UsesAreaOfEffect)
+        {
+            value += ability.AreaOfEffectSize * 0.5f;
+        }
+
+        return value;
+    }
+
+    private float GetOffensivePotential(TacticsCharacterController unit)
+    {
+        IReadOnlyList<TacticsAbilityDefinition> abilities = unit != null ? unit.Abilities : null;
+        if (abilities == null || abilities.Count == 0)
+        {
+            return 0f;
+        }
+
+        float bestValue = 0f;
+        for (int i = 0; i < abilities.Count; i++)
+        {
+            TacticsAbilityDefinition ability = abilities[i];
+            if (ability == null)
+            {
+                continue;
+            }
+
+            float abilityValue = 0f;
+            IReadOnlyList<TacticsAbilityEffectDefinitionData> effects = ability.Effects;
+            for (int effectIndex = 0; effectIndex < effects.Count; effectIndex++)
+            {
+                TacticsAbilityEffectDefinitionData effect = effects[effectIndex];
+                if (effect.EffectKind == TacticsAbilityEffectKind.DealDamage)
+                {
+                    abilityValue += TacticsAbilityEffectMath.EvaluateDamageAmount(unit, ability, effect.DealDamage, useAverageRoll: true);
+                }
+            }
+
+            bestValue = Mathf.Max(bestValue, abilityValue);
+        }
+
+        return bestValue;
+    }
+
+    private int CountAlliesThreateningTarget(TacticsCharacterController target)
+    {
+        int count = 0;
+        for (int i = 0; i < allies.Count; i++)
+        {
+            TacticsCharacterController ally = allies[i];
+            if (ally == null)
+            {
+                continue;
+            }
+
+            int preferredDistance = Mathf.RoundToInt(GetPreferredCombatDistance(ally));
+            if (GetTileDistance(ally.GridPosition, target.GridPosition) <= Mathf.Max(1, preferredDistance + ally.MoveRange))
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    private int CountNearbyHostiles(TacticsCharacterController target)
+    {
+        int count = 0;
+        for (int i = 0; i < hostiles.Count; i++)
+        {
+            TacticsCharacterController hostile = hostiles[i];
+            if (hostile != null && GetTileDistance(hostile.GridPosition, target.GridPosition) <= hostile.MoveRange + 1)
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    private static bool IsSupportUnit(TacticsCharacterController unit)
+    {
+        IReadOnlyList<TacticsAbilityDefinition> abilities = unit != null ? unit.Abilities : null;
+        if (abilities == null)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < abilities.Count; i++)
+        {
+            TacticsAbilityDefinition ability = abilities[i];
+            if (ability == null)
+            {
+                continue;
+            }
+
+            IReadOnlyList<TacticsAbilityEffectDefinitionData> effects = ability.Effects;
+            for (int effectIndex = 0; effectIndex < effects.Count; effectIndex++)
+            {
+                if (effects[effectIndex].EffectKind is TacticsAbilityEffectKind.RestoreHitPoints or TacticsAbilityEffectKind.RestoreResource)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static float GetPreferredCombatDistance(TacticsCharacterController unit)
+    {
+        IReadOnlyList<TacticsAbilityDefinition> abilities = unit != null ? unit.Abilities : null;
+        if (abilities == null || abilities.Count == 0)
+        {
+            return 1f;
+        }
+
+        float preferredDistance = 1f;
+        for (int i = 0; i < abilities.Count; i++)
+        {
+            TacticsAbilityDefinition ability = abilities[i];
+            if (ability == null)
+            {
+                continue;
+            }
+
+            preferredDistance = Mathf.Max(preferredDistance, ability.UsesAbilityRange ? Mathf.Max(2f, ability.Range - 1) : 1f);
+        }
+
+        return preferredDistance;
+    }
+
+    private static int GetTileDistance(Vector2Int source, Vector2Int target)
+    {
+        return Mathf.Abs(source.x - target.x) + Mathf.Abs(source.y - target.y);
+    }
+
+    private static float GetHealthRatio(TacticsCharacterController target)
+    {
+        if (target == null || target.MaxHitPoints <= 0)
+        {
+            return 0f;
+        }
+
+        return Mathf.Clamp01(target.CurrentHitPoints / (float)target.MaxHitPoints);
     }
 }

@@ -68,6 +68,16 @@ public sealed class TacticsCombatTextSystem : MonoBehaviour
         Instance.SpawnHealingNumber(target, amount);
     }
 
+    public static void ShowResourceRestore(ITacticsCombatTextAnchor target, TacticsAbilityResourceType resourceType, int amount)
+    {
+        if (target == null || amount <= 0 || resourceType == TacticsAbilityResourceType.None)
+        {
+            return;
+        }
+
+        Instance.SpawnResourceRestoreNumber(target, resourceType, amount);
+    }
+
     public static void ShowExperienceReward(ITacticsCombatTextAnchor target, int amount)
     {
         if (target == null || amount <= 0)
@@ -96,6 +106,18 @@ public sealed class TacticsCombatTextSystem : MonoBehaviour
     private void SpawnHealingNumber(ITacticsCombatTextAnchor target, int amount)
     {
         SpawnText(target, $"+{amount}", new Color(0.54f, 0.9f, 0.5f, 1f), new Color(0.08f, 0.25f, 0.08f, 1f));
+    }
+
+    private void SpawnResourceRestoreNumber(ITacticsCombatTextAnchor target, TacticsAbilityResourceType resourceType, int amount)
+    {
+        string label = resourceType == TacticsAbilityResourceType.Mana ? "MP" : "ST";
+        Color fillColor = resourceType == TacticsAbilityResourceType.Mana
+            ? new Color(0.45f, 0.8f, 1f, 1f)
+            : new Color(0.68f, 0.92f, 0.46f, 1f);
+        Color outlineColor = resourceType == TacticsAbilityResourceType.Mana
+            ? new Color(0.07f, 0.18f, 0.34f, 1f)
+            : new Color(0.12f, 0.24f, 0.08f, 1f);
+        SpawnText(target, $"+{amount} {label}", fillColor, outlineColor);
     }
 
     private void SpawnText(
