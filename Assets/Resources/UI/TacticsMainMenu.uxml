@@ -10,21 +10,60 @@
                     <ui:Label name="chapter-label" class="chapter-label" text="TACTICAL CHRONICLE" />
                     <ui:VisualElement name="crest-line" class="crest-line" />
                     <ui:Label name="title-label" class="title-label" text="ISOMETRIC RPG" />
-                    <ui:Label name="subtitle-label" class="subtitle-label" text="A slim, luminous battlefield overture" />
+                    <ui:Label name="subtitle-label" class="subtitle-label" text="A sleek war-room overture for duels, alliances, and the party you carry into battle." />
                 </ui:VisualElement>
 
-                <ui:VisualElement name="command-panel" class="command-panel">
-                    <ui:Label name="command-heading" class="command-heading" text="Main Menu" />
-                    <ui:Label name="command-copy" class="command-copy" text="Assemble your vanguard, launch solo, or open an online co-op session for two allied parties." />
-                    <ui:Label name="team-summary-label" class="team-summary-label" text="Current Team:" />
-                    <ui:Button name="edit-team-button" class="menu-button menu-button--secondary" text="Edit Team" />
-                    <ui:Button name="play-button" class="menu-button menu-button--primary" text="Single Player" />
-                    <ui:Label name="network-section-label" class="network-section-label" text="Online Co-op" />
-                    <ui:TextField name="join-address-field" class="join-address-field" label="Relay Join Code" value="" />
-                    <ui:Button name="host-online-button" class="menu-button menu-button--primary" text="Host Online Co-op" />
-                    <ui:Button name="join-online-button" class="menu-button menu-button--secondary" text="Join Online Co-op" />
-                    <ui:Button name="quit-button" class="menu-button menu-button--secondary" text="Quit Game" />
-                    <ui:Label name="status-label" class="status-label" text="" />
+                <ui:VisualElement class="main-stage">
+                    <ui:VisualElement name="landing-panel" class="command-panel flow-panel">
+                        <ui:Label class="command-heading" text="Select Mode" />
+                        <ui:Label class="command-copy" text="Choose a solo campaign route or step into online co-op. Each path keeps its own party flow and battle prep." />
+                        <ui:Button name="single-player-mode-button" class="menu-button menu-button--primary" text="Single Player" />
+                        <ui:Button name="online-coop-mode-button" class="menu-button menu-button--secondary" text="Online Co-op" />
+                    </ui:VisualElement>
+
+                    <ui:VisualElement name="single-player-panel" class="command-panel flow-panel" style="display: none;">
+                        <ui:VisualElement class="panel-topbar">
+                            <ui:Button name="single-player-back-button" class="menu-button menu-button--secondary menu-button--compact menu-button--chrome" text="Back" />
+                            <ui:Label class="panel-kicker" text="Single Player" />
+                        </ui:VisualElement>
+                        <ui:Label class="command-heading" text="Solo Command" />
+                        <ui:Label class="command-copy" text="Tune your formation, then move straight into a local match with the current procedural battlefield settings." />
+                        <ui:Label name="team-summary-label" class="team-summary-label" text="Local Team:" />
+                        <ui:Button name="edit-team-button" class="menu-button menu-button--secondary" text="Edit Team" />
+                        <ui:Button name="play-button" class="menu-button menu-button--primary" text="Play Match" />
+                    </ui:VisualElement>
+
+                    <ui:VisualElement name="online-panel" class="command-panel flow-panel" style="display: none;">
+                        <ui:VisualElement class="panel-topbar">
+                            <ui:Button name="online-back-button" class="menu-button menu-button--secondary menu-button--compact menu-button--chrome" text="Back" />
+                            <ui:Label class="panel-kicker" text="Online Co-op" />
+                        </ui:VisualElement>
+                        <ui:Label class="command-heading" text="Alliance Network" />
+                        <ui:Label class="command-copy" text="Manage your cloud-backed party, host a relay match, or join an ally with their party code." />
+                        <ui:Label name="online-team-summary-label" class="team-summary-label" text="Online Team:" />
+                        <ui:Button name="edit-online-team-button" class="menu-button menu-button--secondary" text="Edit Team" />
+                        <ui:TextField name="join-address-field" class="join-address-field join-address-field--stacked" label="Enter Party Code" value="" />
+                        <ui:Button name="host-online-button" class="menu-button menu-button--primary" text="Host Match" />
+                        <ui:Button name="join-online-button" class="menu-button menu-button--secondary" text="Join Match" />
+                    </ui:VisualElement>
+
+                    <ui:Label name="status-label" class="status-label status-label--main" text="" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <ui:VisualElement name="auth-dialog-overlay" class="auth-overlay" style="display: none;">
+                <ui:VisualElement name="auth-dialog" class="auth-dialog">
+                    <ui:Label class="auth-dialog-kicker" text="Online Co-op" />
+                    <ui:Label class="auth-dialog-title" text="Sign In Or Register" />
+                    <ui:Label class="auth-dialog-copy" text="Use your player account to sync your online party, host matches, and join an ally by party code." />
+                    <ui:TextField name="account-username-field" class="join-address-field auth-field" label="Username" value="" />
+                    <ui:TextField name="account-password-field" class="join-address-field auth-field" label="Password" value="" />
+                    <ui:Label name="account-status-label" class="account-status-label" text="" />
+                    <ui:VisualElement class="auth-button-row">
+                        <ui:Button name="account-sign-in-button" class="menu-button menu-button--primary menu-button--compact auth-button" text="Sign In" />
+                        <ui:Button name="account-register-button" class="menu-button menu-button--secondary menu-button--compact auth-button" text="Register" />
+                    </ui:VisualElement>
+                    <ui:Button name="auth-cancel-button" class="menu-button menu-button--secondary menu-button--compact auth-cancel-button" text="Cancel" />
                 </ui:VisualElement>
             </ui:VisualElement>
 
@@ -44,7 +83,7 @@
                 <ui:VisualElement class="host-setup-content">
                     <ui:VisualElement class="host-intro-panel">
                         <ui:Label class="section-label" text="Co-op Match Configuration" />
-                        <ui:Label class="section-copy" text="Shape the battlefield before the relay opens. Every field defaults to the current procedural map generator so the host can quickly tweak, lock in, and publish a single authoritative battle setup." />
+                        <ui:Label class="section-copy" text="Shape the battlefield before the relay opens. The host publishes one authoritative battle setup so both allied parties enter the same encounter." />
                     </ui:VisualElement>
 
                     <ui:VisualElement class="host-grid">
@@ -106,7 +145,7 @@
 
                     <ui:VisualElement class="editor-section editor-section--roster">
                         <ui:Label class="section-label" text="Available Operatives" />
-                        <ui:Label class="section-copy" text="Hover any operative to preview a southwest run cycle on the same isometric tile language used by the map generator." />
+                        <ui:Label class="section-copy" text="Hover any operative to preview a southwest run cycle on the same isometric tile language used by the battlefield." />
                         <ui:ScrollView name="roster-scroll-view" class="roster-scroll-view" mode="Vertical">
                             <ui:VisualElement name="character-grid-container" class="character-grid-container" />
                         </ui:ScrollView>

@@ -2,13 +2,13 @@
     --menu-ink: rgba(243, 242, 235, 1);
     --menu-soft-ink: rgba(203, 208, 214, 0.82);
     --menu-gold: rgba(194, 164, 104, 1);
-    --menu-gold-soft: rgba(194, 164, 104, 0.28);
+    --menu-gold-soft: rgba(194, 164, 104, 0.22);
     --menu-panel: rgba(10, 16, 28, 0.78);
-    --menu-panel-strong: rgba(8, 14, 24, 0.88);
+    --menu-panel-strong: rgba(8, 14, 24, 0.92);
     --menu-panel-soft: rgba(255, 255, 255, 0.04);
     --menu-border: rgba(255, 255, 255, 0.10);
     --menu-border-strong: rgba(216, 192, 140, 0.58);
-    --menu-accent: rgba(53, 74, 98, 0.98);
+    --menu-accent: rgba(46, 66, 92, 0.98);
 }
 
 .menu-root {
@@ -68,7 +68,7 @@
 }
 
 .crest-column {
-    width: 56%;
+    width: 58%;
     justify-content: center;
     padding-left: 56px;
     padding-right: 56px;
@@ -103,18 +103,26 @@
     color: var(--menu-soft-ink);
     font-size: 18px;
     letter-spacing: 3px;
-    width: 520px;
+    width: 560px;
     white-space: normal;
 }
 
-.command-panel {
-    width: 460px;
+.main-stage {
+    width: 470px;
     align-self: center;
     margin-right: 36px;
+    justify-content: center;
+}
+
+.flow-panel {
+    align-self: stretch;
+}
+
+.command-panel {
     padding-left: 34px;
     padding-right: 34px;
-    padding-top: 34px;
-    padding-bottom: 30px;
+    padding-top: 32px;
+    padding-bottom: 28px;
     border-top-width: 1px;
     border-bottom-width: 1px;
     border-left-width: 1px;
@@ -124,6 +132,20 @@
     border-left-color: rgba(255, 255, 255, 0.08);
     border-right-color: rgba(255, 255, 255, 0.08);
     background-color: var(--menu-panel);
+}
+
+.panel-topbar {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 18px;
+}
+
+.panel-kicker {
+    color: rgba(194, 164, 104, 0.92);
+    font-size: 12px;
+    -unity-font-style: bold;
+    letter-spacing: 4px;
 }
 
 .command-heading {
@@ -136,13 +158,15 @@
 
 .command-copy,
 .editor-copy,
-.section-copy {
+.section-copy,
+.auth-dialog-copy {
     color: var(--menu-soft-ink);
     font-size: 14px;
     white-space: normal;
 }
 
-.command-copy {
+.command-copy,
+.auth-dialog-copy {
     margin-bottom: 24px;
 }
 
@@ -150,17 +174,8 @@
     color: rgba(194, 164, 104, 0.92);
     font-size: 13px;
     letter-spacing: 2px;
-    margin-bottom: 20px;
+    margin-bottom: 18px;
     white-space: normal;
-}
-
-.network-section-label {
-    color: var(--menu-ink);
-    font-size: 13px;
-    -unity-font-style: bold;
-    letter-spacing: 3px;
-    margin-top: 10px;
-    margin-bottom: 10px;
 }
 
 .join-address-field {
@@ -168,13 +183,23 @@
     color: var(--menu-ink);
 }
 
-.join-address-field .unity-base-text-field__label {
+.join-address-field--stacked {
+    margin-top: 4px;
+}
+
+.join-address-field .unity-base-field__label,
+.host-number-field .unity-base-field__label,
+.host-enemy-count-field .unity-base-field__label,
+.host-enemy-dropdown .unity-base-field__label {
     min-width: 118px;
     color: var(--menu-soft-ink);
     letter-spacing: 1px;
 }
 
-.join-address-field .unity-base-text-field__input {
+.join-address-field .unity-base-text-field__input,
+.host-number-field .unity-base-text-field__input,
+.host-enemy-count-field .unity-base-text-field__input,
+.host-enemy-dropdown .unity-base-popup-field__input {
     height: 40px;
     color: var(--menu-ink);
     background-color: rgba(16, 24, 38, 0.94);
@@ -235,16 +260,90 @@
     margin-bottom: 0;
 }
 
+.menu-button--chrome {
+    min-width: 108px;
+}
+
 .status-label,
-.editor-status-label {
+.editor-status-label,
+.account-status-label {
     color: rgba(194, 164, 104, 0.92);
     font-size: 13px;
     letter-spacing: 2px;
 }
 
 .status-label {
-    margin-top: 8px;
+    margin-top: 14px;
     display: none;
+}
+
+.status-label--main {
+    min-height: 20px;
+}
+
+.auth-overlay {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(4, 8, 16, 0.58);
+}
+
+.auth-dialog {
+    width: 480px;
+    padding-left: 34px;
+    padding-right: 34px;
+    padding-top: 30px;
+    padding-bottom: 28px;
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-right-width: 1px;
+    border-top-color: rgba(216, 192, 140, 0.42);
+    border-bottom-color: rgba(216, 192, 140, 0.42);
+    border-left-color: rgba(255, 255, 255, 0.10);
+    border-right-color: rgba(255, 255, 255, 0.10);
+    background-color: var(--menu-panel-strong);
+}
+
+.auth-dialog-kicker {
+    color: rgba(194, 164, 104, 0.92);
+    font-size: 12px;
+    -unity-font-style: bold;
+    letter-spacing: 4px;
+    margin-bottom: 12px;
+}
+
+.auth-dialog-title {
+    color: var(--menu-ink);
+    font-size: 24px;
+    -unity-font-style: bold;
+    letter-spacing: 4px;
+    margin-bottom: 12px;
+}
+
+.auth-field {
+    margin-bottom: 12px;
+}
+
+.auth-button-row {
+    flex-direction: row;
+    flex-wrap: wrap;
+    margin-top: 8px;
+    margin-bottom: 12px;
+}
+
+.auth-button {
+    min-width: 0;
+    flex-grow: 1;
+    margin-right: 10px;
+}
+
+.auth-cancel-button {
+    align-self: stretch;
 }
 
 .editor-shell {
@@ -591,30 +690,6 @@
 .host-number-field--wide {
     margin-right: 0;
     margin-bottom: 12px;
-}
-
-.host-number-field .unity-base-field__label,
-.host-enemy-count-field .unity-base-field__label,
-.host-enemy-dropdown .unity-base-field__label {
-    min-width: 118px;
-    color: var(--menu-soft-ink);
-    letter-spacing: 1px;
-}
-
-.host-number-field .unity-base-text-field__input,
-.host-enemy-count-field .unity-base-text-field__input,
-.host-enemy-dropdown .unity-base-popup-field__input {
-    height: 40px;
-    color: var(--menu-ink);
-    background-color: rgba(16, 24, 38, 0.94);
-    border-top-width: 1px;
-    border-bottom-width: 1px;
-    border-left-width: 1px;
-    border-right-width: 1px;
-    border-top-color: rgba(255, 255, 255, 0.12);
-    border-bottom-color: rgba(255, 255, 255, 0.12);
-    border-left-color: rgba(255, 255, 255, 0.12);
-    border-right-color: rgba(255, 255, 255, 0.12);
 }
 
 .host-slider-row {

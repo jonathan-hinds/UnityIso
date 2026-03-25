@@ -30,16 +30,23 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
     private ProceduralIsometricMapGenerator mapGenerator;
     private TacticsMainMenuView mainMenuView;
+    private TacticsPartySelectionService localPartySelectionService;
+    private TacticsCharacterProgressionService localProgressionService;
+    private TacticsPlayerCurrencyService localCurrencyService;
+    private TacticsPartySelectionService accountPartySelectionService;
+    private TacticsCharacterProgressionService accountProgressionService;
+    private TacticsPlayerCurrencyService accountCurrencyService;
     private TacticsPartySelectionService partySelectionService;
     private TacticsCharacterProgressionService progressionService;
     private TacticsPlayerCurrencyService currencyService;
+    private ITacticsAccountSessionService accountSessionService;
     private TacticsCoopSessionCoordinator coopSessionCoordinator;
     private TacticsEnemyTable enemyTable;
     private TacticsCoopBattleSetup pendingCoopBattleSetup;
     private bool sceneSetupComplete;
     private bool gameplayStartInProgress;
 
-    private void Start()
+    private async void Start()
     {
         ConfigureTransparencySorting();
         EnsureEventSystem();
@@ -51,14 +58,18 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             return;
         }
 
-        partySelectionService = new TacticsPartySelectionService();
-        progressionService = new TacticsCharacterProgressionService();
-        currencyService = new TacticsPlayerCurrencyService();
+        TacticsLegacySaveCleanup.CleanupLegacyPlayerPrefs();
+        localPartySelectionService = new TacticsPartySelectionService(new TacticsSinglePlayerPartySelectionStore());
+        localProgressionService = new TacticsCharacterProgressionService(new TacticsSinglePlayerCharacterProgressionStore());
+        localCurrencyService = new TacticsPlayerCurrencyService(new TacticsSinglePlayerCurrencyStore());
+        partySelectionService = localPartySelectionService;
+        progressionService = localProgressionService;
+        currencyService = localCurrencyService;
+        accountSessionService = new TacticsAccountSessionService();
+        accountSessionService.StateChanged -= HandleAccountSessionStateChanged;
+        accountSessionService.StateChanged += HandleAccountSessionStateChanged;
         enemyTable = Resources.Load<TacticsEnemyTable>(EnemyTableResourcePath);
         coopSessionCoordinator = EnsureCoopSessionCoordinator();
-        coopSessionCoordinator.AssignPartySelectionService(partySelectionService);
-        coopSessionCoordinator.AssignCharacterProgressionService(progressionService);
-        coopSessionCoordinator.AssignCurrencyService(currencyService);
         coopSessionCoordinator.StatusChanged -= HandleCoopStatusChanged;
         coopSessionCoordinator.StatusChanged += HandleCoopStatusChanged;
         coopSessionCoordinator.BattleSetupReady -= HandleCoopBattleSetupReady;
@@ -66,8 +77,10 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         coopSessionCoordinator.SessionEnded -= HandleSessionEnded;
         coopSessionCoordinator.SessionEnded += HandleSessionEnded;
         mainMenuView = EnsureMainMenuView();
-        mainMenuView.AssignDependencies(mapGenerator, partySelectionService, enemyTable);
+        mainMenuView.AssignDependencies(mapGenerator, localPartySelectionService, accountPartySelectionService, enemyTable, accountSessionService);
         ShowMainMenu();
+        await accountSessionService.InitializeAsync();
+        RefreshAccountScopedServices();
     }
 
     private void OnDestroy()
@@ -81,6 +94,11 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         {
             mainMenuView.SessionStartRequested -= HandleSessionStartRequested;
             mainMenuView.QuitRequested -= HandleApplicationQuitRequested;
+        }
+
+        if (accountSessionService != null)
+        {
+            accountSessionService.StateChanged -= HandleAccountSessionStateChanged;
         }
 
         if (coopSessionCoordinator != null)
@@ -112,6 +130,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         mainMenuView.SessionStartRequested += HandleSessionStartRequested;
         mainMenuView.QuitRequested -= HandleApplicationQuitRequested;
         mainMenuView.QuitRequested += HandleApplicationQuitRequested;
+        mainMenuView.AssignDependencies(mapGenerator, localPartySelectionService, accountPartySelectionService, enemyTable, accountSessionService);
         mainMenuView.SetStatusText(string.Empty);
         mainMenuView.Show();
         SetCameraInputEnabled(false);
@@ -130,10 +149,17 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         switch (request.Mode)
         {
             case TacticsSessionStartMode.SinglePlayer:
+                UseSinglePlayerServices();
                 BeginGameplayStartup("Initializing battle systems...");
                 break;
 
             case TacticsSessionStartMode.HostCoop:
+                if (!UseAccountServicesForOnline())
+                {
+                    mainMenuView.SetInteractable(true);
+                    break;
+                }
+
                 if (!await coopSessionCoordinator.StartHostAsync(request.MatchSettings))
                 {
                     mainMenuView.SetInteractable(true);
@@ -147,6 +173,12 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
                 break;
 
             case TacticsSessionStartMode.JoinCoop:
+                if (!UseAccountServicesForOnline())
+                {
+                    mainMenuView.SetInteractable(true);
+                    break;
+                }
+
                 if (!await coopSessionCoordinator.StartClientAsync(request.Address))
                 {
                     mainMenuView.SetInteractable(true);
@@ -591,6 +623,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
     private void HandleApplicationQuitRequested()
     {
+        _ = accountSessionService?.FlushAsync();
 #if UNITY_EDITOR
         EditorApplication.isPlaying = false;
 #else
@@ -600,6 +633,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
     private void ReturnToHomeScreen()
     {
+        _ = accountSessionService?.FlushAsync();
         CleanupGameplayObjects();
         pendingCoopBattleSetup = null;
         sceneSetupComplete = false;
@@ -1072,5 +1106,61 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         }
 
         character.TryCommitProgression(snapshot);
+    }
+
+    private void HandleAccountSessionStateChanged()
+    {
+        RefreshAccountScopedServices();
+    }
+
+    private void RefreshAccountScopedServices()
+    {
+        if (accountSessionService != null && accountSessionService.IsSignedIn && accountSessionService.Profile != null)
+        {
+            accountPartySelectionService = new TacticsPartySelectionService(new TacticsCloudSavePartySelectionStore(accountSessionService.Profile));
+            accountProgressionService = new TacticsCharacterProgressionService(new TacticsCloudSaveCharacterProgressionStore(accountSessionService.Profile));
+            accountCurrencyService = new TacticsPlayerCurrencyService(new TacticsCloudSaveCurrencyStore(accountSessionService.Profile));
+            coopSessionCoordinator?.AssignPartySelectionService(accountPartySelectionService);
+            coopSessionCoordinator?.AssignCharacterProgressionService(accountProgressionService);
+            coopSessionCoordinator?.AssignCurrencyService(accountCurrencyService);
+        }
+        else
+        {
+            accountPartySelectionService = null;
+            accountProgressionService = null;
+            accountCurrencyService = null;
+            coopSessionCoordinator?.AssignPartySelectionService(null);
+            coopSessionCoordinator?.AssignCharacterProgressionService(null);
+            coopSessionCoordinator?.AssignCurrencyService(null);
+        }
+
+        mainMenuView?.AssignDependencies(mapGenerator, localPartySelectionService, accountPartySelectionService, enemyTable, accountSessionService);
+    }
+
+    private void UseSinglePlayerServices()
+    {
+        partySelectionService = localPartySelectionService;
+        progressionService = localProgressionService;
+        currencyService = localCurrencyService;
+        coopSessionCoordinator?.AssignPartySelectionService(partySelectionService);
+        coopSessionCoordinator?.AssignCharacterProgressionService(progressionService);
+        coopSessionCoordinator?.AssignCurrencyService(currencyService);
+    }
+
+    private bool UseAccountServicesForOnline()
+    {
+        if (accountPartySelectionService == null || accountProgressionService == null || accountCurrencyService == null)
+        {
+            mainMenuView?.SetStatusText(accountSessionService?.ErrorMessage ?? "Sign in before starting online co-op.");
+            return false;
+        }
+
+        partySelectionService = accountPartySelectionService;
+        progressionService = accountProgressionService;
+        currencyService = accountCurrencyService;
+        coopSessionCoordinator?.AssignPartySelectionService(partySelectionService);
+        coopSessionCoordinator?.AssignCharacterProgressionService(progressionService);
+        coopSessionCoordinator?.AssignCurrencyService(currencyService);
+        return true;
     }
 }

@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Unity.Collections;
 using Unity.Netcode;
 using Unity.Netcode.Transports.UTP;
+using Unity.Services.Authentication;
 using Unity.Services.Relay;
 using Unity.Services.Relay.Models;
 using UnityEngine;
@@ -896,6 +897,12 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         try
         {
             await TacticsUnityServicesBootstrap.EnsureInitializedAsync();
+            if (!AuthenticationService.Instance.IsSignedIn)
+            {
+                EmitStatus("Sign in with a player account before hosting online co-op.");
+                return false;
+            }
+
             Allocation allocation = await RelayService.Instance.CreateAllocationAsync(Mathf.Max(1, ExpectedPlayerCount - 1));
             activeRelayJoinCode = await RelayService.Instance.GetJoinCodeAsync(allocation.AllocationId);
             transport.SetRelayServerData(allocation.ToRelayServerData(RelayConnectionType));
@@ -927,6 +934,12 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         try
         {
             await TacticsUnityServicesBootstrap.EnsureInitializedAsync();
+            if (!AuthenticationService.Instance.IsSignedIn)
+            {
+                EmitStatus("Sign in with a player account before joining online co-op.");
+                return false;
+            }
+
             JoinAllocation allocation = await RelayService.Instance.JoinAllocationAsync(normalizedJoinCode);
             activeRelayJoinCode = normalizedJoinCode;
             transport.SetRelayServerData(allocation.ToRelayServerData(RelayConnectionType));

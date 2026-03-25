@@ -32,11 +32,6 @@ public static class TacticsUnityServicesBootstrap
 
             await UnityServices.InitializeAsync(options);
         }
-
-        if (!AuthenticationService.Instance.IsSignedIn)
-        {
-            await AuthenticationService.Instance.SignInAnonymouslyAsync();
-        }
     }
 
     private static string ResolveProfileName()

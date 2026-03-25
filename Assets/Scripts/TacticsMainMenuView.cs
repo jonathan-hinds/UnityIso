@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -11,16 +12,25 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     private const string VisualTreeResourcePath = "UI/TacticsMainMenu";
     private const string RootElementName = "main-menu-root";
     private const string MainPageName = "main-page";
+    private const string LandingPanelName = "landing-panel";
+    private const string SinglePlayerPanelName = "single-player-panel";
+    private const string OnlinePanelName = "online-panel";
+    private const string AuthDialogOverlayName = "auth-dialog-overlay";
     private const string HostSetupPageName = "host-setup-page";
     private const string EditPageName = "edit-team-page";
+    private const string SinglePlayerModeButtonName = "single-player-mode-button";
+    private const string OnlineCoopModeButtonName = "online-coop-mode-button";
+    private const string SinglePlayerBackButtonName = "single-player-back-button";
+    private const string OnlineBackButtonName = "online-back-button";
     private const string PlayButtonName = "play-button";
     private const string HostOnlineButtonName = "host-online-button";
     private const string JoinOnlineButtonName = "join-online-button";
-    private const string QuitButtonName = "quit-button";
     private const string JoinCodeFieldName = "join-address-field";
     private const string EditTeamButtonName = "edit-team-button";
+    private const string EditOnlineTeamButtonName = "edit-online-team-button";
     private const string StatusLabelName = "status-label";
     private const string TeamSummaryLabelName = "team-summary-label";
+    private const string OnlineTeamSummaryLabelName = "online-team-summary-label";
     private const string TeamSlotContainerName = "team-slot-container";
     private const string RosterGridContainerName = "character-grid-container";
     private const string EditorBackButtonName = "editor-back-button";
@@ -43,6 +53,12 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     private const string RelayCodeLabelName = "relay-code-label";
     private const string CopyRelayCodeButtonName = "copy-relay-code-button";
     private const string DragGhostName = "drag-ghost";
+    private const string AccountStatusLabelName = "account-status-label";
+    private const string AccountUsernameFieldName = "account-username-field";
+    private const string AccountPasswordFieldName = "account-password-field";
+    private const string AccountSignInButtonName = "account-sign-in-button";
+    private const string AccountRegisterButtonName = "account-register-button";
+    private const string AuthCancelButtonName = "auth-cancel-button";
 
     [Header("Assets")]
     [SerializeField] private PanelSettings panelSettings;
@@ -55,16 +71,25 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     private UIDocument uiDocument;
     private VisualElement rootElement;
     private VisualElement mainPage;
+    private VisualElement landingPanel;
+    private VisualElement singlePlayerPanel;
+    private VisualElement onlinePanel;
+    private VisualElement authDialogOverlay;
     private VisualElement hostSetupPage;
     private VisualElement editTeamPage;
+    private Button singlePlayerModeButton;
+    private Button onlineCoopModeButton;
+    private Button singlePlayerBackButton;
+    private Button onlineBackButton;
     private Button playButton;
     private Button hostOnlineButton;
     private Button joinOnlineButton;
-    private Button quitButton;
     private TextField joinCodeField;
     private Button editTeamButton;
+    private Button editOnlineTeamButton;
     private Label statusLabel;
     private Label teamSummaryLabel;
+    private Label onlineTeamSummaryLabel;
     private VisualElement teamSlotContainer;
     private VisualElement rosterGridContainer;
     private Button editorBackButton;
@@ -87,13 +112,22 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     private Label relayCodeLabel;
     private Button copyRelayCodeButton;
     private Label dragGhost;
+    private Label accountStatusLabel;
+    private TextField accountUsernameField;
+    private TextField accountPasswordField;
+    private Button accountSignInButton;
+    private Button accountRegisterButton;
+    private Button authCancelButton;
 
     private ProceduralIsometricMapGenerator sourceMapGenerator;
-    private TacticsPartySelectionService partySelectionService;
+    private TacticsPartySelectionService localPartySelectionService;
+    private TacticsPartySelectionService onlinePartySelectionService;
+    private ITacticsAccountSessionService accountSessionService;
     private TacticsEnemyTable enemyTable;
     private TacticsCharacterRoster roster;
     private Dictionary<string, TacticsCharacterDefinition> definitionsById = new(StringComparer.OrdinalIgnoreCase);
-    private TacticsPartySelection savedSelection;
+    private TacticsPartySelection savedLocalSelection;
+    private TacticsPartySelection savedOnlineSelection;
     private TacticsPartySelection workingSelection;
     private readonly List<SlotWidget> slotWidgets = new();
     private readonly List<RosterCardWidget> rosterCardWidgets = new();
@@ -101,9 +135,12 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     private readonly List<EnemyCatalogOption> enemyCatalogOptions = new();
     private readonly List<TacticsCharacterCardPreview> previews = new();
     private TacticsMatchGenerationSettings workingMatchSettings;
+    private MainMenuPage currentMainMenuPage;
     private bool isEditPageVisible;
     private bool isHostSetupPageVisible;
     private bool isHostSessionStarted;
+    private bool isEditingOnlineParty;
+    private bool isAuthDialogVisible;
     private bool suppressHostFieldCallbacks;
     private bool hostFieldCallbacksRegistered;
     private bool isMenuInteractable = true;
@@ -117,6 +154,13 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     public event Action QuitRequested;
 
     public bool IsVisible => gameObject.activeSelf;
+
+    private enum MainMenuPage
+    {
+        Landing = 0,
+        SinglePlayer = 1,
+        Online = 2
+    }
 
     private void Awake()
     {
@@ -152,16 +196,43 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         }
     }
 
-    public void AssignDependencies(ProceduralIsometricMapGenerator mapGenerator, TacticsPartySelectionService selectionService, TacticsEnemyTable availableEnemyTable)
+    public void AssignDependencies(
+        ProceduralIsometricMapGenerator mapGenerator,
+        TacticsPartySelectionService localSelectionService,
+        TacticsPartySelectionService onlineSelectionService,
+        TacticsEnemyTable availableEnemyTable,
+        ITacticsAccountSessionService sessionService)
     {
         EnsurePreviewSettingsInitialized();
         sourceMapGenerator = mapGenerator;
-        partySelectionService = selectionService ?? new TacticsPartySelectionService();
+        localPartySelectionService = localSelectionService ?? new TacticsPartySelectionService(new TacticsSinglePlayerPartySelectionStore());
+        this.onlinePartySelectionService = onlineSelectionService;
         enemyTable = availableEnemyTable;
-        roster = partySelectionService.LoadRoster();
+        if (!ReferenceEquals(accountSessionService, sessionService))
+        {
+            if (accountSessionService != null)
+            {
+                accountSessionService.StateChanged -= HandleAccountSessionStateChanged;
+            }
+
+            accountSessionService = sessionService;
+            if (accountSessionService != null)
+            {
+                accountSessionService.StateChanged -= HandleAccountSessionStateChanged;
+                accountSessionService.StateChanged += HandleAccountSessionStateChanged;
+            }
+        }
+
+        roster = localPartySelectionService.LoadRoster();
         definitionsById = roster != null ? roster.BuildLookupById() : new Dictionary<string, TacticsCharacterDefinition>(StringComparer.OrdinalIgnoreCase);
-        savedSelection = partySelectionService.LoadSelection();
-        workingSelection = savedSelection;
+        savedLocalSelection = localPartySelectionService.LoadSelection();
+        savedOnlineSelection = this.onlinePartySelectionService != null ? this.onlinePartySelectionService.LoadSelection() : null;
+        if (isEditingOnlineParty && this.onlinePartySelectionService == null)
+        {
+            isEditingOnlineParty = false;
+        }
+
+        workingSelection = GetSavedSelectionForCurrentEditor();
         BuildEnemyCatalog();
         ResetHostSetupState();
         RebuildEditor();
@@ -180,8 +251,8 @@ public sealed class TacticsMainMenuView : MonoBehaviour
             rootElement.style.display = DisplayStyle.Flex;
         }
 
-        ShowMainPage();
-        playButton?.Focus();
+        ShowLandingPage();
+        singlePlayerModeButton?.Focus();
     }
 
     public void Hide()
@@ -198,15 +269,17 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     {
         CacheElements();
         isMenuInteractable = interactable;
+        singlePlayerModeButton?.SetEnabled(interactable);
+        onlineCoopModeButton?.SetEnabled(interactable);
+        singlePlayerBackButton?.SetEnabled(interactable);
+        onlineBackButton?.SetEnabled(interactable);
         playButton?.SetEnabled(interactable);
-        hostOnlineButton?.SetEnabled(interactable);
-        joinOnlineButton?.SetEnabled(interactable);
-        quitButton?.SetEnabled(interactable);
-        joinCodeField?.SetEnabled(interactable);
         editTeamButton?.SetEnabled(interactable);
         editorBackButton?.SetEnabled(interactable);
         editorSaveButton?.SetEnabled(interactable && CanSaveWorkingSelection());
+        editOnlineTeamButton?.SetEnabled(interactable);
         RefreshHostSetupUi();
+        RefreshAccountUi();
     }
 
     public void SetStatusText(string text)
@@ -258,16 +331,25 @@ public sealed class TacticsMainMenuView : MonoBehaviour
 
         rootElement = uiDocument.rootVisualElement.Q<VisualElement>(RootElementName) ?? uiDocument.rootVisualElement;
         mainPage = rootElement.Q<VisualElement>(MainPageName);
+        landingPanel = rootElement.Q<VisualElement>(LandingPanelName);
+        singlePlayerPanel = rootElement.Q<VisualElement>(SinglePlayerPanelName);
+        onlinePanel = rootElement.Q<VisualElement>(OnlinePanelName);
+        authDialogOverlay = rootElement.Q<VisualElement>(AuthDialogOverlayName);
         hostSetupPage = rootElement.Q<VisualElement>(HostSetupPageName);
         editTeamPage = rootElement.Q<VisualElement>(EditPageName);
+        singlePlayerModeButton = rootElement.Q<Button>(SinglePlayerModeButtonName);
+        onlineCoopModeButton = rootElement.Q<Button>(OnlineCoopModeButtonName);
+        singlePlayerBackButton = rootElement.Q<Button>(SinglePlayerBackButtonName);
+        onlineBackButton = rootElement.Q<Button>(OnlineBackButtonName);
         playButton = rootElement.Q<Button>(PlayButtonName);
         hostOnlineButton = rootElement.Q<Button>(HostOnlineButtonName);
         joinOnlineButton = rootElement.Q<Button>(JoinOnlineButtonName);
-        quitButton = rootElement.Q<Button>(QuitButtonName);
         joinCodeField = rootElement.Q<TextField>(JoinCodeFieldName);
         editTeamButton = rootElement.Q<Button>(EditTeamButtonName);
+        editOnlineTeamButton = rootElement.Q<Button>(EditOnlineTeamButtonName);
         statusLabel = rootElement.Q<Label>(StatusLabelName);
         teamSummaryLabel = rootElement.Q<Label>(TeamSummaryLabelName);
+        onlineTeamSummaryLabel = rootElement.Q<Label>(OnlineTeamSummaryLabelName);
         teamSlotContainer = rootElement.Q<VisualElement>(TeamSlotContainerName);
         rosterGridContainer = rootElement.Q<VisualElement>(RosterGridContainerName);
         editorBackButton = rootElement.Q<Button>(EditorBackButtonName);
@@ -290,10 +372,45 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         relayCodeLabel = rootElement.Q<Label>(RelayCodeLabelName);
         copyRelayCodeButton = rootElement.Q<Button>(CopyRelayCodeButtonName);
         dragGhost = rootElement.Q<Label>(DragGhostName);
+        accountStatusLabel = rootElement.Q<Label>(AccountStatusLabelName);
+        accountUsernameField = rootElement.Q<TextField>(AccountUsernameFieldName);
+        accountPasswordField = rootElement.Q<TextField>(AccountPasswordFieldName);
+        accountSignInButton = rootElement.Q<Button>(AccountSignInButtonName);
+        accountRegisterButton = rootElement.Q<Button>(AccountRegisterButtonName);
+        authCancelButton = rootElement.Q<Button>(AuthCancelButtonName);
+
+        if (accountPasswordField != null)
+        {
+            accountPasswordField.isPasswordField = true;
+        }
     }
 
     private void RegisterCallbacks()
     {
+        if (singlePlayerModeButton != null)
+        {
+            singlePlayerModeButton.clicked -= HandleSinglePlayerModeButtonClicked;
+            singlePlayerModeButton.clicked += HandleSinglePlayerModeButtonClicked;
+        }
+
+        if (onlineCoopModeButton != null)
+        {
+            onlineCoopModeButton.clicked -= HandleOnlineCoopModeButtonClicked;
+            onlineCoopModeButton.clicked += HandleOnlineCoopModeButtonClicked;
+        }
+
+        if (singlePlayerBackButton != null)
+        {
+            singlePlayerBackButton.clicked -= HandleSinglePlayerBackButtonClicked;
+            singlePlayerBackButton.clicked += HandleSinglePlayerBackButtonClicked;
+        }
+
+        if (onlineBackButton != null)
+        {
+            onlineBackButton.clicked -= HandleOnlineBackButtonClicked;
+            onlineBackButton.clicked += HandleOnlineBackButtonClicked;
+        }
+
         if (playButton != null)
         {
             playButton.clicked -= HandleSinglePlayerButtonClicked;
@@ -310,12 +427,6 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         {
             joinOnlineButton.clicked -= HandleJoinOnlineButtonClicked;
             joinOnlineButton.clicked += HandleJoinOnlineButtonClicked;
-        }
-
-        if (quitButton != null)
-        {
-            quitButton.clicked -= HandleQuitButtonClicked;
-            quitButton.clicked += HandleQuitButtonClicked;
         }
 
         if (editTeamButton != null)
@@ -358,6 +469,30 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         {
             copyRelayCodeButton.clicked -= HandleCopyRelayCodeButtonClicked;
             copyRelayCodeButton.clicked += HandleCopyRelayCodeButtonClicked;
+        }
+
+        if (editOnlineTeamButton != null)
+        {
+            editOnlineTeamButton.clicked -= HandleEditOnlineTeamButtonClicked;
+            editOnlineTeamButton.clicked += HandleEditOnlineTeamButtonClicked;
+        }
+
+        if (accountSignInButton != null)
+        {
+            accountSignInButton.clicked -= HandleAccountSignInButtonClicked;
+            accountSignInButton.clicked += HandleAccountSignInButtonClicked;
+        }
+
+        if (accountRegisterButton != null)
+        {
+            accountRegisterButton.clicked -= HandleAccountRegisterButtonClicked;
+            accountRegisterButton.clicked += HandleAccountRegisterButtonClicked;
+        }
+
+        if (authCancelButton != null)
+        {
+            authCancelButton.clicked -= HandleAuthCancelButtonClicked;
+            authCancelButton.clicked += HandleAuthCancelButtonClicked;
         }
 
         RegisterHostFieldCallbacks();
@@ -473,6 +608,26 @@ public sealed class TacticsMainMenuView : MonoBehaviour
 
     private void UnregisterCallbacks()
     {
+        if (singlePlayerModeButton != null)
+        {
+            singlePlayerModeButton.clicked -= HandleSinglePlayerModeButtonClicked;
+        }
+
+        if (onlineCoopModeButton != null)
+        {
+            onlineCoopModeButton.clicked -= HandleOnlineCoopModeButtonClicked;
+        }
+
+        if (singlePlayerBackButton != null)
+        {
+            singlePlayerBackButton.clicked -= HandleSinglePlayerBackButtonClicked;
+        }
+
+        if (onlineBackButton != null)
+        {
+            onlineBackButton.clicked -= HandleOnlineBackButtonClicked;
+        }
+
         if (playButton != null)
         {
             playButton.clicked -= HandleSinglePlayerButtonClicked;
@@ -486,11 +641,6 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         if (joinOnlineButton != null)
         {
             joinOnlineButton.clicked -= HandleJoinOnlineButtonClicked;
-        }
-
-        if (quitButton != null)
-        {
-            quitButton.clicked -= HandleQuitButtonClicked;
         }
 
         if (editTeamButton != null)
@@ -527,6 +677,26 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         {
             copyRelayCodeButton.clicked -= HandleCopyRelayCodeButtonClicked;
         }
+
+        if (editOnlineTeamButton != null)
+        {
+            editOnlineTeamButton.clicked -= HandleEditOnlineTeamButtonClicked;
+        }
+
+        if (accountSignInButton != null)
+        {
+            accountSignInButton.clicked -= HandleAccountSignInButtonClicked;
+        }
+
+        if (accountRegisterButton != null)
+        {
+            accountRegisterButton.clicked -= HandleAccountRegisterButtonClicked;
+        }
+
+        if (authCancelButton != null)
+        {
+            authCancelButton.clicked -= HandleAuthCancelButtonClicked;
+        }
     }
 
     private void RebuildEditor()
@@ -544,6 +714,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         teamSlotContainer.Clear();
         rosterGridContainer.Clear();
 
+        TacticsPartySelection savedSelection = GetSavedSelectionForCurrentEditor();
         int capacity = savedSelection != null ? savedSelection.Capacity : TacticsPartySelection.DefaultCapacity;
         for (int i = 0; i < capacity; i++)
         {
@@ -565,11 +736,13 @@ public sealed class TacticsMainMenuView : MonoBehaviour
 
     private void RefreshAllUi()
     {
-        savedSelection ??= partySelectionService != null ? partySelectionService.LoadSelection() : TacticsPartySelection.CreateDefault(roster);
-        workingSelection ??= savedSelection;
+        savedLocalSelection ??= localPartySelectionService != null ? localPartySelectionService.LoadSelection() : TacticsPartySelection.CreateDefault(roster);
+        savedOnlineSelection = onlinePartySelectionService != null ? onlinePartySelectionService.LoadSelection() : null;
+        workingSelection ??= GetSavedSelectionForCurrentEditor();
         workingMatchSettings ??= sourceMapGenerator != null ? sourceMapGenerator.CreateMatchGenerationSettings() : new TacticsMatchGenerationSettings();
 
         RefreshTeamSummary();
+        RefreshAccountUi();
         RefreshSlotWidgets();
         RefreshRosterWidgets();
         RefreshEditorStatus();
@@ -578,6 +751,32 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         if (mainPage != null)
         {
             mainPage.style.display = isEditPageVisible || isHostSetupPageVisible ? DisplayStyle.None : DisplayStyle.Flex;
+        }
+
+        if (landingPanel != null)
+        {
+            landingPanel.style.display = !isEditPageVisible && !isHostSetupPageVisible && currentMainMenuPage == MainMenuPage.Landing
+                ? DisplayStyle.Flex
+                : DisplayStyle.None;
+        }
+
+        if (singlePlayerPanel != null)
+        {
+            singlePlayerPanel.style.display = !isEditPageVisible && !isHostSetupPageVisible && currentMainMenuPage == MainMenuPage.SinglePlayer
+                ? DisplayStyle.Flex
+                : DisplayStyle.None;
+        }
+
+        if (onlinePanel != null)
+        {
+            onlinePanel.style.display = !isEditPageVisible && !isHostSetupPageVisible && currentMainMenuPage == MainMenuPage.Online
+                ? DisplayStyle.Flex
+                : DisplayStyle.None;
+        }
+
+        if (authDialogOverlay != null)
+        {
+            authDialogOverlay.style.display = isAuthDialogVisible ? DisplayStyle.Flex : DisplayStyle.None;
         }
 
         if (hostSetupPage != null)
@@ -598,27 +797,61 @@ public sealed class TacticsMainMenuView : MonoBehaviour
             return;
         }
 
-        IReadOnlyList<TacticsCharacterDefinition> selectedParty = savedSelection != null
-            ? savedSelection.ResolveDefinitions(roster)
+        IReadOnlyList<TacticsCharacterDefinition> selectedParty = savedLocalSelection != null
+            ? savedLocalSelection.ResolveDefinitions(roster)
             : Array.Empty<TacticsCharacterDefinition>();
         if (selectedParty.Count == 0)
         {
-            teamSummaryLabel.text = "Current Team: No party saved yet";
+            teamSummaryLabel.text = "Local Team: No local party saved yet";
+        }
+        else
+        {
+            List<string> names = new List<string>(selectedParty.Count);
+            for (int i = 0; i < selectedParty.Count; i++)
+            {
+                if (selectedParty[i] == null)
+                {
+                    continue;
+                }
+
+                names.Add(selectedParty[i].DisplayName);
+            }
+
+            teamSummaryLabel.text = $"Local Team: {string.Join("  /  ", names)}";
+        }
+
+        if (onlineTeamSummaryLabel == null)
+        {
             return;
         }
 
-        List<string> names = new List<string>(selectedParty.Count);
-        for (int i = 0; i < selectedParty.Count; i++)
+        if (onlinePartySelectionService == null || !(accountSessionService?.IsSignedIn ?? false))
         {
-            if (selectedParty[i] == null)
+            onlineTeamSummaryLabel.text = "Online Team: Sign in to manage cloud party data";
+            return;
+        }
+
+        IReadOnlyList<TacticsCharacterDefinition> onlineParty = savedOnlineSelection != null
+            ? savedOnlineSelection.ResolveDefinitions(roster)
+            : Array.Empty<TacticsCharacterDefinition>();
+        if (onlineParty.Count == 0)
+        {
+            onlineTeamSummaryLabel.text = "Online Team: No online party saved yet";
+            return;
+        }
+
+        List<string> onlineNames = new List<string>(onlineParty.Count);
+        for (int i = 0; i < onlineParty.Count; i++)
+        {
+            if (onlineParty[i] == null)
             {
                 continue;
             }
 
-            names.Add(selectedParty[i].DisplayName);
+            onlineNames.Add(onlineParty[i].DisplayName);
         }
 
-        teamSummaryLabel.text = $"Current Team: {string.Join("  /  ", names)}";
+        onlineTeamSummaryLabel.text = $"Online Team: {string.Join("  /  ", onlineNames)}";
     }
 
     private void RefreshSlotWidgets()
@@ -674,11 +907,13 @@ public sealed class TacticsMainMenuView : MonoBehaviour
 
         int assignedCount = CountAssignedMembers(workingSelection);
         int requiredCount = GetRequiredTeamSize();
+        TacticsPartySelection savedSelection = GetSavedSelectionForCurrentEditor();
         bool isDirty = !SelectionsMatch(savedSelection, workingSelection);
+        string profileLabel = isEditingOnlineParty ? "online" : "local";
 
         editorStatusLabel.text = isDirty
-            ? $"Unsaved team changes. {assignedCount}/{requiredCount} slot{(requiredCount == 1 ? string.Empty : "s")} locked in."
-            : $"Choose up to {workingSelection.Capacity} party members. Hover a card to preview its movement stance.";
+            ? $"Unsaved {profileLabel} team changes. {assignedCount}/{requiredCount} slot{(requiredCount == 1 ? string.Empty : "s")} locked in."
+            : $"Choose up to {workingSelection.Capacity} {profileLabel} party members. Hover a card to preview its movement stance.";
         editorSaveButton?.SetEnabled(CanSaveWorkingSelection());
     }
 
@@ -964,27 +1199,86 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         }
     }
 
-    private void ShowMainPage()
+    private void ShowLandingPage()
     {
+        currentMainMenuPage = MainMenuPage.Landing;
         isEditPageVisible = false;
         isHostSetupPageVisible = false;
+        isAuthDialogVisible = false;
         RefreshAllUi();
     }
 
-    private void ShowEditPage()
+    private void ShowSinglePlayerPage()
     {
-        workingSelection = savedSelection ?? TacticsPartySelection.CreateDefault(roster);
+        currentMainMenuPage = MainMenuPage.SinglePlayer;
+        isEditPageVisible = false;
+        isHostSetupPageVisible = false;
+        isAuthDialogVisible = false;
+        RefreshAllUi();
+    }
+
+    private void ShowOnlinePage()
+    {
+        currentMainMenuPage = MainMenuPage.Online;
+        isEditPageVisible = false;
+        isHostSetupPageVisible = false;
+        isAuthDialogVisible = false;
+        RefreshAllUi();
+    }
+
+    private void ShowAuthDialog()
+    {
+        currentMainMenuPage = MainMenuPage.Landing;
+        isEditPageVisible = false;
+        isHostSetupPageVisible = false;
+        isAuthDialogVisible = true;
+        RefreshAllUi();
+    }
+
+    private void ShowEditPage(bool editOnlineParty)
+    {
+        isEditingOnlineParty = editOnlineParty && onlinePartySelectionService != null;
+        workingSelection = GetSavedSelectionForCurrentEditor() ?? TacticsPartySelection.CreateDefault(roster);
         isEditPageVisible = true;
         isHostSetupPageVisible = false;
+        isAuthDialogVisible = false;
         RefreshAllUi();
     }
 
     private void ShowHostSetupPage()
     {
         ResetHostSetupState();
+        currentMainMenuPage = MainMenuPage.Online;
         isEditPageVisible = false;
         isHostSetupPageVisible = true;
+        isAuthDialogVisible = false;
         RefreshAllUi();
+    }
+
+    private void HandleSinglePlayerModeButtonClicked()
+    {
+        ShowSinglePlayerPage();
+    }
+
+    private void HandleOnlineCoopModeButtonClicked()
+    {
+        if (accountSessionService?.IsSignedIn ?? false)
+        {
+            ShowOnlinePage();
+            return;
+        }
+
+        ShowAuthDialog();
+    }
+
+    private void HandleSinglePlayerBackButtonClicked()
+    {
+        ShowLandingPage();
+    }
+
+    private void HandleOnlineBackButtonClicked()
+    {
+        ShowLandingPage();
     }
 
     private void HandleSinglePlayerButtonClicked()
@@ -1008,7 +1302,18 @@ public sealed class TacticsMainMenuView : MonoBehaviour
 
     private void HandleEditTeamButtonClicked()
     {
-        ShowEditPage();
+        ShowEditPage(false);
+    }
+
+    private void HandleEditOnlineTeamButtonClicked()
+    {
+        if (onlinePartySelectionService == null || !(accountSessionService?.IsSignedIn ?? false))
+        {
+            SetStatusText("Sign in before editing your online team.");
+            return;
+        }
+
+        ShowEditPage(true);
     }
 
     private void HandleQuitButtonClicked()
@@ -1018,8 +1323,15 @@ public sealed class TacticsMainMenuView : MonoBehaviour
 
     private void HandleEditorBackButtonClicked()
     {
-        workingSelection = savedSelection;
-        ShowMainPage();
+        workingSelection = GetSavedSelectionForCurrentEditor();
+        if (isEditingOnlineParty)
+        {
+            ShowOnlinePage();
+        }
+        else
+        {
+            ShowSinglePlayerPage();
+        }
     }
 
     private void HandleEditorSaveButtonClicked()
@@ -1029,15 +1341,77 @@ public sealed class TacticsMainMenuView : MonoBehaviour
             return;
         }
 
-        savedSelection = workingSelection;
-        partySelectionService?.SaveSelection(savedSelection);
-        SetStatusText("Team formation saved.");
-        ShowMainPage();
+        TacticsPartySelectionService selectionService = GetEditorSelectionService();
+        if (selectionService == null)
+        {
+            SetStatusText("Party selection storage is unavailable.");
+            return;
+        }
+
+        TacticsPartySelection committedSelection = workingSelection;
+        selectionService.SaveSelection(committedSelection);
+        if (isEditingOnlineParty)
+        {
+            savedOnlineSelection = committedSelection;
+            SetStatusText("Online team formation saved.");
+        }
+        else
+        {
+            savedLocalSelection = committedSelection;
+            SetStatusText("Local team formation saved.");
+        }
+
+        if (isEditingOnlineParty)
+        {
+            ShowOnlinePage();
+        }
+        else
+        {
+            ShowSinglePlayerPage();
+        }
+    }
+
+    private async void HandleAccountSignInButtonClicked()
+    {
+        if (accountSessionService == null)
+        {
+            return;
+        }
+
+        bool signedIn = await accountSessionService.SignInAsync(accountUsernameField?.value, accountPasswordField?.value);
+        if (signedIn)
+        {
+            ShowOnlinePage();
+        }
+
+        RefreshAllUi();
+    }
+
+    private async void HandleAccountRegisterButtonClicked()
+    {
+        if (accountSessionService == null)
+        {
+            return;
+        }
+
+        bool registered = await accountSessionService.RegisterAsync(accountUsernameField?.value, accountPasswordField?.value);
+        if (registered)
+        {
+            ShowOnlinePage();
+        }
+
+        RefreshAllUi();
+    }
+
+    private void HandleAuthCancelButtonClicked()
+    {
+        isAuthDialogVisible = false;
+        RefreshAllUi();
     }
 
     private void HandleHostSetupBackButtonClicked()
     {
-        ShowMainPage();
+        ShowOnlinePage();
     }
 
     private void HandleHostSetupConfirmButtonClicked()
@@ -1407,6 +1781,72 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         }
     }
 
+    private void RefreshAccountUi()
+    {
+        bool signedIn = accountSessionService?.IsSignedIn ?? false;
+        bool busy = accountSessionService?.IsBusy ?? false;
+        string status = accountSessionService?.ErrorMessage;
+        if (string.IsNullOrWhiteSpace(status))
+        {
+            status = accountSessionService?.StatusMessage;
+        }
+
+        SetLabelText(accountStatusLabel, status);
+
+        if (accountUsernameField != null)
+        {
+            if (signedIn && !string.IsNullOrWhiteSpace(accountSessionService?.Username))
+            {
+                accountUsernameField.SetValueWithoutNotify(accountSessionService.Username);
+            }
+
+            accountUsernameField.SetEnabled(isMenuInteractable && !busy && !signedIn);
+        }
+
+        if (accountPasswordField != null)
+        {
+            accountPasswordField.SetEnabled(isMenuInteractable && !busy && !signedIn);
+            if (signedIn && !busy)
+            {
+                accountPasswordField.SetValueWithoutNotify(string.Empty);
+            }
+        }
+
+        accountSignInButton?.SetEnabled(isMenuInteractable && !busy && !signedIn);
+        accountRegisterButton?.SetEnabled(isMenuInteractable && !busy && !signedIn);
+
+        if (accountSignInButton != null)
+        {
+            accountSignInButton.style.display = signedIn ? DisplayStyle.None : DisplayStyle.Flex;
+        }
+
+        if (accountRegisterButton != null)
+        {
+            accountRegisterButton.style.display = signedIn ? DisplayStyle.None : DisplayStyle.Flex;
+        }
+
+        bool canUseOnline = isMenuInteractable && !busy && signedIn && onlinePartySelectionService != null;
+        hostOnlineButton?.SetEnabled(canUseOnline);
+        joinOnlineButton?.SetEnabled(canUseOnline);
+        joinCodeField?.SetEnabled(canUseOnline);
+        editOnlineTeamButton?.SetEnabled(canUseOnline);
+    }
+
+    private void HandleAccountSessionStateChanged()
+    {
+        if (!isEditingOnlineParty && onlinePartySelectionService == null)
+        {
+            savedOnlineSelection = null;
+        }
+
+        if (!(accountSessionService?.IsSignedIn ?? false) && currentMainMenuPage == MainMenuPage.Online)
+        {
+            currentMainMenuPage = MainMenuPage.Landing;
+        }
+
+        RefreshAllUi();
+    }
+
     private static void SetLabelText(Label label, string text)
     {
         if (label == null)
@@ -1425,6 +1865,16 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         return string.IsNullOrWhiteSpace(joinCodeField?.value)
             ? string.Empty
             : joinCodeField.value.Trim().ToUpperInvariant();
+    }
+
+    private TacticsPartySelectionService GetEditorSelectionService()
+    {
+        return isEditingOnlineParty ? onlinePartySelectionService : localPartySelectionService;
+    }
+
+    private TacticsPartySelection GetSavedSelectionForCurrentEditor()
+    {
+        return (isEditingOnlineParty ? savedOnlineSelection : savedLocalSelection) ?? TacticsPartySelection.CreateDefault(roster);
     }
 
     private bool CanSaveWorkingSelection()
