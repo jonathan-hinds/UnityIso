@@ -1,14 +1,16 @@
 :root {
-    --menu-ink: rgba(243, 242, 235, 1);
-    --menu-soft-ink: rgba(203, 208, 214, 0.82);
-    --menu-gold: rgba(194, 164, 104, 1);
-    --menu-gold-soft: rgba(194, 164, 104, 0.22);
-    --menu-panel: rgba(10, 16, 28, 0.78);
-    --menu-panel-strong: rgba(8, 14, 24, 0.92);
-    --menu-panel-soft: rgba(255, 255, 255, 0.04);
-    --menu-border: rgba(255, 255, 255, 0.10);
-    --menu-border-strong: rgba(216, 192, 140, 0.58);
-    --menu-accent: rgba(46, 66, 92, 0.98);
+    --menu-ink: rgba(255, 244, 224, 1);
+    --menu-soft-ink: rgba(243, 205, 176, 0.88);
+    --menu-gold: rgba(255, 189, 122, 1);
+    --menu-gold-soft: rgba(255, 162, 104, 0.26);
+    --menu-panel: rgba(49, 23, 24, 0.80);
+    --menu-panel-strong: rgba(35, 16, 17, 0.92);
+    --menu-panel-soft: rgba(255, 241, 218, 0.07);
+    --menu-border: rgba(255, 216, 183, 0.18);
+    --menu-border-strong: rgba(255, 182, 109, 0.72);
+    --menu-accent: rgba(130, 57, 41, 0.98);
+    --menu-accent-soft: rgba(255, 138, 86, 0.18);
+    --menu-shadow: rgba(22, 8, 10, 0.68);
 }
 
 .menu-root {
@@ -23,29 +25,41 @@
     padding-right: 72px;
     padding-top: 56px;
     padding-bottom: 56px;
-    background-color: rgba(6, 10, 18, 0.96);
+    background-color: rgba(26, 10, 12, 0.98);
+    background-image: resource("UI/Background");
+    -unity-background-scale-mode: stretch-to-fill;
+    overflow: hidden;
+}
+
+.background-shade {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    background-color: rgba(50, 14, 18, 0.46);
 }
 
 .ambient-glow {
     position: absolute;
     border-radius: 999px;
-    opacity: 0.65;
+    opacity: 0.72;
 }
 
 .ambient-glow--top {
-    left: -140px;
-    top: -90px;
-    width: 520px;
-    height: 520px;
-    background-color: rgba(78, 114, 156, 0.18);
+    left: -120px;
+    top: -110px;
+    width: 560px;
+    height: 560px;
+    background-color: rgba(255, 236, 170, 0.26);
 }
 
 .ambient-glow--bottom {
-    right: -120px;
-    bottom: -160px;
-    width: 620px;
-    height: 620px;
-    background-color: rgba(177, 146, 92, 0.10);
+    right: -150px;
+    bottom: -140px;
+    width: 640px;
+    height: 640px;
+    background-color: rgba(255, 116, 70, 0.18);
 }
 
 .menu-shell {
@@ -54,11 +68,11 @@
     border-bottom-width: 1px;
     border-left-width: 1px;
     border-right-width: 1px;
-    border-top-color: rgba(255, 255, 255, 0.08);
-    border-bottom-color: rgba(255, 255, 255, 0.08);
-    border-left-color: rgba(255, 255, 255, 0.03);
-    border-right-color: rgba(255, 255, 255, 0.03);
-    background-color: rgba(8, 14, 24, 0.32);
+    border-top-color: rgba(255, 226, 195, 0.18);
+    border-bottom-color: rgba(255, 226, 195, 0.18);
+    border-left-color: rgba(255, 226, 195, 0.08);
+    border-right-color: rgba(255, 226, 195, 0.08);
+    background-color: rgba(28, 10, 13, 0.38);
 }
 
 .menu-shell--main {
@@ -87,7 +101,7 @@
 .crest-line {
     width: 420px;
     height: 1px;
-    background-color: rgba(194, 164, 104, 0.85);
+    background-color: rgba(255, 189, 122, 0.92);
     margin-bottom: 26px;
 }
 
@@ -127,10 +141,10 @@
     border-bottom-width: 1px;
     border-left-width: 1px;
     border-right-width: 1px;
-    border-top-color: rgba(255, 255, 255, 0.12);
-    border-bottom-color: rgba(255, 255, 255, 0.12);
-    border-left-color: rgba(255, 255, 255, 0.08);
-    border-right-color: rgba(255, 255, 255, 0.08);
+    border-top-color: rgba(255, 222, 192, 0.22);
+    border-bottom-color: rgba(255, 222, 192, 0.22);
+    border-left-color: rgba(255, 222, 192, 0.12);
+    border-right-color: rgba(255, 222, 192, 0.12);
     background-color: var(--menu-panel);
 }
 
@@ -142,7 +156,7 @@
 }
 
 .panel-kicker {
-    color: rgba(194, 164, 104, 0.92);
+    color: rgba(255, 198, 132, 0.96);
     font-size: 12px;
     -unity-font-style: bold;
     letter-spacing: 4px;
@@ -171,7 +185,7 @@
 }
 
 .team-summary-label {
-    color: rgba(194, 164, 104, 0.92);
+    color: rgba(255, 198, 132, 0.96);
     font-size: 13px;
     letter-spacing: 2px;
     margin-bottom: 18px;
@@ -202,15 +216,15 @@
 .host-enemy-dropdown .unity-base-popup-field__input {
     height: 40px;
     color: var(--menu-ink);
-    background-color: rgba(16, 24, 38, 0.94);
+    background-color: rgba(63, 25, 24, 0.94);
     border-top-width: 1px;
     border-bottom-width: 1px;
     border-left-width: 1px;
     border-right-width: 1px;
-    border-top-color: rgba(255, 255, 255, 0.12);
-    border-bottom-color: rgba(255, 255, 255, 0.12);
-    border-left-color: rgba(255, 255, 255, 0.12);
-    border-right-color: rgba(255, 255, 255, 0.12);
+    border-top-color: rgba(255, 215, 181, 0.22);
+    border-bottom-color: rgba(255, 215, 181, 0.22);
+    border-left-color: rgba(255, 215, 181, 0.22);
+    border-right-color: rgba(255, 215, 181, 0.22);
 }
 
 .menu-button {
@@ -220,7 +234,7 @@
     border-bottom-width: 1px;
     border-left-width: 1px;
     border-right-width: 1px;
-    color: rgb(245, 241, 230);
+    color: rgb(255, 244, 224);
     font-size: 18px;
     -unity-font-style: bold;
     letter-spacing: 6px;
@@ -231,23 +245,23 @@
     border-bottom-color: var(--menu-border-strong);
     border-left-color: var(--menu-border-strong);
     border-right-color: var(--menu-border-strong);
-    background-color: rgba(26, 39, 57, 0.94);
+    background-color: rgba(122, 45, 31, 0.96);
 }
 
 .menu-button--secondary {
-    border-top-color: rgba(255, 255, 255, 0.18);
-    border-bottom-color: rgba(255, 255, 255, 0.18);
-    border-left-color: rgba(255, 255, 255, 0.18);
-    border-right-color: rgba(255, 255, 255, 0.18);
-    background-color: rgba(16, 24, 38, 0.94);
+    border-top-color: rgba(255, 221, 193, 0.24);
+    border-bottom-color: rgba(255, 221, 193, 0.24);
+    border-left-color: rgba(255, 221, 193, 0.24);
+    border-right-color: rgba(255, 221, 193, 0.24);
+    background-color: rgba(61, 23, 23, 0.94);
 }
 
 .menu-button:hover {
     background-color: var(--menu-accent);
-    border-top-color: rgba(243, 224, 178, 0.85);
-    border-bottom-color: rgba(243, 224, 178, 0.85);
-    border-left-color: rgba(243, 224, 178, 0.85);
-    border-right-color: rgba(243, 224, 178, 0.85);
+    border-top-color: rgba(255, 224, 171, 0.92);
+    border-bottom-color: rgba(255, 224, 171, 0.92);
+    border-left-color: rgba(255, 224, 171, 0.92);
+    border-right-color: rgba(255, 224, 171, 0.92);
 }
 
 .menu-button:disabled {
@@ -267,7 +281,7 @@
 .status-label,
 .editor-status-label,
 .account-status-label {
-    color: rgba(194, 164, 104, 0.92);
+    color: rgba(255, 198, 132, 0.96);
     font-size: 13px;
     letter-spacing: 2px;
 }
@@ -289,7 +303,7 @@
     bottom: 0;
     align-items: center;
     justify-content: center;
-    background-color: rgba(4, 8, 16, 0.58);
+    background-color: rgba(18, 6, 9, 0.62);
 }
 
 .auth-dialog {
@@ -302,15 +316,15 @@
     border-bottom-width: 1px;
     border-left-width: 1px;
     border-right-width: 1px;
-    border-top-color: rgba(216, 192, 140, 0.42);
-    border-bottom-color: rgba(216, 192, 140, 0.42);
-    border-left-color: rgba(255, 255, 255, 0.10);
-    border-right-color: rgba(255, 255, 255, 0.10);
+    border-top-color: rgba(255, 186, 118, 0.54);
+    border-bottom-color: rgba(255, 186, 118, 0.54);
+    border-left-color: rgba(255, 225, 197, 0.14);
+    border-right-color: rgba(255, 225, 197, 0.14);
     background-color: var(--menu-panel-strong);
 }
 
 .auth-dialog-kicker {
-    color: rgba(194, 164, 104, 0.92);
+    color: rgba(255, 198, 132, 0.96);
     font-size: 12px;
     -unity-font-style: bold;
     letter-spacing: 4px;
@@ -390,8 +404,8 @@
     border-right-width: 1px;
     border-top-color: var(--menu-border);
     border-bottom-color: var(--menu-border);
-    border-left-color: rgba(255, 255, 255, 0.06);
-    border-right-color: rgba(255, 255, 255, 0.06);
+    border-left-color: rgba(255, 217, 184, 0.10);
+    border-right-color: rgba(255, 217, 184, 0.10);
     background-color: var(--menu-panel);
 }
 
@@ -436,29 +450,29 @@
     border-bottom-width: 1px;
     border-left-width: 1px;
     border-right-width: 1px;
-    border-top-color: rgba(255, 255, 255, 0.08);
-    border-bottom-color: rgba(255, 255, 255, 0.08);
-    border-left-color: rgba(255, 255, 255, 0.05);
-    border-right-color: rgba(255, 255, 255, 0.05);
-    background-color: rgba(255, 255, 255, 0.03);
+    border-top-color: rgba(255, 217, 184, 0.14);
+    border-bottom-color: rgba(255, 217, 184, 0.14);
+    border-left-color: rgba(255, 217, 184, 0.08);
+    border-right-color: rgba(255, 217, 184, 0.08);
+    background-color: rgba(255, 214, 168, 0.05);
 }
 
 .team-slot--active {
-    background-color: rgba(18, 28, 44, 0.78);
-    border-top-color: rgba(194, 164, 104, 0.42);
-    border-bottom-color: rgba(194, 164, 104, 0.42);
+    background-color: rgba(84, 31, 25, 0.80);
+    border-top-color: rgba(255, 178, 111, 0.50);
+    border-bottom-color: rgba(255, 178, 111, 0.50);
 }
 
 .team-slot--drop-target {
-    background-color: rgba(35, 56, 80, 0.88);
-    border-top-color: rgba(243, 224, 178, 0.92);
-    border-bottom-color: rgba(243, 224, 178, 0.92);
-    border-left-color: rgba(243, 224, 178, 0.68);
-    border-right-color: rgba(243, 224, 178, 0.68);
+    background-color: rgba(143, 61, 36, 0.90);
+    border-top-color: rgba(255, 228, 185, 0.94);
+    border-bottom-color: rgba(255, 228, 185, 0.94);
+    border-left-color: rgba(255, 228, 185, 0.72);
+    border-right-color: rgba(255, 228, 185, 0.72);
 }
 
 .team-slot-index {
-    color: rgba(194, 164, 104, 0.92);
+    color: rgba(255, 198, 132, 0.96);
     font-size: 11px;
     letter-spacing: 4px;
     margin-bottom: 4px;
@@ -494,17 +508,17 @@
     border-bottom-width: 1px;
     border-left-width: 1px;
     border-right-width: 1px;
-    border-top-color: rgba(255, 255, 255, 0.12);
-    border-bottom-color: rgba(255, 255, 255, 0.12);
-    border-left-color: rgba(255, 255, 255, 0.12);
-    border-right-color: rgba(255, 255, 255, 0.12);
-    background-color: rgba(12, 18, 28, 0.88);
+    border-top-color: rgba(255, 218, 188, 0.20);
+    border-bottom-color: rgba(255, 218, 188, 0.20);
+    border-left-color: rgba(255, 218, 188, 0.20);
+    border-right-color: rgba(255, 218, 188, 0.20);
+    background-color: rgba(55, 20, 20, 0.90);
     color: var(--menu-ink);
     letter-spacing: 2px;
 }
 
 .team-slot-clear:hover {
-    background-color: rgba(38, 56, 76, 0.98);
+    background-color: rgba(124, 48, 32, 0.98);
 }
 
 .roster-scroll-view {
@@ -530,23 +544,23 @@
     border-bottom-width: 1px;
     border-left-width: 1px;
     border-right-width: 1px;
-    border-top-color: rgba(255, 255, 255, 0.08);
-    border-bottom-color: rgba(255, 255, 255, 0.08);
-    border-left-color: rgba(255, 255, 255, 0.05);
-    border-right-color: rgba(255, 255, 255, 0.05);
-    background-color: rgba(255, 255, 255, 0.03);
+    border-top-color: rgba(255, 217, 184, 0.14);
+    border-bottom-color: rgba(255, 217, 184, 0.14);
+    border-left-color: rgba(255, 217, 184, 0.08);
+    border-right-color: rgba(255, 217, 184, 0.08);
+    background-color: rgba(255, 214, 168, 0.05);
 }
 
 .roster-card:hover {
-    background-color: rgba(18, 28, 44, 0.82);
-    border-top-color: rgba(194, 164, 104, 0.40);
-    border-bottom-color: rgba(194, 164, 104, 0.40);
+    background-color: rgba(87, 32, 25, 0.84);
+    border-top-color: rgba(255, 182, 116, 0.46);
+    border-bottom-color: rgba(255, 182, 116, 0.46);
 }
 
 .roster-card--assigned {
-    background-color: rgba(16, 24, 38, 0.88);
-    border-top-color: rgba(194, 164, 104, 0.58);
-    border-bottom-color: rgba(194, 164, 104, 0.58);
+    background-color: rgba(57, 23, 22, 0.90);
+    border-top-color: rgba(255, 182, 116, 0.60);
+    border-bottom-color: rgba(255, 182, 116, 0.60);
 }
 
 .roster-card-preview {
@@ -559,7 +573,7 @@
 }
 
 .roster-card-status {
-    color: rgba(194, 164, 104, 0.92);
+    color: rgba(255, 198, 132, 0.96);
 }
 
 .editor-status-label {
@@ -572,15 +586,15 @@
     padding-right: 14px;
     padding-top: 10px;
     padding-bottom: 10px;
-    background-color: rgba(12, 18, 28, 0.94);
+    background-color: rgba(58, 20, 20, 0.96);
     border-top-width: 1px;
     border-bottom-width: 1px;
     border-left-width: 1px;
     border-right-width: 1px;
-    border-top-color: rgba(243, 224, 178, 0.85);
-    border-bottom-color: rgba(243, 224, 178, 0.85);
-    border-left-color: rgba(243, 224, 178, 0.85);
-    border-right-color: rgba(243, 224, 178, 0.85);
+    border-top-color: rgba(255, 226, 174, 0.90);
+    border-bottom-color: rgba(255, 226, 174, 0.90);
+    border-left-color: rgba(255, 226, 174, 0.90);
+    border-right-color: rgba(255, 226, 174, 0.90);
     color: var(--menu-ink);
     -unity-font-style: bold;
     letter-spacing: 3px;
@@ -591,7 +605,7 @@
     left: 72px;
     right: 72px;
     height: 1px;
-    background-color: rgba(194, 164, 104, 0.38);
+    background-color: rgba(255, 189, 122, 0.50);
 }
 
 .frame-line--top {
@@ -631,11 +645,11 @@
     border-bottom-width: 1px;
     border-left-width: 1px;
     border-right-width: 1px;
-    border-top-color: rgba(216, 192, 140, 0.42);
-    border-bottom-color: rgba(216, 192, 140, 0.42);
-    border-left-color: rgba(255, 255, 255, 0.08);
-    border-right-color: rgba(255, 255, 255, 0.08);
-    background-color: rgba(10, 16, 28, 0.9);
+    border-top-color: rgba(255, 186, 118, 0.54);
+    border-bottom-color: rgba(255, 186, 118, 0.54);
+    border-left-color: rgba(255, 223, 197, 0.12);
+    border-right-color: rgba(255, 223, 197, 0.12);
+    background-color: rgba(46, 18, 18, 0.92);
 }
 
 .host-grid {
@@ -704,11 +718,11 @@
     border-bottom-width: 1px;
     border-left-width: 1px;
     border-right-width: 1px;
-    border-top-color: rgba(255, 255, 255, 0.08);
-    border-bottom-color: rgba(255, 255, 255, 0.08);
-    border-left-color: rgba(255, 255, 255, 0.05);
-    border-right-color: rgba(255, 255, 255, 0.05);
-    background-color: rgba(255, 255, 255, 0.03);
+    border-top-color: rgba(255, 217, 184, 0.14);
+    border-bottom-color: rgba(255, 217, 184, 0.14);
+    border-left-color: rgba(255, 217, 184, 0.08);
+    border-right-color: rgba(255, 217, 184, 0.08);
+    background-color: rgba(255, 214, 168, 0.05);
 }
 
 .host-slider-label {
@@ -725,7 +739,7 @@
 
 .host-slider-value {
     width: 24px;
-    color: rgba(194, 164, 104, 0.92);
+    color: rgba(255, 198, 132, 0.96);
     -unity-font-style: bold;
     font-size: 15px;
     -unity-text-align: middle-center;
@@ -757,11 +771,11 @@
     border-bottom-width: 1px;
     border-left-width: 1px;
     border-right-width: 1px;
-    border-top-color: rgba(255, 255, 255, 0.08);
-    border-bottom-color: rgba(255, 255, 255, 0.08);
-    border-left-color: rgba(255, 255, 255, 0.05);
-    border-right-color: rgba(255, 255, 255, 0.05);
-    background-color: rgba(255, 255, 255, 0.03);
+    border-top-color: rgba(255, 217, 184, 0.14);
+    border-bottom-color: rgba(255, 217, 184, 0.14);
+    border-left-color: rgba(255, 217, 184, 0.08);
+    border-right-color: rgba(255, 217, 184, 0.08);
+    background-color: rgba(255, 214, 168, 0.05);
 }
 
 .host-enemy-dropdown {
@@ -783,17 +797,17 @@
     border-bottom-width: 1px;
     border-left-width: 1px;
     border-right-width: 1px;
-    border-top-color: rgba(255, 255, 255, 0.12);
-    border-bottom-color: rgba(255, 255, 255, 0.12);
-    border-left-color: rgba(255, 255, 255, 0.12);
-    border-right-color: rgba(255, 255, 255, 0.12);
-    background-color: rgba(12, 18, 28, 0.88);
+    border-top-color: rgba(255, 218, 188, 0.20);
+    border-bottom-color: rgba(255, 218, 188, 0.20);
+    border-left-color: rgba(255, 218, 188, 0.20);
+    border-right-color: rgba(255, 218, 188, 0.20);
+    background-color: rgba(55, 20, 20, 0.90);
     color: var(--menu-ink);
     letter-spacing: 2px;
 }
 
 .host-enemy-remove-button:hover {
-    background-color: rgba(38, 56, 76, 0.98);
+    background-color: rgba(124, 48, 32, 0.98);
 }
 
 .relay-code-header {
@@ -807,11 +821,11 @@
     border-bottom-width: 1px;
     border-left-width: 1px;
     border-right-width: 1px;
-    border-top-color: rgba(216, 192, 140, 0.42);
-    border-bottom-color: rgba(216, 192, 140, 0.42);
-    border-left-color: rgba(255, 255, 255, 0.08);
-    border-right-color: rgba(255, 255, 255, 0.08);
-    background-color: rgba(10, 16, 28, 0.9);
+    border-top-color: rgba(255, 186, 118, 0.54);
+    border-bottom-color: rgba(255, 186, 118, 0.54);
+    border-left-color: rgba(255, 223, 197, 0.12);
+    border-right-color: rgba(255, 223, 197, 0.12);
+    background-color: rgba(46, 18, 18, 0.92);
 }
 
 .relay-code-header-caption {

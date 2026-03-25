@@ -2,6 +2,7 @@
     <ui:Style src="project://database/Assets/Resources/UI/TacticsMainMenu.uss" />
     <ui:VisualElement name="main-menu-root" class="menu-root">
         <ui:VisualElement name="menu-backdrop" class="menu-backdrop">
+            <ui:VisualElement name="background-shade" class="background-shade" />
             <ui:VisualElement name="ambient-glow-top" class="ambient-glow ambient-glow--top" />
             <ui:VisualElement name="ambient-glow-bottom" class="ambient-glow ambient-glow--bottom" />
 
