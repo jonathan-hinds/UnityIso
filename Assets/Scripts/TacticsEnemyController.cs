@@ -37,6 +37,7 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
             Vector2Int sourceTile,
             Vector2Int targetTile,
             Vector2Int moveDestination,
+            TacticsAbilityCostPayment costPayment,
             bool requiresMovement,
             float score)
         {
@@ -45,6 +46,7 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
             SourceTile = sourceTile;
             TargetTile = targetTile;
             MoveDestination = moveDestination;
+            CostPayment = costPayment;
             RequiresMovement = requiresMovement;
             Score = score;
         }
@@ -54,6 +56,7 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         public Vector2Int SourceTile { get; }
         public Vector2Int TargetTile { get; }
         public Vector2Int MoveDestination { get; }
+        public TacticsAbilityCostPayment CostPayment { get; }
         public bool RequiresMovement { get; }
         public float Score { get; }
     }
@@ -330,7 +333,8 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         for (int i = 0; i < abilities.Count; i++)
         {
             TacticsAbilityDefinition ability = abilities[i];
-            if (ability == null || !character.HasResourcesForAbility(ability))
+            if (ability == null ||
+                !character.TryGetAbilityCostPayment(ability, movementAvailable: true, out TacticsAbilityCostPayment payment))
             {
                 continue;
             }
@@ -360,7 +364,7 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
                 continue;
             }
 
-            float score = ScoreAbilityPlan(ability, priorityTarget, character.GridPosition, requiresMovement: false, affectedTargets);
+            float score = ScoreAbilityPlan(ability, priorityTarget, character.GridPosition, payment, requiresMovement: false, affectedTargets);
             score += 1000f;
             if (!foundPlan || score > bestPlan.Score)
             {
@@ -371,6 +375,7 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
                     character.GridPosition,
                     priorityTarget.GridPosition,
                     character.GridPosition,
+                    payment,
                     requiresMovement: false,
                     score);
             }
@@ -480,10 +485,13 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         ref bool foundPlan,
         ref EnemyAbilityPlan bestPlan)
     {
+        bool movementAvailable = !requiresMovement && character != null && character.HasMovementAvailableForAbilityCost;
+
         for (int i = 0; i < abilities.Count; i++)
         {
             TacticsAbilityDefinition ability = abilities[i];
-            if (ability == null || !character.HasResourcesForAbility(ability))
+            if (ability == null ||
+                !character.TryGetAbilityCostPayment(ability, movementAvailable, out TacticsAbilityCostPayment payment))
             {
                 continue;
             }
@@ -506,14 +514,15 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
                     character,
                     sourceTile,
                     ability,
-                    primaryTarget.GridPosition);
+                    primaryTarget.GridPosition,
+                    movementAvailable);
 
                 if (affectedTargets.Count == 0)
                 {
                     continue;
                 }
 
-                float score = ScoreAbilityPlan(ability, primaryTarget, sourceTile, requiresMovement, affectedTargets);
+                float score = ScoreAbilityPlan(ability, primaryTarget, sourceTile, payment, requiresMovement, affectedTargets);
                 if (!foundPlan || score > bestPlan.Score)
                 {
                     foundPlan = true;
@@ -523,6 +532,7 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
                         sourceTile,
                         primaryTarget.GridPosition,
                         moveDestination,
+                        payment,
                         requiresMovement,
                         score);
                 }
@@ -534,6 +544,7 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         TacticsAbilityDefinition ability,
         TacticsCharacterController target,
         Vector2Int sourceTile,
+        TacticsAbilityCostPayment costPayment,
         bool requiresMovement,
         IReadOnlyList<TacticsCharacterController> affectedTargets)
     {
@@ -550,11 +561,12 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
                                      IsSupportAbility(ability)
             ? 10f
             : 0f;
-        float resourcePenalty = ability.HasResourceCost
-            ? (ability.CostAmount / Mathf.Max(1f, character.GetMaxResource(ability.CostResourceType))) * 3f
+        float costPenalty = GetCostPenalty(ability, costPayment, requiresMovement);
+        float teamIntentBonus = strategicContext != null
+            ? strategicContext.ScoreTeamPlan(sourceTile, target, ability, affectedTargets, costPayment)
             : 0f;
 
-        return tacticalValue + coordinationBonus + rangeBias + selfPreservationBias - movementPenalty - distancePenalty - resourcePenalty;
+        return tacticalValue + coordinationBonus + rangeBias + selfPreservationBias + teamIntentBonus - movementPenalty - distancePenalty - costPenalty;
     }
 
     private float EvaluateAbilityTacticalValue(TacticsAbilityDefinition ability, IReadOnlyList<TacticsCharacterController> affectedTargets)
@@ -709,7 +721,26 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         return TacticsAbilityEffectMath.EvaluateRestoreResourceAmount(character, restoreResource, useAverageRoll: true);
     }
 
-    private float GetBestAbilityOpportunityScore(Vector2Int sourceTile)
+    private float GetCostPenalty(
+        TacticsAbilityDefinition ability,
+        TacticsAbilityCostPayment costPayment,
+        bool requiresMovement)
+    {
+        if (ability == null || !costPayment.HasCost || character == null)
+        {
+            return 0f;
+        }
+
+        if (costPayment.UsesMovement)
+        {
+            return requiresMovement ? 1000f : 1.25f;
+        }
+
+        int maxResource = Mathf.Max(1, character.GetMaxResource(costPayment.ResourceType));
+        return (costPayment.Amount / (float)maxResource) * 3f;
+    }
+
+    private float GetBestAbilityOpportunityScore(Vector2Int sourceTile, bool movementAvailable)
     {
         if (character == null || combatSystem == null)
         {
@@ -718,19 +749,62 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
 
         EnemyAbilityPlan bestPlan = default;
         bool foundPlan = false;
-        EvaluateAbilityPlansForTile(
-            character.Abilities,
-            sourceTile,
-            sourceTile,
-            requiresMovement: false,
-            ref foundPlan,
-            ref bestPlan);
+        IReadOnlyList<TacticsAbilityDefinition> abilities = character.Abilities;
+        for (int i = 0; i < abilities.Count; i++)
+        {
+            TacticsAbilityDefinition ability = abilities[i];
+            if (ability == null ||
+                !character.TryGetAbilityCostPayment(ability, movementAvailable, out TacticsAbilityCostPayment payment))
+            {
+                continue;
+            }
+
+            List<TacticsCharacterController> candidateTargets = GetCandidateTargetsForAbility(ability);
+            for (int targetIndex = 0; targetIndex < candidateTargets.Count; targetIndex++)
+            {
+                TacticsCharacterController primaryTarget = candidateTargets[targetIndex];
+                if (primaryTarget == null ||
+                    !primaryTarget.isActiveAndEnabled ||
+                    !primaryTarget.IsAlive ||
+                    !combatSystem.CanTargetTileFromTile(character, sourceTile, ability, primaryTarget.GridPosition))
+                {
+                    continue;
+                }
+
+                IReadOnlyList<TacticsCharacterController> affectedTargets = combatSystem.GetPreviewTargetsFromTile(
+                    character,
+                    sourceTile,
+                    ability,
+                    primaryTarget.GridPosition,
+                    movementAvailable);
+                if (affectedTargets.Count == 0)
+                {
+                    continue;
+                }
+
+                float score = ScoreAbilityPlan(ability, primaryTarget, sourceTile, payment, requiresMovement: !movementAvailable, affectedTargets);
+                if (!foundPlan || score > bestPlan.Score)
+                {
+                    foundPlan = true;
+                    bestPlan = new EnemyAbilityPlan(
+                        ability,
+                        primaryTarget,
+                        sourceTile,
+                        primaryTarget.GridPosition,
+                        sourceTile,
+                        payment,
+                        requiresMovement: !movementAvailable,
+                        score);
+                }
+            }
+        }
+
         return foundPlan ? bestPlan.Score : 0f;
     }
 
     private float ScoreMovementTile(Vector2Int sourceTile, TacticsCharacterController anchorTarget, int pathIndex)
     {
-        float immediateOpportunityScore = GetBestAbilityOpportunityScore(sourceTile);
+        float immediateOpportunityScore = GetBestAbilityOpportunityScore(sourceTile, movementAvailable: false);
         float anchorDistance = anchorTarget != null ? GetTileDistance(sourceTile, anchorTarget.GridPosition) : 0f;
         float hostilePressure = ScorePressurePosition(sourceTile);
         float supportPressure = ScoreSupportPosition(sourceTile);
@@ -1248,6 +1322,26 @@ public sealed class TacticsEnemyStrategicContext
         return bestScore;
     }
 
+    public float ScoreTeamPlan(
+        Vector2Int sourceTile,
+        TacticsCharacterController primaryTarget,
+        TacticsAbilityDefinition ability,
+        IReadOnlyList<TacticsCharacterController> affectedTargets,
+        TacticsAbilityCostPayment costPayment)
+    {
+        if (actor == null)
+        {
+            return 0f;
+        }
+
+        float pairingScore = ScoreRolePairing(sourceTile, primaryTarget);
+        float supportChainScore = ScoreSupportChain(sourceTile, ability, affectedTargets);
+        float costSynergy = costPayment.UsesMovement && ability != null && ability.AllowsMovementAsAlternateCost
+            ? 2.5f
+            : 0f;
+        return pairingScore + supportChainScore + costSynergy;
+    }
+
     public float ScoreHealingTarget(TacticsCharacterController target, float effectiveHealing, bool isSelfTarget)
     {
         if (target == null || target.Team != actor.Team || effectiveHealing <= 0f)
@@ -1274,6 +1368,75 @@ public sealed class TacticsEnemyStrategicContext
         }
 
         return ScoreResourceNeed(target, resourceType, restoredAmount) + (isSelfTarget ? 3f : 1.5f);
+    }
+
+    private float ScoreRolePairing(Vector2Int sourceTile, TacticsCharacterController primaryTarget)
+    {
+        if (actor == null)
+        {
+            return 0f;
+        }
+
+        bool actorIsBackliner = GetPreferredCombatDistance(actor) > 1.5f || IsSupportUnit(actor);
+        float bestScore = 0f;
+
+        for (int i = 0; i < allies.Count; i++)
+        {
+            TacticsCharacterController ally = allies[i];
+            if (ally == null || ReferenceEquals(ally, actor))
+            {
+                continue;
+            }
+
+            bool allyIsFrontliner = GetPreferredCombatDistance(ally) <= 1.5f && !IsSupportUnit(ally);
+            bool complementaryPair = actorIsBackliner ? allyIsFrontliner : !allyIsFrontliner;
+            if (!complementaryPair)
+            {
+                continue;
+            }
+
+            float allyDistance = GetTileDistance(sourceTile, ally.GridPosition);
+            float spacingScore = actorIsBackliner
+                ? Mathf.Clamp(4f - Mathf.Abs(allyDistance - 3f), -2f, 4f)
+                : Mathf.Clamp(3f - Mathf.Abs(allyDistance - 2f), -2f, 3f);
+            float targetPressure = 0f;
+            if (primaryTarget != null && primaryTarget.Team != actor.Team)
+            {
+                targetPressure = Mathf.Max(0f, 4f - (GetTileDistance(ally.GridPosition, primaryTarget.GridPosition) * 0.5f));
+            }
+
+            bestScore = Mathf.Max(bestScore, spacingScore + targetPressure);
+        }
+
+        return bestScore;
+    }
+
+    private float ScoreSupportChain(
+        Vector2Int sourceTile,
+        TacticsAbilityDefinition ability,
+        IReadOnlyList<TacticsCharacterController> affectedTargets)
+    {
+        if (ability == null || affectedTargets == null || affectedTargets.Count == 0)
+        {
+            return 0f;
+        }
+
+        float bestScore = 0f;
+        for (int i = 0; i < affectedTargets.Count; i++)
+        {
+            TacticsCharacterController target = affectedTargets[i];
+            if (target == null || target.Team != actor.Team)
+            {
+                continue;
+            }
+
+            float chainScore = GetOffensivePotential(target) * 0.08f;
+            chainScore += CountNearbyHostiles(target) * 1.5f;
+            chainScore -= GetTileDistance(sourceTile, target.GridPosition) * 0.1f;
+            bestScore = Mathf.Max(bestScore, chainScore);
+        }
+
+        return bestScore;
     }
 
     private TacticsCharacterController ResolveFocusTarget()

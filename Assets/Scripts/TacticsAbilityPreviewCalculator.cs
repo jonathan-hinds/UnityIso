@@ -33,15 +33,27 @@ public static class TacticsAbilityPreviewCalculator
     {
         if (ability == null || !ability.HasResourceCost)
         {
+            if (ability != null && ability.HasMovementCost)
+            {
+                return "COST MOVE";
+            }
+
             return "NO COST";
         }
 
-        return ability.CostResourceType switch
+        string baseCost = ability.CostResourceType switch
         {
             TacticsAbilityResourceType.Stamina => $"COST ST {ability.CostAmount}",
             TacticsAbilityResourceType.Mana => $"COST MP {ability.CostAmount}",
             _ => "NO COST"
         };
+
+        if (ability.AllowsMovementAsAlternateCost)
+        {
+            return $"{baseCost} OR MOVE";
+        }
+
+        return baseCost;
     }
 
     public static string BuildRangeLabel(TacticsAbilityDefinition ability)

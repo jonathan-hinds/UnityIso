@@ -16,6 +16,7 @@ public sealed class TacticsAbilityDefinitionEditor : Editor
     private SerializedProperty effectsProperty;
     private SerializedProperty costResourceTypeProperty;
     private SerializedProperty costAmountProperty;
+    private SerializedProperty allowMovementAsAlternateCostProperty;
 
     private void OnEnable()
     {
@@ -31,6 +32,7 @@ public sealed class TacticsAbilityDefinitionEditor : Editor
         effectsProperty = serializedObject.FindProperty("effects");
         costResourceTypeProperty = serializedObject.FindProperty("costResourceType");
         costAmountProperty = serializedObject.FindProperty("costAmount");
+        allowMovementAsAlternateCostProperty = serializedObject.FindProperty("allowMovementAsAlternateCost");
     }
 
     public override void OnInspectorGUI()
@@ -71,7 +73,25 @@ public sealed class TacticsAbilityDefinitionEditor : Editor
         EditorGUILayout.Space();
         EditorGUILayout.LabelField("Cost", EditorStyles.boldLabel);
         EditorGUILayout.PropertyField(costResourceTypeProperty);
-        EditorGUILayout.PropertyField(costAmountProperty);
+        TacticsAbilityResourceType costType = (TacticsAbilityResourceType)costResourceTypeProperty.enumValueIndex;
+        if (costType != TacticsAbilityResourceType.None)
+        {
+            if (costType == TacticsAbilityResourceType.Movement)
+            {
+                EditorGUILayout.HelpBox("Movement costs consume the unit's move for the turn instead of stamina or mana.", MessageType.Info);
+            }
+            else
+            {
+                EditorGUILayout.PropertyField(costAmountProperty);
+                EditorGUILayout.PropertyField(
+                    allowMovementAsAlternateCostProperty,
+                    new GUIContent("Allow Movement Alternative", "If the unit still has movement left, movement can be spent to cover this ability cost when the resource cost cannot be paid."));
+            }
+        }
+        else
+        {
+            EditorGUILayout.PropertyField(costAmountProperty);
+        }
 
         serializedObject.ApplyModifiedProperties();
     }

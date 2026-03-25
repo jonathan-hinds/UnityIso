@@ -30,6 +30,7 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
     [Header("Cost")]
     [SerializeField] private TacticsAbilityResourceType costResourceType = TacticsAbilityResourceType.None;
     [SerializeField, Min(0)] private int costAmount;
+    [SerializeField] private bool allowMovementAsAlternateCost;
 
     public string AbilityId => abilityId;
     public string DisplayName => string.IsNullOrWhiteSpace(displayName) ? name : displayName.Trim();
@@ -49,9 +50,14 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
     public TacticsAbilityProjectile ProjectilePrefab => projectilePrefab;
     public bool UsesProjectilePresentation => projectilePrefab != null;
     public IReadOnlyList<TacticsAbilityEffectDefinitionData> Effects => effects;
-    public TacticsAbilityResourceType CostResourceType => costAmount > 0 ? costResourceType : TacticsAbilityResourceType.None;
-    public int CostAmount => Mathf.Max(0, costAmount);
-    public bool HasResourceCost => CostResourceType != TacticsAbilityResourceType.None && CostAmount > 0;
+    public TacticsAbilityResourceType CostResourceType => ResolvedCostAmount > 0 ? costResourceType : TacticsAbilityResourceType.None;
+    public int CostAmount => ResolvedCostAmount;
+    public bool HasCost => CostResourceType != TacticsAbilityResourceType.None && CostAmount > 0;
+    public bool HasResourceCost => HasCost && CostResourceType is TacticsAbilityResourceType.Stamina or TacticsAbilityResourceType.Mana;
+    public bool HasMovementCost => HasCost && CostResourceType == TacticsAbilityResourceType.Movement;
+    public bool AllowsMovementAsAlternateCost => allowMovementAsAlternateCost && HasResourceCost;
+
+    private int ResolvedCostAmount => costResourceType == TacticsAbilityResourceType.Movement ? 1 : Mathf.Max(0, costAmount);
 
     public static TacticsAbilityDefinition CreateFallbackAttack()
     {
@@ -67,6 +73,7 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
         ability.damageType = TacticsAbilityDamageType.Melee;
         ability.costResourceType = TacticsAbilityResourceType.None;
         ability.costAmount = 0;
+        ability.allowMovementAsAlternateCost = false;
         ability.effects = new List<TacticsAbilityEffectDefinitionData>
         {
             TacticsAbilityEffectDefinitionData.CreateDealDamage(
@@ -94,6 +101,16 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
         }
 
         costAmount = Mathf.Max(0, costAmount);
+        if (costResourceType == TacticsAbilityResourceType.Movement)
+        {
+            costAmount = 1;
+        }
+
+        if (!HasResourceCost)
+        {
+            allowMovementAsAlternateCost = false;
+        }
+
         effects ??= new List<TacticsAbilityEffectDefinitionData>();
 
         for (int i = 0; i < effects.Count; i++)
@@ -168,7 +185,8 @@ public enum TacticsAbilityResourceType
 {
     None = 0,
     Stamina = 1,
-    Mana = 2
+    Mana = 2,
+    Movement = 3
 }
 
 public enum TacticsDamageFormula

@@ -175,11 +175,17 @@ public sealed class TacticsCombatSystem : MonoBehaviour
             return false;
         }
 
+        if (!source.TryGetAbilityCostPayment(ability, out TacticsAbilityCostPayment payment))
+        {
+            return false;
+        }
+
         TacticsAbilityExecutionContext context = new TacticsAbilityExecutionContext(
             source,
             ability,
             targetTile,
-            new List<TacticsCharacterController>(affectedTargets));
+            new List<TacticsCharacterController>(affectedTargets),
+            payment);
 
         if (!HasApplicableEffect(context))
         {
@@ -208,7 +214,8 @@ public sealed class TacticsCombatSystem : MonoBehaviour
             source,
             ability,
             targetTile,
-            new List<TacticsCharacterController>(affectedTargets));
+            new List<TacticsCharacterController>(affectedTargets),
+            ResolveReplicatedAbilityCostPayment(source, ability));
 
         if (!HasApplicableEffect(context))
         {
@@ -232,10 +239,15 @@ public sealed class TacticsCombatSystem : MonoBehaviour
 
     public bool CanUseAbility(TacticsCharacterController source, TacticsAbilityDefinition ability)
     {
+        return CanUseAbility(source, ability, source != null && source.HasMovementAvailableForAbilityCost);
+    }
+
+    public bool CanUseAbility(TacticsCharacterController source, TacticsAbilityDefinition ability, bool movementAvailable)
+    {
         return source != null &&
                ability != null &&
                source.CanUseAbilitiesThisTurn &&
-               source.HasResourcesForAbility(ability) &&
+               source.CanPayAbilityCost(ability, movementAvailable) &&
                source.isActiveAndEnabled;
     }
 
@@ -273,9 +285,24 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         TacticsAbilityDefinition ability,
         Vector2Int targetTile)
     {
+        return GetPreviewTargetsFromTile(
+            source,
+            sourceTile,
+            ability,
+            targetTile,
+            source != null && source.HasMovementAvailableForAbilityCost);
+    }
+
+    public IReadOnlyList<TacticsCharacterController> GetPreviewTargetsFromTile(
+        TacticsCharacterController source,
+        Vector2Int sourceTile,
+        TacticsAbilityDefinition ability,
+        Vector2Int targetTile,
+        bool movementAvailable)
+    {
         reusableAreaTargets.Clear();
 
-        if (!CanUseAbility(source, ability) ||
+        if (!CanUseAbility(source, ability, movementAvailable) ||
             !CanTargetTile(source, sourceTile, ability, targetTile) ||
             (ability != null &&
              ability.RangeType == TacticsAbilityRangeType.SurroundingAoE &&
@@ -695,7 +722,7 @@ public sealed class TacticsCombatSystem : MonoBehaviour
             return false;
         }
 
-        if (!source.HasResourcesForAbility(ability))
+        if (!source.TryGetAbilityCostPayment(ability, out _))
         {
             return false;
         }
@@ -749,7 +776,7 @@ public sealed class TacticsCombatSystem : MonoBehaviour
 
         if (appliedAnyEffect && context.Source != null && context.Source.isActiveAndEnabled)
         {
-            if (context.Source.TrySpendAbilityCost(context.Ability))
+            if (context.Source.TrySpendAbilityCost(context.CostPayment))
             {
                 context.Source.CommitAbilityUse();
             }
@@ -805,6 +832,22 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         return context.Source != null ? context.Source.TurnFocusPoint : Vector3.zero;
     }
 
+    private static TacticsAbilityCostPayment ResolveReplicatedAbilityCostPayment(
+        TacticsCharacterController source,
+        TacticsAbilityDefinition ability)
+    {
+        if (source != null && source.TryGetAbilityCostPayment(ability, out TacticsAbilityCostPayment payment))
+        {
+            return payment;
+        }
+
+        return ability != null && ability.HasMovementCost
+            ? new TacticsAbilityCostPayment(TacticsAbilityResourceType.Movement, 1)
+            : ability != null && ability.HasResourceCost
+                ? new TacticsAbilityCostPayment(ability.CostResourceType, ability.CostAmount)
+                : TacticsAbilityCostPayment.None;
+    }
+
     private void SetState(TacticsCombatState nextState)
     {
         State = nextState;
@@ -825,18 +868,21 @@ public readonly struct TacticsAbilityExecutionContext
         TacticsCharacterController source,
         TacticsAbilityDefinition ability,
         Vector2Int targetTile,
-        IReadOnlyList<TacticsCharacterController> targets)
+        IReadOnlyList<TacticsCharacterController> targets,
+        TacticsAbilityCostPayment costPayment)
     {
         Source = source;
         Ability = ability;
         TargetTile = targetTile;
         Targets = targets;
+        CostPayment = costPayment;
     }
 
     public TacticsCharacterController Source { get; }
     public TacticsAbilityDefinition Ability { get; }
     public Vector2Int TargetTile { get; }
     public IReadOnlyList<TacticsCharacterController> Targets { get; }
+    public TacticsAbilityCostPayment CostPayment { get; }
 }
 
 public interface ITacticsAbilityEffectProcessor

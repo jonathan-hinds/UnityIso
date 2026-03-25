@@ -927,17 +927,18 @@ public class TacticsPlayerController : MonoBehaviour
             }
 
             bool hasResources = character.HasResourcesForAbility(ability);
+            bool canPayCost = character.CanPayAbilityCost(ability);
             bool hasTargets = combatSystem != null &&
                               character.CanUseAbilitiesThisTurn &&
-                              hasResources &&
+                              canPayCost &&
                               combatSystem.GetValidTargetTiles(character, ability).Count > 0;
             bool isInteractable = combatSystem != null &&
                                   character.CanUseAbilitiesThisTurn &&
-                                  hasResources &&
+                                  canPayCost &&
                                   hasTargets;
             bool isSelected = isTargetingWithCharacter &&
                               ReferenceEquals(combatSystem.TargetingAbility, ability);
-            string statusText = BuildAbilityStatusText(character, ability, hasResources, hasTargets);
+            string statusText = BuildAbilityStatusText(character, ability, hasResources, canPayCost, hasTargets);
 
             abilityOptions.Add(new TacticsActionMenuAbilityOption(ability, isInteractable, isSelected, statusText));
         }
@@ -947,6 +948,7 @@ public class TacticsPlayerController : MonoBehaviour
         TacticsCharacterController character,
         TacticsAbilityDefinition ability,
         bool hasResources,
+        bool canPayCost,
         bool hasTargets)
     {
         if (character == null || ability == null)
@@ -959,14 +961,25 @@ public class TacticsPlayerController : MonoBehaviour
             return character.IsTurnActive ? "Action spent" : "Not your turn";
         }
 
-        if (!hasResources)
+        if (!canPayCost)
         {
             return ability.CostResourceType switch
             {
                 TacticsAbilityResourceType.Stamina => "Not enough stamina",
                 TacticsAbilityResourceType.Mana => "Not enough mana",
+                TacticsAbilityResourceType.Movement => "Move already spent",
                 _ => "Not enough resources"
             };
+        }
+
+        if (ability.HasMovementCost)
+        {
+            return hasTargets ? "Costs movement" : "No targets";
+        }
+
+        if (!hasResources && ability.AllowsMovementAsAlternateCost)
+        {
+            return hasTargets ? "Use movement instead" : "No targets";
         }
 
         return hasTargets ? "Ready" : "No targets";

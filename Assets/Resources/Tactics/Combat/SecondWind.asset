@@ -10,16 +10,16 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e7b9484a5008cb04fb02b3a3ce7d7f91, type: 3}
-  m_Name: ManaTap
+  m_Name: SecondWind
   m_EditorClassIdentifier: 
-  abilityId: mana_tap
-  displayName: Mana Tap
-  description: Convert Stamina to Mana
-  rangeType: 1
+  abilityId: second_wind
+  displayName: Second Wind
+  description: Instea of moving, restore some Stamina.
+  rangeType: 0
   range: 3
   areaOfEffectSize: 1
-  targetRule: 2
-  damageType: 1
+  targetRule: 3
+  damageType: 0
   projectilePrefab: {fileID: 0}
   effects:
   - effectKind: 2
@@ -36,13 +36,13 @@ MonoBehaviour:
       bonusMultiplier: 1
       scaling: []
     restoreResource:
-      resourceType: 2
+      resourceType: 1
       restoreFormula: 1
-      flatAmount: 20
+      flatAmount: 12
       bonusMultiplier: 1
       scaling:
-      - stat: 3
+      - stat: 1
         rank: 3
-  costResourceType: 1
-  costAmount: 20
+  costResourceType: 3
+  costAmount: 1
   allowMovementAsAlternateCost: 0

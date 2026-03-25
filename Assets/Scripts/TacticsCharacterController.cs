@@ -82,6 +82,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     public bool CanReceiveCommands => mapGenerator != null && mapGenerator.HasGeneratedMap && !IsMoving && !IsPerformingAction;
     public bool CanMoveThisTurn => IsTurnActive && !HasMovedThisTurn && CanReceiveCommands;
     public bool CanUseAbilitiesThisTurn => IsTurnActive && !HasActedThisTurn && CanReceiveCommands && IsAlive;
+    public bool HasMovementAvailableForAbilityCost => IsTurnActive && !HasMovedThisTurn && IsAlive;
     public bool CanInteractThisTurn => IsTurnActive && !HasActedThisTurn && CanReceiveCommands && IsAlive;
     public bool CanEndTurn => IsTurnActive && !IsMoving && !IsPerformingAction;
     public bool IsTurnEligible => isActiveAndEnabled && IsAlive;
@@ -429,26 +430,103 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         return GetCurrentResource(ability.CostResourceType) >= ability.CostAmount;
     }
 
-    public bool TrySpendAbilityCost(TacticsAbilityDefinition ability)
+    public bool CanPayAbilityCost(TacticsAbilityDefinition ability)
     {
-        if (ability == null || !ability.HasResourceCost)
+        return TryGetAbilityCostPayment(ability, HasMovementAvailableForAbilityCost, out _);
+    }
+
+    public bool CanPayAbilityCost(TacticsAbilityDefinition ability, bool movementAvailable)
+    {
+        return TryGetAbilityCostPayment(ability, movementAvailable, out _);
+    }
+
+    public bool TryGetAbilityCostPayment(TacticsAbilityDefinition ability, out TacticsAbilityCostPayment payment)
+    {
+        return TryGetAbilityCostPayment(ability, HasMovementAvailableForAbilityCost, out payment);
+    }
+
+    public bool TryGetAbilityCostPayment(
+        TacticsAbilityDefinition ability,
+        bool movementAvailable,
+        out TacticsAbilityCostPayment payment)
+    {
+        payment = TacticsAbilityCostPayment.None;
+
+        if (ability == null || !ability.HasCost)
         {
             return true;
         }
 
-        if (!HasResourcesForAbility(ability))
+        if (ability.HasMovementCost)
         {
-            return false;
+            if (!movementAvailable)
+            {
+                return false;
+            }
+
+            payment = new TacticsAbilityCostPayment(TacticsAbilityResourceType.Movement, 1);
+            return true;
         }
 
-        switch (ability.CostResourceType)
+        if (ability.HasResourceCost && HasResourcesForAbility(ability))
+        {
+            payment = new TacticsAbilityCostPayment(ability.CostResourceType, ability.CostAmount);
+            return true;
+        }
+
+        if (ability.AllowsMovementAsAlternateCost && movementAvailable)
+        {
+            payment = new TacticsAbilityCostPayment(TacticsAbilityResourceType.Movement, 1);
+            return true;
+        }
+
+        return false;
+    }
+
+    public bool TrySpendAbilityCost(TacticsAbilityDefinition ability)
+    {
+        if (!TryGetAbilityCostPayment(ability, out TacticsAbilityCostPayment payment))
+        {
+            return ability == null || !ability.HasCost;
+        }
+
+        return TrySpendAbilityCost(payment);
+    }
+
+    public bool TrySpendAbilityCost(TacticsAbilityCostPayment payment)
+    {
+        if (!payment.HasCost)
+        {
+            return true;
+        }
+
+        switch (payment.ResourceType)
         {
             case TacticsAbilityResourceType.Stamina:
-                runtimeResources.stamina = Mathf.Max(0, runtimeResources.stamina - ability.CostAmount);
+                if (runtimeResources.stamina < payment.Amount)
+                {
+                    return false;
+                }
+
+                runtimeResources.stamina = Mathf.Max(0, runtimeResources.stamina - payment.Amount);
                 break;
 
             case TacticsAbilityResourceType.Mana:
-                runtimeResources.mana = Mathf.Max(0, runtimeResources.mana - ability.CostAmount);
+                if (runtimeResources.mana < payment.Amount)
+                {
+                    return false;
+                }
+
+                runtimeResources.mana = Mathf.Max(0, runtimeResources.mana - payment.Amount);
+                break;
+
+            case TacticsAbilityResourceType.Movement:
+                if (!HasMovementAvailableForAbilityCost)
+                {
+                    return false;
+                }
+
+                HasMovedThisTurn = true;
                 break;
         }
 
@@ -836,6 +914,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         {
             TacticsAbilityResourceType.Stamina => CurrentStamina,
             TacticsAbilityResourceType.Mana => CurrentMana,
+            TacticsAbilityResourceType.Movement => HasMovementAvailableForAbilityCost ? 1 : 0,
             _ => 0
         };
     }
@@ -846,6 +925,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         {
             TacticsAbilityResourceType.Stamina => MaxStamina,
             TacticsAbilityResourceType.Mana => MaxMana,
+            TacticsAbilityResourceType.Movement => 1,
             _ => 0
         };
     }
@@ -1129,4 +1209,22 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         SnapToTile(GridPosition);
         characterAnimator?.SetIdle(currentDirection);
     }
+}
+
+public readonly struct TacticsAbilityCostPayment
+{
+    public static readonly TacticsAbilityCostPayment None = new(TacticsAbilityResourceType.None, 0);
+
+    public TacticsAbilityCostPayment(TacticsAbilityResourceType resourceType, int amount)
+    {
+        ResourceType = resourceType;
+        Amount = resourceType == TacticsAbilityResourceType.Movement
+            ? 1
+            : Mathf.Max(0, amount);
+    }
+
+    public TacticsAbilityResourceType ResourceType { get; }
+    public int Amount { get; }
+    public bool HasCost => ResourceType != TacticsAbilityResourceType.None && Amount > 0;
+    public bool UsesMovement => ResourceType == TacticsAbilityResourceType.Movement;
 }

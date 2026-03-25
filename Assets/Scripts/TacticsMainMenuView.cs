@@ -2377,17 +2377,24 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     {
         if (ability == null || !ability.HasResourceCost)
         {
-            return "No cost";
+            return ability != null && ability.HasMovementCost ? "Movement" : "No cost";
         }
 
         string resourceLabel = ability.CostResourceType switch
         {
             TacticsAbilityResourceType.Stamina => "Stamina",
             TacticsAbilityResourceType.Mana => "Mana",
+            TacticsAbilityResourceType.Movement => "Movement",
             _ => "Resource"
         };
 
-        return $"{ability.CostAmount} {resourceLabel}";
+        string costText = $"{ability.CostAmount} {resourceLabel}";
+        if (ability.AllowsMovementAsAlternateCost)
+        {
+            return $"{costText} or Movement";
+        }
+
+        return costText;
     }
 
     private bool CanSaveWorkingSelection()

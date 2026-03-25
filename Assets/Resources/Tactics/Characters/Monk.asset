@@ -10,12 +10,12 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 22e7b594db971ee418d48f83c5b2661c, type: 3}
-  m_Name: Chris
+  m_Name: Monk
   m_EditorClassIdentifier: 
-  characterId: chris
-  displayName: Chris
+  characterId: monk
+  displayName: Monk
   team: 0
-  spriteSheetResourcePath: Characters/guy8
+  spriteSheetResourcePath: Characters/guy12
   walkFramesPerSecond: 5
   baseColor: {r: 1, g: 1, b: 1, a: 1}
   selectedColor: {r: 1, g: 0.95, b: 0.65, a: 1}
@@ -25,21 +25,21 @@ MonoBehaviour:
   maxStepUp: 1
   maxStepDown: 1
   tileAnchorOffset: {x: 0.18, y: 0.17}
-  preferredSpawnTile: {x: 2, y: 0}
+  preferredSpawnTile: {x: 0, y: 0}
   baseStats:
     primaryStats:
-      stamina: 3
-      strength: 1
+      stamina: 2
+      strength: 10
       agility: 1
-      wisdom: 7
-      intelligence: 3
+      wisdom: 1
+      intelligence: 1
     mobilityStats:
       moveRange: 4
       jumpHeight: 2
   startingAbilities:
-  - {fileID: 11400000, guid: 7ad70e1d1a847bd44afcb2eb99dbb75f, type: 2}
-  - {fileID: 11400000, guid: f6aecb6ac7328f34aa17eeb1085cda3c, type: 2}
-  - {fileID: 11400000, guid: 509b346bf63713c4fb460223fb88ba52, type: 2}
+  - {fileID: 11400000, guid: 3001edcb51eaa3147bde39d09a4a27fd, type: 2}
+  - {fileID: 11400000, guid: 02966f571ec461044ae5d59c00d435ea, type: 2}
+  - {fileID: 11400000, guid: 54fa6e5b2ffb41a409211881e1b304cb, type: 2}
   experienceToNextLevel: 100
   experienceRewardMin: 0
   experienceRewardMax: 0

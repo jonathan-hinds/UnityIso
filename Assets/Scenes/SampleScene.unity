@@ -310,8 +310,9 @@ MonoBehaviour:
   previewSettings:
     textureSize: 320
     orthographicSize: 0.32
-    cameraVerticalOffset: -0.08
-  previewWindowSize: {x: 225, y: 256}
+    cameraVerticalOffset: -0.32
+  previewWindowSize: {x: 200, y: 256}
+  slotPreviewWindowSize: {x: 128, y: 148}
 --- !u!114 &568086582
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -551,6 +552,7 @@ MonoBehaviour:
   tileWidth: 1
   tileHeight: 0.5
   elevationStep: 0.5
+  renderSideFaces: 1
   mapOffset: {x: 0, y: 0, z: 0}
   autoFrameCamera: 1
   cameraPadding: 1

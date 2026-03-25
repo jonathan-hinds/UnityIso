@@ -29,8 +29,8 @@ MonoBehaviour:
   baseStats:
     primaryStats:
       stamina: 4
-      strength: 6
-      agility: 3
+      strength: 4
+      agility: 5
       wisdom: 1
       intelligence: 1
     mobilityStats:
@@ -39,6 +39,7 @@ MonoBehaviour:
   startingAbilities:
   - {fileID: 11400000, guid: 3001edcb51eaa3147bde39d09a4a27fd, type: 2}
   - {fileID: 11400000, guid: 02966f571ec461044ae5d59c00d435ea, type: 2}
+  - {fileID: 11400000, guid: 54fa6e5b2ffb41a409211881e1b304cb, type: 2}
   experienceToNextLevel: 100
   experienceRewardMin: 0
   experienceRewardMax: 0
