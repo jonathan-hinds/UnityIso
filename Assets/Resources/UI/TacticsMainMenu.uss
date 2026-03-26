@@ -816,30 +816,36 @@
 
 .host-setup-shell {
     flex-direction: column;
-    padding-left: 36px;
-    padding-right: 36px;
-    padding-top: 18px;
-    padding-bottom: 18px;
+    padding-left: 28px;
+    padding-right: 28px;
+    padding-top: 12px;
+    padding-bottom: 12px;
 }
 
 .host-setup-header {
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
 }
 
 .host-setup-content {
+    flex-direction: column;
+    padding-right: 8px;
+}
+
+.host-setup-scroll-view {
     flex-grow: 1;
     min-height: 0;
+    margin-right: -8px;
 }
 
 .host-intro-panel {
-    margin-bottom: 12px;
-    padding-left: 24px;
-    padding-right: 24px;
-    padding-top: 18px;
-    padding-bottom: 18px;
+    margin-bottom: 10px;
+    padding-left: 20px;
+    padding-right: 20px;
+    padding-top: 12px;
+    padding-bottom: 12px;
     border-top-width: 1px;
     border-bottom-width: 1px;
     border-left-width: 1px;
@@ -860,28 +866,28 @@
 }
 
 .host-section {
-    min-height: 168px;
+    min-height: 144px;
 }
 
 .host-section--party {
     width: 100%;
     min-height: 0;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
 }
 
 .host-section--half {
     width: 49.4%;
     min-width: 360px;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
 }
 
 .host-section--left {
-    margin-right: 12px;
+    margin-right: 10px;
 }
 
 .host-section--enemies {
     width: 100%;
-    min-height: 286px;
+    min-height: 220px;
     margin-right: 0;
 }
 
@@ -903,23 +909,23 @@
 
 .host-number-field {
     flex-grow: 1;
-    margin-right: 10px;
+    margin-right: 8px;
     color: var(--menu-ink);
 }
 
 .host-number-field--wide {
     margin-right: 0;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
 }
 
 .host-slider-row {
     flex-direction: row;
     align-items: center;
-    margin-bottom: 12px;
-    padding-left: 14px;
-    padding-right: 14px;
-    padding-top: 12px;
-    padding-bottom: 12px;
+    margin-bottom: 10px;
+    padding-left: 12px;
+    padding-right: 12px;
+    padding-top: 10px;
+    padding-bottom: 10px;
     border-top-width: 1px;
     border-bottom-width: 1px;
     border-left-width: 1px;
@@ -932,9 +938,10 @@
 }
 
 .host-slider-label {
-    width: 132px;
+    width: 118px;
     color: var(--menu-soft-ink);
     letter-spacing: 2px;
+    font-size: 12px;
 }
 
 .host-slider {
@@ -952,20 +959,20 @@
 }
 
 .host-add-enemy-button {
-    min-width: 154px;
+    min-width: 136px;
 }
 
 .host-enemy-scroll-view {
     flex-grow: 1;
-    min-height: 170px;
+    min-height: 132px;
 }
 
 .lobby-player-scroll-view {
     flex-grow: 0;
     flex-shrink: 0;
-    height: 248px;
-    min-height: 248px;
-    max-height: 248px;
+    height: 184px;
+    min-height: 184px;
+    max-height: 184px;
 }
 
 .lobby-player-card-container {
@@ -1102,17 +1109,17 @@
 
 .host-enemy-entry-container {
     flex-direction: column;
-    padding-right: 8px;
+    padding-right: 6px;
 }
 
 .host-enemy-row {
     flex-direction: row;
     align-items: flex-end;
-    margin-bottom: 10px;
-    padding-left: 14px;
-    padding-right: 14px;
-    padding-top: 12px;
-    padding-bottom: 12px;
+    margin-bottom: 8px;
+    padding-left: 12px;
+    padding-right: 12px;
+    padding-top: 10px;
+    padding-bottom: 10px;
     border-top-width: 1px;
     border-bottom-width: 1px;
     border-left-width: 1px;
@@ -1126,19 +1133,24 @@
 
 .host-enemy-dropdown {
     flex-grow: 1;
-    margin-right: 10px;
+    margin-right: 8px;
     color: var(--menu-ink);
 }
 
 .host-enemy-count-field {
-    width: 170px;
-    margin-right: 10px;
+    width: 142px;
+    min-width: 142px;
+    margin-right: 8px;
     color: var(--menu-ink);
 }
 
+.host-enemy-count-field .unity-base-field__label {
+    min-width: 46px;
+}
+
 .host-enemy-remove-button {
-    height: 40px;
-    min-width: 120px;
+    height: 36px;
+    min-width: 98px;
     border-top-width: 1px;
     border-bottom-width: 1px;
     border-left-width: 1px;
@@ -1149,7 +1161,8 @@
     border-right-color: rgba(255, 218, 188, 0.20);
     background-color: rgba(55, 20, 20, 0.90);
     color: var(--menu-ink);
-    letter-spacing: 2px;
+    font-size: 12px;
+    letter-spacing: 1px;
 }
 
 .host-enemy-remove-button:hover {

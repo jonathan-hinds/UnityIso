@@ -126,7 +126,7 @@ public sealed class TacticsAbilityHitEffectInstance : MonoBehaviour
 
     private void RefreshVisual()
     {
-        if (target == null || spriteRenderer == null || frames == null || frames.Length == 0)
+        if (spriteRenderer == null || frames == null || frames.Length == 0)
         {
             return;
         }
