@@ -308,6 +308,37 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         return TryGetPathTo(destination, out path, enforceMoveRange: true);
     }
 
+    public bool TryBuildMovementPreview(Vector2Int destination, List<Vector2Int> previewTiles, out int movementCost)
+    {
+        movementCost = 0;
+
+        if (previewTiles == null)
+        {
+            throw new ArgumentNullException(nameof(previewTiles));
+        }
+
+        previewTiles.Clear();
+
+        if (MoveRange <= 0 || !TryGetPathTo(destination, out List<Vector2Int> fullPath, enforceMoveRange: false))
+        {
+            return false;
+        }
+
+        movementCost = fullPath.Count - 1;
+        int previewStepCount = Mathf.Min(MoveRange, fullPath.Count - 1);
+        if (previewStepCount <= 0)
+        {
+            return false;
+        }
+
+        for (int i = 1; i <= previewStepCount; i++)
+        {
+            previewTiles.Add(fullPath[i]);
+        }
+
+        return previewTiles.Count > 0;
+    }
+
     public bool TryConsumeInteraction()
     {
         if (!CanInteractThisTurn)

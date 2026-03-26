@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
+using UnityEngine.UI;
 
 [DisallowMultipleComponent]
 public class TacticsPlayerController : MonoBehaviour
@@ -22,6 +23,7 @@ public class TacticsPlayerController : MonoBehaviour
     [SerializeField] private TacticsTurnManager turnManager;
     [SerializeField] private TacticsCombatSystem combatSystem;
     [SerializeField] private TacticsTileTargetOverlay tileTargetOverlay;
+    [SerializeField] private TacticsCursorMovementCostView cursorMovementCostView;
     [SerializeField] private TacticsCoopSessionCoordinator coopSessionCoordinator;
 
     private TacticsCharacterController selectedCharacter;
@@ -60,10 +62,17 @@ public class TacticsPlayerController : MonoBehaviour
             tileTargetOverlay = FindFirstObjectByType<TacticsTileTargetOverlay>();
         }
 
+        if (cursorMovementCostView == null)
+        {
+            cursorMovementCostView = FindFirstObjectByType<TacticsCursorMovementCostView>();
+        }
+
         if (coopSessionCoordinator == null)
         {
             coopSessionCoordinator = FindFirstObjectByType<TacticsCoopSessionCoordinator>();
         }
+
+        EnsureCursorMovementCostView();
     }
 
     private void OnEnable()
@@ -90,10 +99,17 @@ public class TacticsPlayerController : MonoBehaviour
             tileTargetOverlay = FindFirstObjectByType<TacticsTileTargetOverlay>();
         }
 
+        if (cursorMovementCostView == null)
+        {
+            cursorMovementCostView = FindFirstObjectByType<TacticsCursorMovementCostView>();
+        }
+
         if (coopSessionCoordinator == null)
         {
             coopSessionCoordinator = FindFirstObjectByType<TacticsCoopSessionCoordinator>();
         }
+
+        EnsureCursorMovementCostView();
 
         if (actionMenuView != null)
         {
@@ -140,6 +156,7 @@ public class TacticsPlayerController : MonoBehaviour
 
         SubscribeToSelectedCharacter(null);
         SetHoveredAbilityTargets(null);
+        cursorMovementCostView?.Hide();
         RefreshTargetIndicators();
     }
 
@@ -148,12 +165,15 @@ public class TacticsPlayerController : MonoBehaviour
         if (turnManager != null && turnManager.IsTransitioningTurns)
         {
             SetHoveredAbilityTargets(null);
+            tileTargetOverlay?.Hide();
+            cursorMovementCostView?.Hide();
             return;
         }
 
         RefreshChestActionAvailabilityIfNeeded();
         HandleCancelInput();
         RefreshHoveredAbilityTarget();
+        RefreshHoveredMovementPath();
 
         Mouse mouse = Mouse.current;
         if (mouse == null || !mouse.leftButton.wasPressedThisFrame)
@@ -681,6 +701,29 @@ public class TacticsPlayerController : MonoBehaviour
         }
     }
 
+    private void EnsureCursorMovementCostView()
+    {
+        if (cursorMovementCostView != null)
+        {
+            return;
+        }
+
+        GameObject cursorCostObject = new GameObject("Cursor Movement Cost View");
+        Canvas canvas = cursorCostObject.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 5050;
+
+        CanvasScaler scaler = cursorCostObject.AddComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920f, 1080f);
+        scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+        scaler.matchWidthOrHeight = 0.5f;
+
+        GraphicRaycaster raycaster = cursorCostObject.AddComponent<GraphicRaycaster>();
+        raycaster.enabled = false;
+        cursorMovementCostView = cursorCostObject.AddComponent<TacticsCursorMovementCostView>();
+    }
+
     private void RefreshTargetOverlay()
     {
         if (tileTargetOverlay == null)
@@ -786,6 +829,68 @@ public class TacticsPlayerController : MonoBehaviour
         }
 
         SetHoveredAbilityTargets(new[] { hoveredCharacter });
+    }
+
+    private void RefreshHoveredMovementPath()
+    {
+        if (tileTargetOverlay == null)
+        {
+            cursorMovementCostView?.Hide();
+            return;
+        }
+
+        if (selectionState != SelectionState.AwaitingMoveTarget ||
+            !ReferenceEquals(selectedCharacter, GetActiveOwnedPlayerCharacter()))
+        {
+            cursorMovementCostView?.Hide();
+            return;
+        }
+
+        if (blockWhenPointerOverUi && EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+        {
+            tileTargetOverlay.Hide();
+            cursorMovementCostView?.Hide();
+            return;
+        }
+
+        if (!TryGetPointerHits(out Collider2D[] hits) ||
+            !TryGetClickedTile(hits, out IsometricTileHoverInfo hoveredTile) ||
+            hoveredTile == null)
+        {
+            tileTargetOverlay.Hide();
+            cursorMovementCostView?.Hide();
+            return;
+        }
+
+        if (selectedCharacter.TryBuildMovementPreview(
+                new Vector2Int(hoveredTile.GridX, hoveredTile.GridY),
+                reusableOverlayTiles,
+                out int movementCost))
+        {
+            tileTargetOverlay.ShowTiles(reusableOverlayTiles);
+            ShowMovementCostLabel(movementCost, selectedCharacter.MoveRange);
+            return;
+        }
+
+        tileTargetOverlay.Hide();
+        cursorMovementCostView?.Hide();
+    }
+
+    private void ShowMovementCostLabel(int movementCost, int moveRange)
+    {
+        if (cursorMovementCostView == null || Mouse.current == null)
+        {
+            return;
+        }
+
+        Vector2 screenPosition = Mouse.current.position.ReadValue();
+        if (!IsFinite(screenPosition))
+        {
+            cursorMovementCostView.Hide();
+            return;
+        }
+
+        cursorMovementCostView.Show($"{movementCost}/{moveRange}", screenPosition);
     }
 
     private bool TryGetPointerHits(out Collider2D[] hits)
