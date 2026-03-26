@@ -390,6 +390,7 @@
 .editor-content {
     flex-grow: 1;
     flex-direction: column;
+    min-height: 0;
 }
 
 .editor-content--columns {
@@ -429,9 +430,15 @@
 }
 
 .editor-section--intel {
+    flex-direction: column;
     flex-grow: 1;
     width: 50%;
     min-width: 360px;
+    min-height: 0;
+    padding-left: 14px;
+    padding-right: 14px;
+    padding-top: 10px;
+    padding-bottom: 10px;
     margin-bottom: 0;
 }
 
@@ -600,20 +607,21 @@
 }
 
 .character-detail-subtitle {
-    margin-bottom: 10px;
+    margin-bottom: 6px;
+    font-size: 12px;
 }
 
 .character-detail-header {
     flex-direction: row;
-    margin-bottom: 10px;
+    margin-bottom: 6px;
 }
 
 .character-detail-preview {
-    width: 124px;
-    height: 140px;
-    min-width: 124px;
-    min-height: 140px;
-    margin-right: 12px;
+    width: 92px;
+    height: 104px;
+    min-width: 92px;
+    min-height: 104px;
+    margin-right: 10px;
     background-color: rgba(255, 214, 168, 0.03);
 }
 
@@ -624,40 +632,29 @@
 
 .character-detail-kicker {
     color: rgba(255, 198, 132, 0.96);
-    font-size: 11px;
+    font-size: 10px;
     -unity-font-style: bold;
-    letter-spacing: 3px;
-    margin-bottom: 4px;
+    letter-spacing: 2px;
+    margin-bottom: 2px;
 }
 
 .character-detail-name {
     color: var(--menu-ink);
-    font-size: 18px;
+    font-size: 16px;
     -unity-font-style: bold;
-    letter-spacing: 2px;
-    margin-bottom: 4px;
+    letter-spacing: 1px;
+    margin-bottom: 2px;
     white-space: normal;
 }
 
 .character-detail-level {
     color: var(--menu-soft-ink);
-    font-size: 12px;
-    letter-spacing: 2px;
+    font-size: 11px;
+    letter-spacing: 1px;
 }
 
 .character-detail-summary {
-    margin-bottom: 10px;
-    padding-left: 10px;
-    padding-right: 10px;
-    padding-top: 8px;
-    padding-bottom: 8px;
-    border-top-width: 1px;
-    border-bottom-width: 1px;
-    border-left-width: 0;
-    border-right-width: 0;
-    border-top-color: rgba(255, 217, 184, 0.10);
-    border-bottom-color: rgba(255, 217, 184, 0.10);
-    background-color: rgba(255, 214, 168, 0.03);
+    display: none;
 }
 
 .character-detail-summary-line {
@@ -668,24 +665,28 @@
 }
 
 .character-detail-groups {
+    flex-direction: column;
     flex-grow: 1;
+    min-height: 0;
 }
 
 .character-detail-group {
-    margin-bottom: 10px;
+    margin-bottom: 6px;
 }
 
 .character-detail-group--abilities {
+    flex-direction: column;
     flex-grow: 1;
+    min-height: 0;
     margin-bottom: 0;
 }
 
 .character-detail-group-label {
     color: rgba(255, 198, 132, 0.96);
-    font-size: 11px;
+    font-size: 10px;
     -unity-font-style: bold;
-    letter-spacing: 3px;
-    margin-bottom: 6px;
+    letter-spacing: 2px;
+    margin-bottom: 4px;
 }
 
 .character-stat-grid {
@@ -695,9 +696,50 @@
 
 .character-stat-row {
     width: 49%;
-    min-height: 42px;
+    min-height: 32px;
     margin-right: 1%;
-    margin-bottom: 6px;
+    margin-bottom: 4px;
+    padding-left: 6px;
+    padding-right: 6px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 0;
+    border-right-width: 0;
+    border-top-color: rgba(255, 217, 184, 0.08);
+    border-bottom-color: rgba(255, 217, 184, 0.08);
+    background-color: rgba(255, 214, 168, 0.025);
+}
+
+.character-stat-row-label {
+    color: var(--menu-soft-ink);
+    font-size: 9px;
+    letter-spacing: 1px;
+    margin-bottom: 1px;
+}
+
+.character-stat-row-value {
+    color: var(--menu-ink);
+    font-size: 11px;
+    -unity-font-style: bold;
+    letter-spacing: 1px;
+}
+
+.character-detail-abilities-scroll-view {
+    flex-grow: 1;
+    flex-basis: 0;
+    min-height: 0;
+    height: 180px;
+}
+
+.character-detail-abilities {
+    flex-direction: column;
+    padding-right: 4px;
+}
+
+.character-ability-card {
+    margin-bottom: 4px;
     padding-left: 8px;
     padding-right: 8px;
     padding-top: 6px;
@@ -711,63 +753,24 @@
     background-color: rgba(255, 214, 168, 0.025);
 }
 
-.character-stat-row-label {
-    color: var(--menu-soft-ink);
-    font-size: 10px;
-    letter-spacing: 2px;
-    margin-bottom: 2px;
-}
-
-.character-stat-row-value {
-    color: var(--menu-ink);
-    font-size: 13px;
-    -unity-font-style: bold;
-    letter-spacing: 1px;
-}
-
-.character-detail-abilities-scroll-view {
-    flex-grow: 1;
-    min-height: 138px;
-}
-
-.character-detail-abilities {
-    flex-direction: column;
-    padding-right: 4px;
-}
-
-.character-ability-card {
-    margin-bottom: 6px;
-    padding-left: 10px;
-    padding-right: 10px;
-    padding-top: 8px;
-    padding-bottom: 8px;
-    border-top-width: 1px;
-    border-bottom-width: 1px;
-    border-left-width: 0;
-    border-right-width: 0;
-    border-top-color: rgba(255, 217, 184, 0.08);
-    border-bottom-color: rgba(255, 217, 184, 0.08);
-    background-color: rgba(255, 214, 168, 0.025);
-}
-
 .character-ability-name {
     color: var(--menu-ink);
-    font-size: 12px;
+    font-size: 11px;
     -unity-font-style: bold;
-    letter-spacing: 2px;
-    margin-bottom: 2px;
+    letter-spacing: 1px;
+    margin-bottom: 1px;
 }
 
 .character-ability-meta {
     color: rgba(255, 198, 132, 0.96);
-    font-size: 10px;
-    letter-spacing: 2px;
-    margin-bottom: 2px;
+    font-size: 9px;
+    letter-spacing: 1px;
+    margin-bottom: 1px;
 }
 
 .character-ability-description {
     color: var(--menu-soft-ink);
-    font-size: 11px;
+    font-size: 10px;
     white-space: normal;
 }
 
@@ -862,7 +865,7 @@
 
 .host-section--party {
     width: 100%;
-    min-height: 236px;
+    min-height: 0;
     margin-bottom: 12px;
 }
 
@@ -958,27 +961,31 @@
 }
 
 .lobby-player-scroll-view {
-    flex-grow: 1;
-    min-height: 150px;
+    flex-grow: 0;
+    flex-shrink: 0;
+    height: 248px;
+    min-height: 248px;
+    max-height: 248px;
 }
 
 .lobby-player-card-container {
     flex-direction: row;
     flex-wrap: wrap;
+    justify-content: space-between;
     align-content: flex-start;
-    padding-right: 8px;
+    padding-right: 0;
 }
 
 .lobby-player-card {
-    width: 49.3%;
-    min-width: 320px;
-    min-height: 154px;
-    margin-right: 10px;
-    margin-bottom: 10px;
-    padding-left: 16px;
-    padding-right: 16px;
-    padding-top: 14px;
-    padding-bottom: 14px;
+    width: 48.5%;
+    min-width: 0;
+    min-height: 112px;
+    margin-right: 0;
+    margin-bottom: 8px;
+    padding-left: 12px;
+    padding-right: 12px;
+    padding-top: 10px;
+    padding-bottom: 10px;
     border-top-width: 1px;
     border-bottom-width: 1px;
     border-left-width: 1px;
@@ -1005,34 +1012,34 @@
     flex-direction: row;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
 }
 
 .lobby-player-name {
     flex-shrink: 1;
     color: var(--menu-ink);
-    font-size: 16px;
+    font-size: 14px;
     -unity-font-style: bold;
-    letter-spacing: 2px;
+    letter-spacing: 1px;
     white-space: normal;
 }
 
 .lobby-player-role {
     color: rgba(255, 198, 132, 0.96);
-    font-size: 11px;
-    letter-spacing: 3px;
-    margin-bottom: 10px;
+    font-size: 10px;
+    letter-spacing: 2px;
+    margin-bottom: 8px;
 }
 
 .lobby-player-ready {
-    min-width: 118px;
-    padding-left: 10px;
-    padding-right: 10px;
-    padding-top: 7px;
-    padding-bottom: 7px;
-    font-size: 11px;
+    min-width: 88px;
+    padding-left: 8px;
+    padding-right: 8px;
+    padding-top: 5px;
+    padding-bottom: 5px;
+    font-size: 10px;
     -unity-font-style: bold;
-    letter-spacing: 2px;
+    letter-spacing: 1px;
     -unity-text-align: middle-center;
     border-top-width: 1px;
     border-bottom-width: 1px;
@@ -1065,11 +1072,11 @@
 
 .lobby-player-operative,
 .lobby-player-team-empty {
-    margin-bottom: 6px;
-    padding-left: 10px;
-    padding-right: 10px;
-    padding-top: 8px;
-    padding-bottom: 8px;
+    margin-bottom: 4px;
+    padding-left: 8px;
+    padding-right: 8px;
+    padding-top: 5px;
+    padding-bottom: 5px;
     border-top-width: 1px;
     border-bottom-width: 1px;
     border-left-width: 0;
@@ -1081,15 +1088,15 @@
 
 .lobby-player-operative {
     color: var(--menu-ink);
-    font-size: 12px;
-    letter-spacing: 2px;
+    font-size: 11px;
+    letter-spacing: 1px;
     white-space: normal;
 }
 
 .lobby-player-team-empty {
     color: var(--menu-soft-ink);
-    font-size: 11px;
-    letter-spacing: 1.5px;
+    font-size: 10px;
+    letter-spacing: 1px;
     white-space: normal;
 }
 
