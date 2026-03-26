@@ -6,7 +6,8 @@ using UnityEngine;
 public enum TacticsStatusEffectType
 {
     Cleanse = 0,
-    Stun = 1
+    Stun = 1,
+    Taunt = 2
 }
 
 public enum TacticsStatusEffectCategory
@@ -108,6 +109,15 @@ public static class TacticsStatusEffectLibrary
                 blocksActions: true,
                 accentColor: new Color(0.92f, 0.58f, 0.3f, 1f),
                 backgroundColor: new Color(0.34f, 0.16f, 0.1f, 0.92f)),
+            TacticsStatusEffectType.Taunt => new TacticsStatusEffectDescriptor(
+                TacticsStatusEffectType.Taunt,
+                "Taunt",
+                "TA",
+                TacticsStatusEffectCategory.Buff,
+                appliesAtTurnStart: false,
+                blocksActions: false,
+                accentColor: new Color(0.97f, 0.85f, 0.34f, 1f),
+                backgroundColor: new Color(0.38f, 0.28f, 0.08f, 0.92f)),
             _ => new TacticsStatusEffectDescriptor(
                 statusEffectType,
                 statusEffectType.ToString(),
@@ -149,6 +159,10 @@ public static class TacticsStatusEffectLibrary
 
             case TacticsStatusEffectType.Stun:
                 builder.Append("This unit cannot act during its turn.");
+                break;
+
+            case TacticsStatusEffectType.Taunt:
+                builder.Append("Hostile single-target abilities must target this unit when it is a valid target.");
                 break;
 
             default:

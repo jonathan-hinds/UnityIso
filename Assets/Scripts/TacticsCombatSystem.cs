@@ -17,6 +17,7 @@ public sealed class TacticsCombatSystem : MonoBehaviour
     private readonly List<Vector2Int> reusableTargetableTiles = new();
     private readonly List<Vector2Int> reusableAreaTiles = new();
     private readonly List<TacticsCharacterController> reusableCharacterBuffer = new();
+    private readonly List<TacticsCharacterController> reusableTauntBuffer = new();
     private Coroutine resolveRoutine;
 
     public event Action StateChanged;
@@ -315,6 +316,36 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         return GetAffectedTargets(source, ability, targetTile, reusableAreaTargets);
     }
 
+    public IReadOnlyList<TacticsCharacterController> GetPrimaryTargetCandidatesFromTile(
+        TacticsCharacterController source,
+        Vector2Int sourceTile,
+        TacticsAbilityDefinition ability,
+        List<TacticsCharacterController> results)
+    {
+        if (results == null)
+        {
+            throw new ArgumentNullException(nameof(results));
+        }
+
+        results.Clear();
+        if (source == null || ability == null || characterRegistry == null)
+        {
+            return results;
+        }
+
+        characterRegistry.GetAllCharacters(reusableCharacterBuffer);
+        for (int i = 0; i < reusableCharacterBuffer.Count; i++)
+        {
+            TacticsCharacterController candidate = reusableCharacterBuffer[i];
+            if (IsValidTarget(source, sourceTile, ability, candidate))
+            {
+                results.Add(candidate);
+            }
+        }
+
+        return results;
+    }
+
     public IReadOnlyList<Vector2Int> GetAreaTiles(
         TacticsCharacterController source,
         TacticsAbilityDefinition ability,
@@ -376,13 +407,14 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         TacticsAbilityDefinition ability,
         TacticsCharacterController target)
     {
-        if (source == null || ability == null || target == null || ReferenceEquals(source, target))
+        if (source == null || ability == null || target == null)
         {
-            return ability != null &&
-                   source != null &&
-                   target != null &&
-                   ReferenceEquals(source, target) &&
-                   CanAffectTarget(source, ability, target);
+            return false;
+        }
+
+        if (ReferenceEquals(source, target))
+        {
+            return IsTargetRelationshipValid(source, ability, target);
         }
 
         if (!target.isActiveAndEnabled || !target.IsAlive)
@@ -395,14 +427,12 @@ public sealed class TacticsCombatSystem : MonoBehaviour
             return false;
         }
 
-        return ability.TargetRule switch
+        if (!IsTargetRelationshipValid(source, ability, target))
         {
-            TacticsAbilityTargetRule.HostileUnit => source.Team != target.Team,
-            TacticsAbilityTargetRule.AlliedUnit => source.Team == target.Team && !ReferenceEquals(source, target),
-            TacticsAbilityTargetRule.AlliedUnitOrSelf => source.Team == target.Team,
-            TacticsAbilityTargetRule.Self => ReferenceEquals(source, target),
-            _ => false
-        };
+            return false;
+        }
+
+        return !IsBlockedByTaunt(source, sourceTile, ability, target);
     }
 
     private TacticsCharacterController FindCharacterAt(Vector2Int tile)
@@ -515,6 +545,63 @@ public sealed class TacticsCombatSystem : MonoBehaviour
             TacticsAbilityTargetRule.Self => ReferenceEquals(source, target),
             _ => false
         };
+    }
+
+    private static bool IsTargetRelationshipValid(
+        TacticsCharacterController source,
+        TacticsAbilityDefinition ability,
+        TacticsCharacterController target)
+    {
+        if (source == null || ability == null || target == null)
+        {
+            return false;
+        }
+
+        return ability.TargetRule switch
+        {
+            TacticsAbilityTargetRule.HostileUnit => source.Team != target.Team,
+            TacticsAbilityTargetRule.AlliedUnit => source.Team == target.Team && !ReferenceEquals(source, target),
+            TacticsAbilityTargetRule.AlliedUnitOrSelf => source.Team == target.Team,
+            TacticsAbilityTargetRule.Self => ReferenceEquals(source, target),
+            _ => false
+        };
+    }
+
+    private bool IsBlockedByTaunt(
+        TacticsCharacterController source,
+        Vector2Int sourceTile,
+        TacticsAbilityDefinition ability,
+        TacticsCharacterController target)
+    {
+        if (source == null ||
+            ability == null ||
+            target == null ||
+            ability.TargetRule != TacticsAbilityTargetRule.HostileUnit ||
+            target.IsTaunting ||
+            characterRegistry == null)
+        {
+            return false;
+        }
+
+        characterRegistry.GetHostileCharacters(source, reusableTauntBuffer);
+        for (int i = 0; i < reusableTauntBuffer.Count; i++)
+        {
+            TacticsCharacterController candidate = reusableTauntBuffer[i];
+            if (candidate == null ||
+                !candidate.isActiveAndEnabled ||
+                !candidate.IsAlive ||
+                !candidate.IsTaunting)
+            {
+                continue;
+            }
+
+            if (CanTargetTile(source, sourceTile, ability, candidate.GridPosition))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private bool CanTargetTile(

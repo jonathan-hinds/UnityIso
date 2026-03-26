@@ -92,6 +92,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     public IReadOnlyList<TacticsAbilityDefinition> Abilities => abilities;
     public IReadOnlyList<TacticsStatusEffectInstance> ActiveStatusEffects => activeStatusEffects;
     public bool IsActionLockedThisTurn => isActionLockedThisTurn;
+    public bool IsTaunting => HasStatusEffect(TacticsStatusEffectType.Taunt);
 
     public event Action<ITacticsTurnParticipant> TurnEnded;
     public event Action<ITacticsTurnParticipant> TurnStateChanged;

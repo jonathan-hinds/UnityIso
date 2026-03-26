@@ -34,22 +34,16 @@ MonoBehaviour:
       healingFormula: 0
       flatAmount: 0
       bonusMultiplier: 1
-      scaling: []
+      scaling:
+      - stat: 3
+        rank: 2
     restoreResource:
       resourceType: 1
       restoreFormula: 0
       flatAmount: 0
       bonusMultiplier: 1
       scaling: []
-  statusEffects:
-  - statusEffectType: 0
-    durationTurns: 2
-    potencyFormula: 0
-    flatPotency: 0
-    potencyMultiplier: 1
-    scaling:
-    - stat: 3
-      rank: 2
+  statusEffects: []
   costResourceType: 2
   costAmount: 10
   allowMovementAsAlternateCost: 0

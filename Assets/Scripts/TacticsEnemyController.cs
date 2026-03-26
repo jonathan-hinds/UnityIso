@@ -507,7 +507,11 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
                 continue;
             }
 
-            List<TacticsCharacterController> candidateTargets = GetCandidateTargetsForAbility(ability);
+            IReadOnlyList<TacticsCharacterController> candidateTargets = combatSystem.GetPrimaryTargetCandidatesFromTile(
+                character,
+                sourceTile,
+                ability,
+                reusableCandidateTargets);
             for (int targetIndex = 0; targetIndex < candidateTargets.Count; targetIndex++)
             {
                 TacticsCharacterController primaryTarget = candidateTargets[targetIndex];
@@ -577,16 +581,15 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
             return false;
         }
 
-        float tacticalValue = EvaluateAbilityTacticalValue(ability, affectedTargets);
-        if (IsSupportAbility(ability) && tacticalValue <= 0f)
-        {
-            return false;
-        }
-
         bool movementAvailable = !requiresMovement && character != null && character.HasMovementAvailableForAbilityCost;
         float bestAlternativeOffenseScore = IsSupportAbility(ability)
             ? GetBestOffensiveAbilityOpportunityScore(sourceTile, movementAvailable)
             : 0f;
+        float tacticalValue = EvaluateAbilityTacticalValue(ability, sourceTile, affectedTargets, bestAlternativeOffenseScore);
+        if (IsSupportAbility(ability) && tacticalValue <= 0f)
+        {
+            return false;
+        }
 
         score = ScoreAbilityPlan(
             ability,
@@ -641,7 +644,11 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         return tacticalValue + coordinationBonus + rangeBias + selfPreservationBias + teamIntentBonus + supportCommitmentAdjustment - movementPenalty - distancePenalty - costPenalty;
     }
 
-    private float EvaluateAbilityTacticalValue(TacticsAbilityDefinition ability, IReadOnlyList<TacticsCharacterController> affectedTargets)
+    private float EvaluateAbilityTacticalValue(
+        TacticsAbilityDefinition ability,
+        Vector2Int sourceTile,
+        IReadOnlyList<TacticsCharacterController> affectedTargets,
+        float bestAlternativeOffenseScore = 0f)
     {
         if (ability == null || character == null || affectedTargets == null || affectedTargets.Count == 0)
         {
@@ -672,7 +679,7 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         IReadOnlyList<TacticsApplyStatusEffectData> statusEffects = ability.StatusEffects;
         for (int i = 0; i < statusEffects.Count; i++)
         {
-            totalValue += ScoreStatusEffect(ability, statusEffects[i], affectedTargets);
+            totalValue += ScoreStatusEffect(ability, sourceTile, statusEffects[i], affectedTargets, bestAlternativeOffenseScore);
         }
 
         return totalValue;
@@ -786,8 +793,10 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
 
     private float ScoreStatusEffect(
         TacticsAbilityDefinition ability,
+        Vector2Int sourceTile,
         TacticsApplyStatusEffectData statusEffect,
-        IReadOnlyList<TacticsCharacterController> affectedTargets)
+        IReadOnlyList<TacticsCharacterController> affectedTargets,
+        float bestAlternativeOffenseScore)
     {
         TacticsStatusEffectDescriptor descriptor = TacticsStatusEffectLibrary.GetDescriptor(statusEffect.StatusEffectType);
         float averagePotency = GetAverageStatusPotency(ability, statusEffect);
@@ -834,6 +843,37 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
                     float focusFireBonus = CountAlliedPressureOnTarget(target) * 2.5f;
                     float refreshBonus = target.HasStatusEffect(TacticsStatusEffectType.Stun) ? 2f : 6f;
                     totalValue += denialValue + offensiveSuppression + focusFireBonus + refreshBonus;
+                    break;
+                }
+
+                case TacticsStatusEffectType.Taunt:
+                {
+                    if (target.Team != character.Team)
+                    {
+                        continue;
+                    }
+
+                    bool isSelfTarget = ReferenceEquals(target, character);
+                    Vector2Int tauntTile = ReferenceEquals(target, character) ? sourceTile : target.GridPosition;
+                    int immediateThreats = CountImmediateThreatsAtTile(tauntTile);
+                    int protectedAllies = CountProtectedAlliesAtTile(target, tauntTile);
+                    float allyProtectionValue = ScoreTauntProtectionWindow(target, tauntTile);
+                    float laneControlValue = ScoreTauntLaneControl(tauntTile);
+                    bool isFrontliner = GetPreferredCombatDistance(target) <= 1.5f && !IsSupportUnit(target);
+                    TacticsEnemyTauntEvaluationContext tauntContext = new(
+                        bestAlternativeOffenseScore,
+                        immediateThreats,
+                        protectedAllies,
+                        CountNearbyAlliedTaunters(target, tauntTile),
+                        allyProtectionValue,
+                        laneControlValue,
+                        GetHealthRatio(target),
+                        GetTargetOffensivePotential(target),
+                        GetAlliedDamagePressure(),
+                        target.HasStatusEffect(TacticsStatusEffectType.Taunt),
+                        isSelfTarget,
+                        isFrontliner);
+                    totalValue += TacticsEnemyTauntAbilityScorer.Score(tauntContext);
                     break;
                 }
             }
@@ -905,7 +945,11 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
                 continue;
             }
 
-            List<TacticsCharacterController> candidateTargets = GetCandidateTargetsForAbility(ability);
+            IReadOnlyList<TacticsCharacterController> candidateTargets = combatSystem.GetPrimaryTargetCandidatesFromTile(
+                character,
+                sourceTile,
+                ability,
+                reusableCandidateTargets);
             for (int targetIndex = 0; targetIndex < candidateTargets.Count; targetIndex++)
             {
                 TacticsCharacterController primaryTarget = candidateTargets[targetIndex];
@@ -928,7 +972,7 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
                     continue;
                 }
 
-                float tacticalValue = EvaluateAbilityTacticalValue(ability, affectedTargets);
+                float tacticalValue = EvaluateAbilityTacticalValue(ability, sourceTile, affectedTargets);
                 if (tacticalValue <= 0f)
                 {
                     continue;
@@ -987,7 +1031,11 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
                 continue;
             }
 
-            List<TacticsCharacterController> candidateTargets = GetCandidateTargetsForAbility(ability);
+            IReadOnlyList<TacticsCharacterController> candidateTargets = combatSystem.GetPrimaryTargetCandidatesFromTile(
+                character,
+                sourceTile,
+                ability,
+                reusableCandidateTargets);
             for (int targetIndex = 0; targetIndex < candidateTargets.Count; targetIndex++)
             {
                 TacticsCharacterController primaryTarget = candidateTargets[targetIndex];
@@ -1010,7 +1058,7 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
                     continue;
                 }
 
-                float tacticalValue = EvaluateAbilityTacticalValue(ability, affectedTargets);
+                float tacticalValue = EvaluateAbilityTacticalValue(ability, sourceTile, affectedTargets);
                 if (tacticalValue <= 0f)
                 {
                     continue;
@@ -1039,14 +1087,21 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         float anchorDistance = anchorTarget != null ? GetTileDistance(sourceTile, anchorTarget.GridPosition) : 0f;
         float hostilePressure = ScorePressurePosition(sourceTile);
         float supportPressure = ScoreSupportPosition(sourceTile);
+        float tauntResponseWeight = HasTauntAbility() ? GetTauntResponseWeight(sourceTile) : 0f;
+        float tauntSetupScore = HasTauntAbility() ? ScoreTauntLaneControl(sourceTile) * tauntResponseWeight * 0.45f : 0f;
+        float tauntProtectionScore = HasTauntAbility() ? ScoreTauntProtectionWindow(character, sourceTile) * tauntResponseWeight * 0.35f : 0f;
+        float tauntCounterScore = ScoreCounterTauntPosition(sourceTile);
         float teamCoordination = strategicContext != null
             ? strategicContext.ScoreSupportPosition(sourceTile, HasHealingAbility(), HasResourceRestoreAbility()) +
               strategicContext.ScoreFormation(null, sourceTile, anchorTarget) +
               (anchorTarget != null ? strategicContext.ScoreFocusFire(sourceTile, anchorTarget) : 0f)
             : 0f;
         return immediateOpportunityScore +
-               hostilePressure +
-               supportPressure +
+               (hostilePressure * 1.35f) +
+               (supportPressure * 0.75f) +
+               tauntSetupScore +
+               tauntProtectionScore +
+               tauntCounterScore +
                teamCoordination -
                (anchorDistance * 0.2f) -
                (pathIndex * 0.05f);
@@ -1120,7 +1175,7 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         return bestScore;
     }
 
-    private float GetPreferredCombatDistance(IReadOnlyList<TacticsAbilityDefinition> abilities)
+    private static float GetPreferredCombatDistance(IReadOnlyList<TacticsAbilityDefinition> abilities)
     {
         if (abilities == null || abilities.Count == 0)
         {
@@ -1166,6 +1221,7 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
     private List<TacticsCharacterController> BuildMovementAnchorTargets()
     {
         reusableAnchorTargets.Clear();
+        AddTargetsIfMissing(reusableAnchorTargets, GetTauntingHostileTargets());
         AddTargetsIfMissing(reusableAnchorTargets, GetHostileTargets());
         AddTargetsIfMissing(reusableAnchorTargets, GetAlliedTargets(includeSelf: false));
         if (HasHealingAbility() || HasResourceRestoreAbility())
@@ -1181,31 +1237,17 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         return reusableAnchorTargets;
     }
 
-    private List<TacticsCharacterController> GetCandidateTargetsForAbility(TacticsAbilityDefinition ability)
+    private List<TacticsCharacterController> GetTauntingHostileTargets()
     {
         reusableCandidateTargets.Clear();
-        if (ability == null || character == null)
+        List<TacticsCharacterController> hostiles = GetHostileTargets();
+        for (int i = 0; i < hostiles.Count; i++)
         {
-            return reusableCandidateTargets;
-        }
-
-        switch (ability.TargetRule)
-        {
-            case TacticsAbilityTargetRule.HostileUnit:
-                AddTargetsIfMissing(reusableCandidateTargets, GetHostileTargets());
-                break;
-
-            case TacticsAbilityTargetRule.AlliedUnit:
-                AddTargetsIfMissing(reusableCandidateTargets, GetAlliedTargets(includeSelf: false));
-                break;
-
-            case TacticsAbilityTargetRule.AlliedUnitOrSelf:
-                AddTargetsIfMissing(reusableCandidateTargets, GetAlliedTargets(includeSelf: true));
-                break;
-
-            case TacticsAbilityTargetRule.Self:
-                reusableCandidateTargets.Add(character);
-                break;
+            TacticsCharacterController hostile = hostiles[i];
+            if (hostile != null && hostile.IsTaunting)
+            {
+                reusableCandidateTargets.Add(hostile);
+            }
         }
 
         return reusableCandidateTargets;
@@ -1277,6 +1319,25 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         return false;
     }
 
+    private bool HasTauntAbility()
+    {
+        IReadOnlyList<TacticsAbilityDefinition> abilities = character != null ? character.Abilities : null;
+        if (abilities == null)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < abilities.Count; i++)
+        {
+            if (IsTauntAbility(abilities[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static bool IsHealingAbility(TacticsAbilityDefinition ability)
     {
         if (ability == null)
@@ -1334,9 +1395,55 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         return false;
     }
 
+    private static bool IsTauntAbility(TacticsAbilityDefinition ability)
+    {
+        if (ability == null)
+        {
+            return false;
+        }
+
+        IReadOnlyList<TacticsApplyStatusEffectData> statusEffects = ability.StatusEffects;
+        for (int i = 0; i < statusEffects.Count; i++)
+        {
+            if (statusEffects[i].StatusEffectType == TacticsStatusEffectType.Taunt)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static bool IsSupportAbility(TacticsAbilityDefinition ability)
     {
         return IsHealingAbility(ability) || IsResourceRestoreAbility(ability) || IsBeneficialStatusAbility(ability);
+    }
+
+    private static bool IsSupportUnit(TacticsCharacterController unit)
+    {
+        IReadOnlyList<TacticsAbilityDefinition> abilities = unit != null ? unit.Abilities : null;
+        if (abilities == null)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < abilities.Count; i++)
+        {
+            if (IsSupportAbility(abilities[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static float GetPreferredCombatDistance(TacticsCharacterController unit)
+    {
+        IReadOnlyList<TacticsAbilityDefinition> abilities = unit != null ? unit.Abilities : null;
+        return abilities == null || abilities.Count == 0
+            ? 1f
+            : GetPreferredCombatDistance(abilities);
     }
 
     private float GetTargetOffensivePotential(TacticsCharacterController unit)
@@ -1428,6 +1535,234 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         }
 
         return threatCount;
+    }
+
+    private float GetAlliedDamagePressure()
+    {
+        List<TacticsCharacterController> allies = GetAlliedTargets(includeSelf: true);
+        if (allies.Count == 0)
+        {
+            return 0f;
+        }
+
+        float totalPressure = 0f;
+        int evaluatedAllies = 0;
+        for (int i = 0; i < allies.Count; i++)
+        {
+            TacticsCharacterController ally = allies[i];
+            if (ally == null || !ally.IsAlive)
+            {
+                continue;
+            }
+
+            float missingHealthRatio = 1f - GetHealthRatio(ally);
+            float threatMultiplier = GetNearbyThreatCount(ally) > 0 ? 1.35f : 0.8f;
+            totalPressure += missingHealthRatio * threatMultiplier;
+            evaluatedAllies++;
+        }
+
+        if (evaluatedAllies == 0)
+        {
+            return 0f;
+        }
+
+        return Mathf.Clamp01(totalPressure / evaluatedAllies);
+    }
+
+    private float GetTauntResponseWeight(Vector2Int sourceTile)
+    {
+        float teamDamagePressure = GetAlliedDamagePressure();
+        float tileThreatPressure = Mathf.Clamp01(CountImmediateThreatsAtTile(sourceTile) / 3f);
+        return Mathf.Clamp01((teamDamagePressure * 0.7f) + (tileThreatPressure * 0.6f));
+    }
+
+    private float ScoreTauntProtectionWindow(TacticsCharacterController taunter, Vector2Int tauntTile)
+    {
+        if (taunter == null || taunter.Team != character.Team)
+        {
+            return 0f;
+        }
+
+        float protectionValue = 0f;
+        List<TacticsCharacterController> allies = GetAlliedTargets(includeSelf: true);
+        for (int i = 0; i < allies.Count; i++)
+        {
+            TacticsCharacterController ally = allies[i];
+            if (ally == null || ReferenceEquals(ally, taunter))
+            {
+                continue;
+            }
+
+            if (GetTileDistance(ally.GridPosition, tauntTile) > 3)
+            {
+                continue;
+            }
+
+            int coverableThreats = CountThreatsCoverableFromTile(tauntTile, ally);
+            if (coverableThreats <= 0)
+            {
+                continue;
+            }
+
+            float allyValue = ScoreProtectedAllyValue(ally);
+            protectionValue += 4f + (coverableThreats * 3.5f) + allyValue;
+        }
+
+        return protectionValue;
+    }
+
+    private float ScoreTauntLaneControl(Vector2Int tauntTile)
+    {
+        return CountImmediateThreatsAtTile(tauntTile) * 1.5f;
+    }
+
+    private float ScoreCounterTauntPosition(Vector2Int sourceTile)
+    {
+        List<TacticsCharacterController> tauntingHostiles = GetTauntingHostileTargets();
+        if (tauntingHostiles.Count == 0)
+        {
+            return 0f;
+        }
+
+        List<TacticsCharacterController> hostiles = GetHostileTargets();
+        float bestScore = 0f;
+        for (int i = 0; i < hostiles.Count; i++)
+        {
+            TacticsCharacterController target = hostiles[i];
+            if (target == null || target.IsTaunting)
+            {
+                continue;
+            }
+
+            float targetValue = ScoreProtectedAllyValue(target);
+            float targetDistance = GetTileDistance(sourceTile, target.GridPosition);
+            float nearestTaunterDistance = float.MaxValue;
+            for (int tauntIndex = 0; tauntIndex < tauntingHostiles.Count; tauntIndex++)
+            {
+                TacticsCharacterController taunter = tauntingHostiles[tauntIndex];
+                nearestTaunterDistance = Mathf.Min(nearestTaunterDistance, GetTileDistance(sourceTile, taunter.GridPosition));
+            }
+
+            float flankAdvantage = nearestTaunterDistance - targetDistance;
+            float score = targetValue - (targetDistance * 0.35f) + (flankAdvantage * 1.75f);
+            bestScore = Mathf.Max(bestScore, score);
+        }
+
+        return Mathf.Max(0f, bestScore);
+    }
+
+    private int CountThreatsCoverableFromTile(Vector2Int tauntTile, TacticsCharacterController ally)
+    {
+        if (ally == null)
+        {
+            return 0;
+        }
+
+        int count = 0;
+        List<TacticsCharacterController> hostiles = GetHostileTargets();
+        for (int i = 0; i < hostiles.Count; i++)
+        {
+            TacticsCharacterController hostile = hostiles[i];
+            if (hostile == null)
+            {
+                continue;
+            }
+
+            if (CanUnitPressureTile(hostile, ally.GridPosition) &&
+                CanUnitPressureTile(hostile, tauntTile))
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    private int CountImmediateThreatsAtTile(Vector2Int tile)
+    {
+        int count = 0;
+        List<TacticsCharacterController> hostiles = GetHostileTargets();
+        for (int i = 0; i < hostiles.Count; i++)
+        {
+            TacticsCharacterController hostile = hostiles[i];
+            if (hostile != null && CanUnitPressureTile(hostile, tile))
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    private int CountProtectedAlliesAtTile(TacticsCharacterController taunter, Vector2Int tauntTile)
+    {
+        int count = 0;
+        List<TacticsCharacterController> allies = GetAlliedTargets(includeSelf: true);
+        for (int i = 0; i < allies.Count; i++)
+        {
+            TacticsCharacterController ally = allies[i];
+            if (ally == null || ReferenceEquals(ally, taunter))
+            {
+                continue;
+            }
+
+            if (GetTileDistance(ally.GridPosition, tauntTile) > 3)
+            {
+                continue;
+            }
+
+            if (CountThreatsCoverableFromTile(tauntTile, ally) > 0)
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    private int CountNearbyAlliedTaunters(TacticsCharacterController taunter, Vector2Int tauntTile)
+    {
+        int count = 0;
+        List<TacticsCharacterController> allies = GetAlliedTargets(includeSelf: true);
+        for (int i = 0; i < allies.Count; i++)
+        {
+            TacticsCharacterController ally = allies[i];
+            if (ally == null || ReferenceEquals(ally, taunter) || !ally.IsTaunting)
+            {
+                continue;
+            }
+
+            if (GetTileDistance(ally.GridPosition, tauntTile) <= 3)
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    private float ScoreProtectedAllyValue(TacticsCharacterController ally)
+    {
+        if (ally == null)
+        {
+            return 0f;
+        }
+
+        float roleValue = IsSupportUnit(ally) ? 9f : (GetPreferredCombatDistance(ally) > 1.5f ? 6f : 2.5f);
+        float offenseValue = GetTargetOffensivePotential(ally) * 0.16f;
+        float fragilityValue = (1f - GetHealthRatio(ally)) * 8f;
+        return roleValue + offenseValue + fragilityValue;
+    }
+
+    private static bool CanUnitPressureTile(TacticsCharacterController unit, Vector2Int tile)
+    {
+        if (unit == null)
+        {
+            return false;
+        }
+
+        int reach = Mathf.Max(1, Mathf.RoundToInt(GetPreferredCombatDistance(unit)));
+        return GetTileDistance(unit.GridPosition, tile) <= reach;
     }
 
     private static float GetHealthRatio(TacticsCharacterController target)
@@ -1775,6 +2110,7 @@ public sealed class TacticsEnemyStrategicContext
             float score = (1f - GetHealthRatio(hostile)) * 18f;
             score += GetOffensivePotential(hostile) * 0.2f;
             score += CountAlliesThreateningTarget(hostile) * 2f;
+            score += hostile.IsTaunting ? 22f : 0f;
             score -= GetTileDistance(actor.GridPosition, hostile.GridPosition) * 0.1f;
             if (score > bestScore)
             {
@@ -1959,6 +2295,7 @@ public sealed class TacticsEnemyStrategicContext
         {
             TacticsStatusEffectType.Cleanse => (potency * statusEffect.DurationTurns * 0.8f) + 6f,
             TacticsStatusEffectType.Stun => (16f * statusEffect.DurationTurns) + GetUnitBaseThreat(unit),
+            TacticsStatusEffectType.Taunt => (10f * statusEffect.DurationTurns) + (GetUnitBaseThreat(unit) * 0.85f),
             _ => descriptor.IsBuff ? potency * 0.75f : potency
         };
     }

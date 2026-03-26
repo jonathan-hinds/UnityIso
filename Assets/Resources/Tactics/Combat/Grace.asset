@@ -10,25 +10,27 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e7b9484a5008cb04fb02b3a3ce7d7f91, type: 3}
-  m_Name: StunningBlow
+  m_Name: Grace
   m_EditorClassIdentifier: 
-  abilityId: stunning_blow
-  displayName: Stunning Blow
-  description: A crushing melee strike that stuns the target for a turn.
-  rangeType: 0
-  range: 1
-  areaOfEffectSize: 1
-  targetRule: 0
-  damageType: 0
+  abilityId: grace
+  displayName: Grace
+  description: Apply cleanse on the target for 2 turns.
+  rangeType: 1
+  range: 4
+  areaOfEffectSize: 3
+  targetRule: 2
+  damageType: 1
   projectilePrefab: {fileID: 0}
   effects: []
   statusEffects:
-  - statusEffectType: 1
-    durationTurns: 1
-    potencyFormula: 1
+  - statusEffectType: 0
+    durationTurns: 2
+    potencyFormula: 0
     flatPotency: 0
     potencyMultiplier: 1
-    scaling: []
-  costResourceType: 1
-  costAmount: 8
+    scaling:
+    - stat: 3
+      rank: 2
+  costResourceType: 2
+  costAmount: 12
   allowMovementAsAlternateCost: 0

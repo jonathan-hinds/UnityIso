@@ -38,11 +38,12 @@ MonoBehaviour:
     restoreResource:
       resourceType: 2
       restoreFormula: 1
-      flatAmount: 20
+      flatAmount: 15
       bonusMultiplier: 1
       scaling:
       - stat: 3
         rank: 3
+  statusEffects: []
   costResourceType: 1
-  costAmount: 20
+  costAmount: 15
   allowMovementAsAlternateCost: 0

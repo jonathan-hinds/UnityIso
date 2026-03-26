@@ -6,6 +6,7 @@ public static class TacticsEnemyUtilityAbilityScorer
     private const float NoBenefitSupportPenalty = 32f;
     private const float MovementConversionWastePenalty = 18f;
     private const float NearbyThreatBonusPerHostile = 2.5f;
+    private const float MaxUrgentTargetHealthRatio = 0.7f;
 
     public static float ScoreSupportCommitment(
         TacticsCharacterController actor,
@@ -20,7 +21,11 @@ public static class TacticsEnemyUtilityAbilityScorer
             return 0f;
         }
 
-        float adjustment = 0f;
+        float adjustment = -ScoreGeneralSupportOpportunityCost(
+            actor,
+            affectedTargets,
+            bestAlternativeOffenseScore,
+            nearbyHostileCount);
         IReadOnlyList<TacticsAbilityEffectDefinitionData> effects = ability.Effects;
         for (int i = 0; i < effects.Count; i++)
         {
@@ -39,6 +44,45 @@ public static class TacticsEnemyUtilityAbilityScorer
         }
 
         return adjustment;
+    }
+
+    private static float ScoreGeneralSupportOpportunityCost(
+        TacticsCharacterController actor,
+        IReadOnlyList<TacticsCharacterController> affectedTargets,
+        float bestAlternativeOffenseScore,
+        int nearbyHostileCount)
+    {
+        if (actor == null || affectedTargets == null || affectedTargets.Count == 0 || bestAlternativeOffenseScore <= 0f)
+        {
+            return 0f;
+        }
+
+        int urgentTargets = 0;
+        int pressuredTargets = 0;
+        for (int i = 0; i < affectedTargets.Count; i++)
+        {
+            TacticsCharacterController target = affectedTargets[i];
+            if (target == null || !target.IsAlive || target.Team != actor.Team)
+            {
+                continue;
+            }
+
+            float healthRatio = target.MaxHitPoints > 0
+                ? Mathf.Clamp01(target.CurrentHitPoints / (float)target.MaxHitPoints)
+                : 0f;
+            if (healthRatio <= MaxUrgentTargetHealthRatio)
+            {
+                urgentTargets++;
+            }
+
+            if (ReferenceEquals(target, actor) ? nearbyHostileCount > 0 : healthRatio <= MaxUrgentTargetHealthRatio)
+            {
+                pressuredTargets++;
+            }
+        }
+
+        float urgency = Mathf.Clamp01((urgentTargets * 0.3f) + (pressuredTargets * 0.25f) + (nearbyHostileCount * 0.12f));
+        return bestAlternativeOffenseScore * Mathf.Lerp(0.85f, 0.25f, urgency);
     }
 
     private static float ScoreResourceRestoreCommitment(
@@ -176,6 +220,7 @@ public static class TacticsEnemyUtilityAbilityScorer
             {
                 TacticsStatusEffectType.Cleanse => (potency * statusEffect.DurationTurns * 0.8f) + 6f,
                 TacticsStatusEffectType.Stun => 16f * statusEffect.DurationTurns,
+                TacticsStatusEffectType.Taunt => (10f * statusEffect.DurationTurns) + (GetUnitBaseThreat(unit) * 0.85f),
                 _ => descriptor.IsBuff ? potency * 0.75f : potency
             };
         }
@@ -214,5 +259,16 @@ public static class TacticsEnemyUtilityAbilityScorer
         }
 
         return false;
+    }
+    private static float GetUnitBaseThreat(TacticsCharacterController unit)
+    {
+        if (unit == null)
+        {
+            return 0f;
+        }
+
+        float meleeAverage = (unit.BaseMeleeDamageMin + unit.BaseMeleeDamageMax) * 0.5f;
+        float magicAverage = (unit.BaseMagicDamageMin + unit.BaseMagicDamageMax) * 0.5f;
+        return Mathf.Max(meleeAverage, magicAverage) * 0.2f;
     }
 }

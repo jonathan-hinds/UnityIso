@@ -255,6 +255,10 @@ public static class TacticsAbilityPreviewCalculator
             case TacticsStatusEffectType.Stun:
                 builder.Append(". Target cannot act");
                 break;
+
+            case TacticsStatusEffectType.Taunt:
+                builder.Append(". Hostile single-target abilities must target the affected unit while it remains a valid target");
+                break;
         }
 
         return builder.ToString();

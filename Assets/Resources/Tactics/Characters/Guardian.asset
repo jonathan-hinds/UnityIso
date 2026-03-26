@@ -37,9 +37,9 @@ MonoBehaviour:
       moveRange: 4
       jumpHeight: 2
   startingAbilities:
-  - {fileID: 11400000, guid: 3001edcb51eaa3147bde39d09a4a27fd, type: 2}
-  - {fileID: 11400000, guid: 6a6672c1565e0f0438af0fab463d3ca8, type: 2}
   - {fileID: 11400000, guid: 43e96dde38b68844eb56e57cb868d940, type: 2}
+  - {fileID: 11400000, guid: 6a6672c1565e0f0438af0fab463d3ca8, type: 2}
+  - {fileID: 11400000, guid: c1a7d8a1e5f246b89d0c2e1a4f8b6c3d, type: 2}
   experienceToNextLevel: 100
   experienceRewardMin: 0
   experienceRewardMax: 0
