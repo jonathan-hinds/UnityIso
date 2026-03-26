@@ -10,11 +10,11 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e7b9484a5008cb04fb02b3a3ce7d7f91, type: 3}
-  m_Name: Maul
+  m_Name: StunningBlow
   m_EditorClassIdentifier: 
-  abilityId: maul
-  displayName: Maul
-  description: Maul the target for base damage + 20% bonus.
+  abilityId: stunning_blow
+  displayName: Stunning Blow
+  description: A crushing melee strike that stuns the target for a turn.
   rangeType: 0
   range: 1
   areaOfEffectSize: 1
@@ -26,28 +26,28 @@ MonoBehaviour:
     dealDamage:
       damageFormula: 0
       flatAmount: 0
-      bonusMultiplier: 1.2
+      bonusMultiplier: 1
       scaling:
       - stat: 0
-        rank: 5
+        rank: 3
     restoreHitPoints:
       healingFormula: 0
       flatAmount: 0
-      bonusMultiplier: 1
+      bonusMultiplier: 0
       scaling: []
     restoreResource:
-      resourceType: 1
+      resourceType: 0
       restoreFormula: 0
       flatAmount: 0
-      bonusMultiplier: 1
+      bonusMultiplier: 0
       scaling: []
   statusEffects:
   - statusEffectType: 1
-    durationTurns: 2
-    potencyFormula: 0
+    durationTurns: 1
+    potencyFormula: 1
     flatPotency: 0
     potencyMultiplier: 1
     scaling: []
   costResourceType: 1
-  costAmount: 10
+  costAmount: 8
   allowMovementAsAlternateCost: 0

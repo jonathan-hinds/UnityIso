@@ -558,9 +558,9 @@ MonoBehaviour:
   cameraPadding: 1
   enemySpawnEntries:
   - enemyId: bandit
-    count: 4
+    count: 1
   - enemyId: shaman
-    count: 4
+    count: 1
   chestSpawnSettings:
     spawnChance: 1
     mimicChance: 0.5

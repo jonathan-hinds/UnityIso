@@ -105,14 +105,15 @@ public static class TacticsAbilityPreviewCalculator
     private static List<string> BuildEffectPreviewLines(TacticsCharacterController source, TacticsAbilityDefinition ability)
     {
         List<string> lines = new();
-        if (source == null || ability == null || ability.Effects == null)
+        if (source == null || ability == null)
         {
             return lines;
         }
 
-        for (int i = 0; i < ability.Effects.Count; i++)
+        IReadOnlyList<TacticsAbilityEffectDefinitionData> effects = ability.Effects;
+        for (int i = 0; i < effects.Count; i++)
         {
-            TacticsAbilityEffectDefinitionData effect = ability.Effects[i];
+            TacticsAbilityEffectDefinitionData effect = effects[i];
             switch (effect.EffectKind)
             {
                 case TacticsAbilityEffectKind.DealDamage:
@@ -127,6 +128,12 @@ public static class TacticsAbilityPreviewCalculator
                     lines.Add(BuildResourceRestorePreviewLine(source, effect.RestoreResource));
                     break;
             }
+        }
+
+        IReadOnlyList<TacticsApplyStatusEffectData> statusEffects = ability.StatusEffects;
+        for (int i = 0; i < statusEffects.Count; i++)
+        {
+            lines.Add(BuildStatusEffectPreviewLine(source, ability, statusEffects[i]));
         }
 
         return lines;
@@ -210,6 +217,44 @@ public static class TacticsAbilityPreviewCalculator
             builder.Append(" (");
             builder.Append(scalingText);
             builder.Append(')');
+        }
+
+        return builder.ToString();
+    }
+
+    private static string BuildStatusEffectPreviewLine(
+        TacticsCharacterController source,
+        TacticsAbilityDefinition ability,
+        TacticsApplyStatusEffectData statusEffect)
+    {
+        TacticsStatusEffectDescriptor descriptor = TacticsStatusEffectLibrary.GetDescriptor(statusEffect.StatusEffectType);
+        StringBuilder builder = new();
+        builder.Append("Applies ");
+        builder.Append(descriptor.DisplayName);
+        builder.Append(" for ");
+        builder.Append(statusEffect.DurationTurns);
+        builder.Append(statusEffect.DurationTurns == 1 ? " turn" : " turns");
+
+        switch (statusEffect.StatusEffectType)
+        {
+            case TacticsStatusEffectType.Cleanse:
+                (int amountMin, int amountMax) = TacticsAbilityEffectMath.GetStatusPotencyRange(source, ability, statusEffect);
+                builder.Append(". Heals ");
+                builder.Append(FormatRange(amountMin, amountMax));
+                builder.Append(" HP at turn start");
+
+                string scalingText = BuildScalingText(statusEffect.Scaling);
+                if (!string.IsNullOrWhiteSpace(scalingText))
+                {
+                    builder.Append(" (");
+                    builder.Append(scalingText);
+                    builder.Append(')');
+                }
+                break;
+
+            case TacticsStatusEffectType.Stun:
+                builder.Append(". Target cannot act");
+                break;
         }
 
         return builder.ToString();

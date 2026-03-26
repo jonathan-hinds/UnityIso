@@ -14,6 +14,7 @@ public sealed class TacticsAbilityDefinitionEditor : Editor
     private SerializedProperty damageTypeProperty;
     private SerializedProperty projectilePrefabProperty;
     private SerializedProperty effectsProperty;
+    private SerializedProperty statusEffectsProperty;
     private SerializedProperty costResourceTypeProperty;
     private SerializedProperty costAmountProperty;
     private SerializedProperty allowMovementAsAlternateCostProperty;
@@ -30,6 +31,7 @@ public sealed class TacticsAbilityDefinitionEditor : Editor
         damageTypeProperty = serializedObject.FindProperty("damageType");
         projectilePrefabProperty = serializedObject.FindProperty("projectilePrefab");
         effectsProperty = serializedObject.FindProperty("effects");
+        statusEffectsProperty = serializedObject.FindProperty("statusEffects");
         costResourceTypeProperty = serializedObject.FindProperty("costResourceType");
         costAmountProperty = serializedObject.FindProperty("costAmount");
         allowMovementAsAlternateCostProperty = serializedObject.FindProperty("allowMovementAsAlternateCost");
@@ -67,8 +69,12 @@ public sealed class TacticsAbilityDefinitionEditor : Editor
         EditorGUILayout.PropertyField(projectilePrefabProperty, new GUIContent("Projectile Prefab", "Optional prefab spawned for ranged-style ability presentation. Leave empty for instant effects."));
 
         EditorGUILayout.Space();
-        EditorGUILayout.LabelField("Effects", EditorStyles.boldLabel);
+        EditorGUILayout.LabelField("Ability Effects", EditorStyles.boldLabel);
         EditorGUILayout.PropertyField(effectsProperty, true);
+
+        EditorGUILayout.Space();
+        EditorGUILayout.LabelField("Status Applications", EditorStyles.boldLabel);
+        EditorGUILayout.PropertyField(statusEffectsProperty, true);
 
         EditorGUILayout.Space();
         EditorGUILayout.LabelField("Cost", EditorStyles.boldLabel);

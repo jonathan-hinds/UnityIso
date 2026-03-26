@@ -11,6 +11,7 @@ public sealed class TacticsCombatSystem : MonoBehaviour
     [SerializeField] private TacticsCharacterRegistry characterRegistry;
 
     private readonly Dictionary<TacticsAbilityEffectKind, ITacticsAbilityEffectProcessor> effectProcessors = new();
+    private readonly TacticsApplyStatusEffectProcessor statusEffectProcessor = new();
     private readonly List<TacticsCharacterController> reusableAreaTargets = new();
     private readonly List<Vector2Int> reusableTargetTiles = new();
     private readonly List<Vector2Int> reusableTargetableTiles = new();
@@ -700,6 +701,15 @@ public sealed class TacticsCombatSystem : MonoBehaviour
             }
         }
 
+        IReadOnlyList<TacticsApplyStatusEffectData> statusEffects = context.Ability.StatusEffects;
+        for (int i = 0; i < statusEffects.Count; i++)
+        {
+            if (statusEffectProcessor.CanApply(context, statusEffects[i]))
+            {
+                return true;
+            }
+        }
+
         return false;
     }
 
@@ -771,6 +781,19 @@ public sealed class TacticsCombatSystem : MonoBehaviour
             }
 
             processor.Apply(context, effect);
+            appliedAnyEffect = true;
+        }
+
+        IReadOnlyList<TacticsApplyStatusEffectData> statusEffects = context.Ability.StatusEffects;
+        for (int i = 0; i < statusEffects.Count; i++)
+        {
+            TacticsApplyStatusEffectData statusEffect = statusEffects[i];
+            if (!statusEffectProcessor.CanApply(context, statusEffect))
+            {
+                continue;
+            }
+
+            statusEffectProcessor.Apply(context, statusEffect);
             appliedAnyEffect = true;
         }
 
@@ -1026,6 +1049,40 @@ public sealed class TacticsRestoreResourceEffectProcessor : ITacticsAbilityEffec
             }
 
             target.RestoreResource(restoreResource.ResourceType, amount);
+        }
+    }
+}
+
+public sealed class TacticsApplyStatusEffectProcessor
+{
+    public bool CanApply(TacticsAbilityExecutionContext context, TacticsApplyStatusEffectData effect)
+    {
+        if (context.Source == null || context.Targets == null || context.Targets.Count == 0)
+        {
+            return false;
+        }
+
+        return effect.DurationTurns > 0;
+    }
+
+    public void Apply(TacticsAbilityExecutionContext context, TacticsApplyStatusEffectData statusEffect)
+    {
+        int potency = TacticsAbilityEffectMath.EvaluateStatusPotency(
+            context.Source,
+            context.Ability,
+            statusEffect,
+            useAverageRoll: false);
+
+        IReadOnlyList<TacticsCharacterController> targets = context.Targets;
+        for (int i = 0; i < targets.Count; i++)
+        {
+            TacticsCharacterController target = targets[i];
+            if (target == null || !target.isActiveAndEnabled || !target.IsAlive)
+            {
+                continue;
+            }
+
+            target.ApplyStatusEffect(statusEffect, potency, context.Source);
         }
     }
 }

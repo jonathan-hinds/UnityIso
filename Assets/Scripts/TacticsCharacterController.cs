@@ -36,7 +36,9 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     private TacticsTurnManager turnManager;
     private TacticsCharacterRegistry characterRegistry;
     private readonly List<TacticsAbilityDefinition> abilities = new();
+    private readonly List<TacticsStatusEffectInstance> activeStatusEffects = new();
     private bool isPerformingAction;
+    private bool isActionLockedThisTurn;
 
     public Vector2Int GridPosition { get; private set; }
     public bool IsSelected { get; private set; }
@@ -80,14 +82,16 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     public bool IsAlive => CurrentHitPoints > 0;
     public bool IsPresentationVisible { get; private set; } = true;
     public bool CanReceiveCommands => mapGenerator != null && mapGenerator.HasGeneratedMap && !IsMoving && !IsPerformingAction;
-    public bool CanMoveThisTurn => IsTurnActive && !HasMovedThisTurn && CanReceiveCommands;
-    public bool CanUseAbilitiesThisTurn => IsTurnActive && !HasActedThisTurn && CanReceiveCommands && IsAlive;
+    public bool CanMoveThisTurn => IsTurnActive && !HasMovedThisTurn && !isActionLockedThisTurn && CanReceiveCommands;
+    public bool CanUseAbilitiesThisTurn => IsTurnActive && !HasActedThisTurn && !isActionLockedThisTurn && CanReceiveCommands && IsAlive;
     public bool HasMovementAvailableForAbilityCost => IsTurnActive && !HasMovedThisTurn && IsAlive;
-    public bool CanInteractThisTurn => IsTurnActive && !HasActedThisTurn && CanReceiveCommands && IsAlive;
+    public bool CanInteractThisTurn => IsTurnActive && !HasActedThisTurn && !isActionLockedThisTurn && CanReceiveCommands && IsAlive;
     public bool CanEndTurn => IsTurnActive && !IsMoving && !IsPerformingAction;
     public bool IsTurnEligible => isActiveAndEnabled && IsAlive;
     public Vector3 TurnFocusPoint => transform.position;
     public IReadOnlyList<TacticsAbilityDefinition> Abilities => abilities;
+    public IReadOnlyList<TacticsStatusEffectInstance> ActiveStatusEffects => activeStatusEffects;
+    public bool IsActionLockedThisTurn => isActionLockedThisTurn;
 
     public event Action<ITacticsTurnParticipant> TurnEnded;
     public event Action<ITacticsTurnParticipant> TurnStateChanged;
@@ -248,8 +252,15 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         StopMovementImmediately();
         IsTurnActive = true;
         characterAnimator?.SetTurnHighlight(true);
+        isActionLockedThisTurn = false;
         HasMovedThisTurn = false;
         HasActedThisTurn = false;
+        ProcessStartOfTurnStatusEffects();
+        if (isActionLockedThisTurn)
+        {
+            HasMovedThisTurn = true;
+            HasActedThisTurn = true;
+        }
         NotifyTurnStateChanged();
     }
 
@@ -347,6 +358,72 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         }
 
         HasActedThisTurn = true;
+        NotifyTurnStateChanged();
+        return true;
+    }
+
+    public bool HasStatusEffect(TacticsStatusEffectType statusEffectType)
+    {
+        for (int i = 0; i < activeStatusEffects.Count; i++)
+        {
+            if (activeStatusEffects[i].StatusEffectType == statusEffectType &&
+                !activeStatusEffects[i].IsExpired)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public bool ApplyStatusEffect(
+        TacticsApplyStatusEffectData statusEffectData,
+        int potency,
+        TacticsCharacterController sourceCharacter = null)
+    {
+        if (!IsAlive || statusEffectData.DurationTurns <= 0)
+        {
+            return false;
+        }
+
+        TacticsStatusEffectDescriptor descriptor = TacticsStatusEffectLibrary.GetDescriptor(statusEffectData.StatusEffectType);
+        int resolvedPotency = descriptor.StatusEffectType == TacticsStatusEffectType.Cleanse
+            ? Mathf.Max(1, potency)
+            : Mathf.Max(0, potency);
+        bool refreshedExistingEffect = false;
+
+        for (int i = 0; i < activeStatusEffects.Count; i++)
+        {
+            TacticsStatusEffectInstance existingEffect = activeStatusEffects[i];
+            if (existingEffect.StatusEffectType != statusEffectData.StatusEffectType)
+            {
+                continue;
+            }
+
+            activeStatusEffects[i] = existingEffect.Refresh(
+                Mathf.Max(existingEffect.RemainingTurns, statusEffectData.DurationTurns),
+                Mathf.Max(existingEffect.Potency, resolvedPotency));
+            refreshedExistingEffect = true;
+            break;
+        }
+
+        if (!refreshedExistingEffect)
+        {
+            activeStatusEffects.Add(new TacticsStatusEffectInstance(
+                statusEffectData.StatusEffectType,
+                statusEffectData.DurationTurns,
+                resolvedPotency));
+        }
+
+        if (descriptor.BlocksActions && IsTurnActive)
+        {
+            isActionLockedThisTurn = true;
+            HasMovedThisTurn = true;
+            HasActedThisTurn = true;
+        }
+
+        TacticsCombatTextSystem.ShowStatusEffectApplied(this, statusEffectData.StatusEffectType);
+        TacticsOverheadHealthBar.ShowFor(this);
         NotifyTurnStateChanged();
         return true;
     }
@@ -971,6 +1048,62 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         return Mathf.Max(0, GetMaxResource(resourceType) - GetCurrentResource(resourceType));
     }
 
+    private void ProcessStartOfTurnStatusEffects()
+    {
+        if (activeStatusEffects.Count == 0)
+        {
+            return;
+        }
+
+        for (int i = activeStatusEffects.Count - 1; i >= 0; i--)
+        {
+            TacticsStatusEffectInstance statusEffect = activeStatusEffects[i];
+            if (statusEffect.IsExpired)
+            {
+                activeStatusEffects.RemoveAt(i);
+                continue;
+            }
+
+            TacticsStatusEffectDescriptor descriptor = TacticsStatusEffectLibrary.GetDescriptor(statusEffect.StatusEffectType);
+            if (descriptor.AppliesAtTurnStart)
+            {
+                ResolveStartOfTurnStatusEffect(statusEffect, descriptor);
+            }
+
+            statusEffect = statusEffect.WithRemainingTurns(statusEffect.RemainingTurns - 1);
+            if (statusEffect.IsExpired)
+            {
+                activeStatusEffects.RemoveAt(i);
+            }
+            else
+            {
+                activeStatusEffects[i] = statusEffect;
+            }
+        }
+    }
+
+    private void ResolveStartOfTurnStatusEffect(
+        TacticsStatusEffectInstance statusEffect,
+        TacticsStatusEffectDescriptor descriptor)
+    {
+        switch (statusEffect.StatusEffectType)
+        {
+            case TacticsStatusEffectType.Cleanse:
+                if (statusEffect.Potency > 0)
+                {
+                    RestoreHitPoints(statusEffect.Potency);
+                }
+                break;
+
+            case TacticsStatusEffectType.Stun:
+                if (descriptor.BlocksActions)
+                {
+                    isActionLockedThisTurn = true;
+                }
+                break;
+        }
+    }
+
     private void ApplyCharacterData(TacticsCharacterData data, TacticsCharacterProgressionSnapshot startingProgression)
     {
         if (data == null)
@@ -1221,6 +1354,8 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
 
         StopMovementImmediately();
         isPerformingAction = false;
+        isActionLockedThisTurn = false;
+        activeStatusEffects.Clear();
 
         IsTurnActive = false;
         HasMovedThisTurn = true;

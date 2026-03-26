@@ -26,6 +26,7 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
     {
         TacticsAbilityEffectDefinitionData.CreateDealDamage()
     };
+    [SerializeField] private List<TacticsApplyStatusEffectData> statusEffects = new();
 
     [Header("Cost")]
     [SerializeField] private TacticsAbilityResourceType costResourceType = TacticsAbilityResourceType.None;
@@ -50,6 +51,7 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
     public TacticsAbilityProjectile ProjectilePrefab => projectilePrefab;
     public bool UsesProjectilePresentation => projectilePrefab != null;
     public IReadOnlyList<TacticsAbilityEffectDefinitionData> Effects => effects;
+    public IReadOnlyList<TacticsApplyStatusEffectData> StatusEffects => statusEffects;
     public TacticsAbilityResourceType CostResourceType => ResolvedCostAmount > 0 ? costResourceType : TacticsAbilityResourceType.None;
     public int CostAmount => ResolvedCostAmount;
     public bool HasCost => CostResourceType != TacticsAbilityResourceType.None && CostAmount > 0;
@@ -83,6 +85,7 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
                         TacticsAbilityScalingStat.Strength,
                         TacticsAbilityScalingRank.A)))
         };
+        ability.statusEffects = new List<TacticsApplyStatusEffectData>();
         return ability;
     }
 
@@ -112,12 +115,20 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
         }
 
         effects ??= new List<TacticsAbilityEffectDefinitionData>();
+        statusEffects ??= new List<TacticsApplyStatusEffectData>();
 
         for (int i = 0; i < effects.Count; i++)
         {
             TacticsAbilityEffectDefinitionData effect = effects[i];
             effect.Sanitize();
             effects[i] = effect;
+        }
+
+        for (int i = 0; i < statusEffects.Count; i++)
+        {
+            TacticsApplyStatusEffectData statusEffect = statusEffects[i];
+            statusEffect.Sanitize();
+            statusEffects[i] = statusEffect;
         }
     }
 }
@@ -447,6 +458,65 @@ public struct TacticsRestoreResourceEffectData
 }
 
 [Serializable]
+public struct TacticsApplyStatusEffectData
+{
+    [SerializeField] private TacticsStatusEffectType statusEffectType;
+    [SerializeField, Min(1)] private int durationTurns;
+    [SerializeField] private TacticsDamageFormula potencyFormula;
+    [SerializeField, Min(0)] private int flatPotency;
+    [SerializeField, Min(0.01f)] private float potencyMultiplier;
+    [SerializeField] private List<TacticsAbilityScalingDefinitionData> scaling;
+
+    public TacticsStatusEffectType StatusEffectType => statusEffectType;
+    public int DurationTurns => Mathf.Max(1, durationTurns);
+    public TacticsDamageFormula PotencyFormula => potencyFormula;
+    public int FlatPotency => Mathf.Max(0, flatPotency);
+    public float PotencyMultiplier => potencyMultiplier <= 0f ? 1f : potencyMultiplier;
+    public IReadOnlyList<TacticsAbilityScalingDefinitionData> Scaling => scaling;
+
+    public static TacticsApplyStatusEffectData Default()
+    {
+        return new TacticsApplyStatusEffectData
+        {
+            statusEffectType = TacticsStatusEffectType.Cleanse,
+            durationTurns = 2,
+            potencyFormula = TacticsDamageFormula.FlatValue,
+            flatPotency = 1,
+            potencyMultiplier = 1f,
+            scaling = new List<TacticsAbilityScalingDefinitionData>()
+        };
+    }
+
+    public void Sanitize()
+    {
+        durationTurns = Mathf.Max(1, durationTurns);
+        flatPotency = Mathf.Max(0, flatPotency);
+        potencyMultiplier = potencyMultiplier <= 0f ? 1f : potencyMultiplier;
+        scaling ??= new List<TacticsAbilityScalingDefinitionData>();
+    }
+
+    public static TacticsApplyStatusEffectData Create(
+        TacticsStatusEffectType statusEffectType,
+        int durationTurns,
+        TacticsDamageFormula potencyFormula = TacticsDamageFormula.FlatValue,
+        int flatPotency = 0,
+        params TacticsAbilityScalingDefinitionData[] scalingDefinitions)
+    {
+        return new TacticsApplyStatusEffectData
+        {
+            statusEffectType = statusEffectType,
+            durationTurns = Mathf.Max(1, durationTurns),
+            potencyFormula = potencyFormula,
+            flatPotency = Mathf.Max(0, flatPotency),
+            potencyMultiplier = 1f,
+            scaling = scalingDefinitions != null
+                ? new List<TacticsAbilityScalingDefinitionData>(scalingDefinitions)
+                : new List<TacticsAbilityScalingDefinitionData>()
+        };
+    }
+}
+
+[Serializable]
 public struct TacticsAbilityScalingDefinitionData
 {
     [SerializeField] private TacticsAbilityScalingStat stat;
@@ -573,6 +643,29 @@ public static class TacticsAbilityEffectMath
         return Mathf.Max(0, Mathf.RoundToInt((baseAmount + scalingBonus) * restoreResource.BonusMultiplier));
     }
 
+    public static int EvaluateStatusPotency(
+        TacticsCharacterController source,
+        TacticsAbilityDefinition ability,
+        TacticsApplyStatusEffectData statusEffect,
+        bool useAverageRoll)
+    {
+        if (source == null)
+        {
+            return 0;
+        }
+
+        float baseAmount = statusEffect.PotencyFormula switch
+        {
+            TacticsDamageFormula.AttackerBaseDamage => useAverageRoll
+                ? GetAverageBaseDamage(source, ability != null ? ability.DamageType : TacticsAbilityDamageType.Magic)
+                : source.RollBaseDamage(ability != null ? ability.DamageType : TacticsAbilityDamageType.Magic),
+            _ => statusEffect.FlatPotency
+        };
+
+        float scalingBonus = TacticsAbilityScalingCalculator.EvaluateDamageBonus(source, statusEffect.Scaling);
+        return Mathf.Max(0, Mathf.RoundToInt((baseAmount + scalingBonus) * statusEffect.PotencyMultiplier));
+    }
+
     public static (int min, int max) GetDamageAmountRange(
         TacticsCharacterController source,
         TacticsAbilityDefinition ability,
@@ -617,6 +710,22 @@ public static class TacticsAbilityEffectMath
             restoreResource.RestoreFormula,
             restoreResource.FlatAmount);
         return ApplyBonusAndMultiplier(baseMin, baseMax, bonus, restoreResource.BonusMultiplier);
+    }
+
+    public static (int min, int max) GetStatusPotencyRange(
+        TacticsCharacterController source,
+        TacticsAbilityDefinition ability,
+        TacticsApplyStatusEffectData statusEffect)
+    {
+        int bonus = source != null
+            ? TacticsAbilityScalingCalculator.EvaluateDamageBonus(source, statusEffect.Scaling)
+            : 0;
+        (int baseMin, int baseMax) = GetBaseAmountRange(
+            source,
+            ability != null ? ability.DamageType : TacticsAbilityDamageType.Magic,
+            statusEffect.PotencyFormula,
+            statusEffect.FlatPotency);
+        return ApplyBonusAndMultiplier(baseMin, baseMax, bonus, statusEffect.PotencyMultiplier);
     }
 
     public static float GetAverageBaseDamage(TacticsCharacterController source, TacticsAbilityDamageType damageType)

@@ -1066,6 +1066,11 @@ public class TacticsPlayerController : MonoBehaviour
 
         if (!character.CanUseAbilitiesThisTurn)
         {
+            if (character.IsActionLockedThisTurn)
+            {
+                return "Stunned";
+            }
+
             return character.IsTurnActive ? "Action spent" : "Not your turn";
         }
 

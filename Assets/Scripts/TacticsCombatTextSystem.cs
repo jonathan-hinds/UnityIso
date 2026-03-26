@@ -98,6 +98,16 @@ public sealed class TacticsCombatTextSystem : MonoBehaviour
         Instance.SpawnText(target, $"+{amount}G", new Color(0.98f, 0.86f, 0.28f, 1f), new Color(0.32f, 0.21f, 0.02f, 1f), useExperienceMotion: true);
     }
 
+    public static void ShowStatusEffectApplied(ITacticsCombatTextAnchor target, TacticsStatusEffectType statusEffectType)
+    {
+        if (target == null)
+        {
+            return;
+        }
+
+        Instance.SpawnStatusEffectAppliedText(target, statusEffectType);
+    }
+
     private void SpawnDamageNumber(ITacticsCombatTextAnchor target, int amount, bool isCriticalHit)
     {
         SpawnText(target, isCriticalHit ? $"-{amount}!" : $"-{amount}", Color.white, Color.black);
@@ -118,6 +128,18 @@ public sealed class TacticsCombatTextSystem : MonoBehaviour
             ? new Color(0.07f, 0.18f, 0.34f, 1f)
             : new Color(0.12f, 0.24f, 0.08f, 1f);
         SpawnText(target, $"+{amount} {label}", fillColor, outlineColor);
+    }
+
+    private void SpawnStatusEffectAppliedText(ITacticsCombatTextAnchor target, TacticsStatusEffectType statusEffectType)
+    {
+        TacticsStatusEffectDescriptor descriptor = TacticsStatusEffectLibrary.GetDescriptor(statusEffectType);
+        Color fillColor = descriptor.IsBuff
+            ? new Color(0.58f, 0.94f, 0.64f, 1f)
+            : new Color(1f, 0.72f, 0.4f, 1f);
+        Color outlineColor = descriptor.IsBuff
+            ? new Color(0.08f, 0.28f, 0.11f, 1f)
+            : new Color(0.36f, 0.12f, 0.04f, 1f);
+        SpawnText(target, descriptor.DisplayName.ToUpperInvariant(), fillColor, outlineColor);
     }
 
     private void SpawnText(

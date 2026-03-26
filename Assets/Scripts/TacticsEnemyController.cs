@@ -364,7 +364,18 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
                 continue;
             }
 
-            float score = ScoreAbilityPlan(ability, priorityTarget, character.GridPosition, payment, requiresMovement: false, affectedTargets);
+            if (!TryScoreAbilityPlan(
+                    ability,
+                    priorityTarget,
+                    character.GridPosition,
+                    payment,
+                    requiresMovement: false,
+                    affectedTargets,
+                    out float score))
+            {
+                continue;
+            }
+
             score += 1000f;
             if (!foundPlan || score > bestPlan.Score)
             {
@@ -522,7 +533,18 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
                     continue;
                 }
 
-                float score = ScoreAbilityPlan(ability, primaryTarget, sourceTile, payment, requiresMovement, affectedTargets);
+                if (!TryScoreAbilityPlan(
+                        ability,
+                        primaryTarget,
+                        sourceTile,
+                        payment,
+                        requiresMovement,
+                        affectedTargets,
+                        out float score))
+                {
+                    continue;
+                }
+
                 if (!foundPlan || score > bestPlan.Score)
                 {
                     foundPlan = true;
@@ -540,15 +562,56 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         }
     }
 
+    private bool TryScoreAbilityPlan(
+        TacticsAbilityDefinition ability,
+        TacticsCharacterController target,
+        Vector2Int sourceTile,
+        TacticsAbilityCostPayment costPayment,
+        bool requiresMovement,
+        IReadOnlyList<TacticsCharacterController> affectedTargets,
+        out float score)
+    {
+        score = 0f;
+        if (ability == null || target == null || affectedTargets == null || affectedTargets.Count == 0)
+        {
+            return false;
+        }
+
+        float tacticalValue = EvaluateAbilityTacticalValue(ability, affectedTargets);
+        if (IsSupportAbility(ability) && tacticalValue <= 0f)
+        {
+            return false;
+        }
+
+        bool movementAvailable = !requiresMovement && character != null && character.HasMovementAvailableForAbilityCost;
+        float bestAlternativeOffenseScore = IsSupportAbility(ability)
+            ? GetBestOffensiveAbilityOpportunityScore(sourceTile, movementAvailable)
+            : 0f;
+
+        score = ScoreAbilityPlan(
+            ability,
+            target,
+            sourceTile,
+            costPayment,
+            requiresMovement,
+            affectedTargets,
+            tacticalValue,
+            bestAlternativeOffenseScore,
+            includeSupportCommitmentAdjustment: true);
+        return score > 0f;
+    }
+
     private float ScoreAbilityPlan(
         TacticsAbilityDefinition ability,
         TacticsCharacterController target,
         Vector2Int sourceTile,
         TacticsAbilityCostPayment costPayment,
         bool requiresMovement,
-        IReadOnlyList<TacticsCharacterController> affectedTargets)
+        IReadOnlyList<TacticsCharacterController> affectedTargets,
+        float tacticalValue,
+        float bestAlternativeOffenseScore,
+        bool includeSupportCommitmentAdjustment)
     {
-        float tacticalValue = EvaluateAbilityTacticalValue(ability, affectedTargets);
         float distanceToTarget = GetTileDistance(sourceTile, target.GridPosition);
         float preferredDistance = GetPreferredCombatDistance(ability);
         float rangeBias = ability.UsesAbilityRange ? ability.Range * 0.35f : 0f;
@@ -565,8 +628,17 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         float teamIntentBonus = strategicContext != null
             ? strategicContext.ScoreTeamPlan(sourceTile, target, ability, affectedTargets, costPayment)
             : 0f;
+        float supportCommitmentAdjustment = includeSupportCommitmentAdjustment
+            ? TacticsEnemyUtilityAbilityScorer.ScoreSupportCommitment(
+                character,
+                ability,
+                costPayment,
+                affectedTargets,
+                bestAlternativeOffenseScore,
+                GetNearbyThreatCount(character))
+            : 0f;
 
-        return tacticalValue + coordinationBonus + rangeBias + selfPreservationBias + teamIntentBonus - movementPenalty - distancePenalty - costPenalty;
+        return tacticalValue + coordinationBonus + rangeBias + selfPreservationBias + teamIntentBonus + supportCommitmentAdjustment - movementPenalty - distancePenalty - costPenalty;
     }
 
     private float EvaluateAbilityTacticalValue(TacticsAbilityDefinition ability, IReadOnlyList<TacticsCharacterController> affectedTargets)
@@ -595,6 +667,12 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
                     totalValue += ScoreResourceRestoreEffect(effect.RestoreResource, affectedTargets);
                     break;
             }
+        }
+
+        IReadOnlyList<TacticsApplyStatusEffectData> statusEffects = ability.StatusEffects;
+        for (int i = 0; i < statusEffects.Count; i++)
+        {
+            totalValue += ScoreStatusEffect(ability, statusEffects[i], affectedTargets);
         }
 
         return totalValue;
@@ -706,6 +784,69 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         return totalValue;
     }
 
+    private float ScoreStatusEffect(
+        TacticsAbilityDefinition ability,
+        TacticsApplyStatusEffectData statusEffect,
+        IReadOnlyList<TacticsCharacterController> affectedTargets)
+    {
+        TacticsStatusEffectDescriptor descriptor = TacticsStatusEffectLibrary.GetDescriptor(statusEffect.StatusEffectType);
+        float averagePotency = GetAverageStatusPotency(ability, statusEffect);
+        float totalValue = 0f;
+
+        for (int i = 0; i < affectedTargets.Count; i++)
+        {
+            TacticsCharacterController target = affectedTargets[i];
+            if (target == null || !target.IsAlive)
+            {
+                continue;
+            }
+
+            switch (statusEffect.StatusEffectType)
+            {
+                case TacticsStatusEffectType.Cleanse:
+                {
+                    if (target.Team != character.Team)
+                    {
+                        continue;
+                    }
+
+                    int missingHitPoints = target.MaxHitPoints - target.CurrentHitPoints;
+                    float totalHealingWindow = averagePotency * statusEffect.DurationTurns;
+                    float effectiveHealing = missingHitPoints > 0
+                        ? Mathf.Min(missingHitPoints + averagePotency * Mathf.Max(0, statusEffect.DurationTurns - 1), totalHealingWindow)
+                        : totalHealingWindow * 0.4f;
+                    float pressureBonus = GetNearbyThreatCount(target) * 2.5f;
+                    float urgencyBonus = (1f - GetHealthRatio(target)) * 12f;
+                    float selfBonus = ReferenceEquals(target, character) ? 4f : 0f;
+                    totalValue += effectiveHealing + pressureBonus + urgencyBonus + selfBonus;
+                    break;
+                }
+
+                case TacticsStatusEffectType.Stun:
+                {
+                    if (target.Team == character.Team)
+                    {
+                        continue;
+                    }
+
+                    float denialValue = 18f * statusEffect.DurationTurns;
+                    float offensiveSuppression = GetTargetOffensivePotential(target) * 0.65f;
+                    float focusFireBonus = CountAlliedPressureOnTarget(target) * 2.5f;
+                    float refreshBonus = target.HasStatusEffect(TacticsStatusEffectType.Stun) ? 2f : 6f;
+                    totalValue += denialValue + offensiveSuppression + focusFireBonus + refreshBonus;
+                    break;
+                }
+            }
+        }
+
+        if (!descriptor.IsBuff && ability != null && ability.UsesAreaOfEffect)
+        {
+            totalValue += ability.AreaOfEffectSize * 1.5f;
+        }
+
+        return totalValue;
+    }
+
     private float GetAverageDamageAmount(TacticsAbilityDefinition ability, TacticsDealDamageEffectData damage)
     {
         return TacticsAbilityEffectMath.EvaluateDamageAmount(character, ability, damage, useAverageRoll: true);
@@ -719,6 +860,11 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
     private float GetAverageRestoreResourceAmount(TacticsRestoreResourceEffectData restoreResource)
     {
         return TacticsAbilityEffectMath.EvaluateRestoreResourceAmount(character, restoreResource, useAverageRoll: true);
+    }
+
+    private float GetAverageStatusPotency(TacticsAbilityDefinition ability, TacticsApplyStatusEffectData statusEffect)
+    {
+        return TacticsAbilityEffectMath.EvaluateStatusPotency(character, ability, statusEffect, useAverageRoll: true);
     }
 
     private float GetCostPenalty(
@@ -782,7 +928,22 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
                     continue;
                 }
 
-                float score = ScoreAbilityPlan(ability, primaryTarget, sourceTile, payment, requiresMovement: !movementAvailable, affectedTargets);
+                float tacticalValue = EvaluateAbilityTacticalValue(ability, affectedTargets);
+                if (tacticalValue <= 0f)
+                {
+                    continue;
+                }
+
+                float score = ScoreAbilityPlan(
+                    ability,
+                    primaryTarget,
+                    sourceTile,
+                    payment,
+                    requiresMovement: !movementAvailable,
+                    affectedTargets,
+                    tacticalValue,
+                    bestAlternativeOffenseScore: 0f,
+                    includeSupportCommitmentAdjustment: false);
                 if (!foundPlan || score > bestPlan.Score)
                 {
                     foundPlan = true;
@@ -800,6 +961,76 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         }
 
         return foundPlan ? bestPlan.Score : 0f;
+    }
+
+    private float GetBestOffensiveAbilityOpportunityScore(Vector2Int sourceTile, bool movementAvailable)
+    {
+        if (character == null || combatSystem == null)
+        {
+            return 0f;
+        }
+
+        float bestScore = 0f;
+        IReadOnlyList<TacticsAbilityDefinition> abilities = character.Abilities;
+        if (abilities == null)
+        {
+            return 0f;
+        }
+
+        for (int i = 0; i < abilities.Count; i++)
+        {
+            TacticsAbilityDefinition ability = abilities[i];
+            if (ability == null ||
+                IsSupportAbility(ability) ||
+                !character.TryGetAbilityCostPayment(ability, movementAvailable, out TacticsAbilityCostPayment payment))
+            {
+                continue;
+            }
+
+            List<TacticsCharacterController> candidateTargets = GetCandidateTargetsForAbility(ability);
+            for (int targetIndex = 0; targetIndex < candidateTargets.Count; targetIndex++)
+            {
+                TacticsCharacterController primaryTarget = candidateTargets[targetIndex];
+                if (primaryTarget == null ||
+                    !primaryTarget.isActiveAndEnabled ||
+                    !primaryTarget.IsAlive ||
+                    !combatSystem.CanTargetTileFromTile(character, sourceTile, ability, primaryTarget.GridPosition))
+                {
+                    continue;
+                }
+
+                IReadOnlyList<TacticsCharacterController> affectedTargets = combatSystem.GetPreviewTargetsFromTile(
+                    character,
+                    sourceTile,
+                    ability,
+                    primaryTarget.GridPosition,
+                    movementAvailable);
+                if (affectedTargets.Count == 0)
+                {
+                    continue;
+                }
+
+                float tacticalValue = EvaluateAbilityTacticalValue(ability, affectedTargets);
+                if (tacticalValue <= 0f)
+                {
+                    continue;
+                }
+
+                float score = ScoreAbilityPlan(
+                    ability,
+                    primaryTarget,
+                    sourceTile,
+                    payment,
+                    requiresMovement: !movementAvailable,
+                    affectedTargets,
+                    tacticalValue,
+                    bestAlternativeOffenseScore: 0f,
+                    includeSupportCommitmentAdjustment: false);
+                bestScore = Mathf.Max(bestScore, score);
+            }
+        }
+
+        return bestScore;
     }
 
     private float ScoreMovementTile(Vector2Int sourceTile, TacticsCharacterController anchorTarget, int pathIndex)
@@ -1084,9 +1315,98 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         return false;
     }
 
+    private static bool IsBeneficialStatusAbility(TacticsAbilityDefinition ability)
+    {
+        if (ability == null)
+        {
+            return false;
+        }
+
+        IReadOnlyList<TacticsApplyStatusEffectData> statusEffects = ability.StatusEffects;
+        for (int i = 0; i < statusEffects.Count; i++)
+        {
+            if (TacticsStatusEffectLibrary.GetDescriptor(statusEffects[i].StatusEffectType).IsBuff)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static bool IsSupportAbility(TacticsAbilityDefinition ability)
     {
-        return IsHealingAbility(ability) || IsResourceRestoreAbility(ability);
+        return IsHealingAbility(ability) || IsResourceRestoreAbility(ability) || IsBeneficialStatusAbility(ability);
+    }
+
+    private float GetTargetOffensivePotential(TacticsCharacterController unit)
+    {
+        IReadOnlyList<TacticsAbilityDefinition> abilities = unit != null ? unit.Abilities : null;
+        if (abilities == null || abilities.Count == 0)
+        {
+            return 0f;
+        }
+
+        float bestValue = 0f;
+        for (int i = 0; i < abilities.Count; i++)
+        {
+            TacticsAbilityDefinition ability = abilities[i];
+            if (ability == null)
+            {
+                continue;
+            }
+
+            float abilityValue = 0f;
+            IReadOnlyList<TacticsAbilityEffectDefinitionData> effects = ability.Effects;
+            for (int effectIndex = 0; effectIndex < effects.Count; effectIndex++)
+            {
+                TacticsAbilityEffectDefinitionData effect = effects[effectIndex];
+                if (effect.EffectKind == TacticsAbilityEffectKind.DealDamage)
+                {
+                    abilityValue += TacticsAbilityEffectMath.EvaluateDamageAmount(unit, ability, effect.DealDamage, useAverageRoll: true);
+                }
+            }
+
+            IReadOnlyList<TacticsApplyStatusEffectData> statusEffects = ability.StatusEffects;
+            for (int effectIndex = 0; effectIndex < statusEffects.Count; effectIndex++)
+            {
+                TacticsApplyStatusEffectData effect = statusEffects[effectIndex];
+                if (!TacticsStatusEffectLibrary.GetDescriptor(effect.StatusEffectType).IsBuff)
+                {
+                    abilityValue += 12f * effect.DurationTurns;
+                }
+            }
+
+            bestValue = Mathf.Max(bestValue, abilityValue);
+        }
+
+        return bestValue;
+    }
+
+    private int CountAlliedPressureOnTarget(TacticsCharacterController target)
+    {
+        if (target == null)
+        {
+            return 0;
+        }
+
+        int count = 0;
+        List<TacticsCharacterController> alliedTargets = GetAlliedTargets(includeSelf: true);
+        for (int i = 0; i < alliedTargets.Count; i++)
+        {
+            TacticsCharacterController ally = alliedTargets[i];
+            if (ally == null)
+            {
+                continue;
+            }
+
+            if (GetTileDistance(ally.GridPosition, target.GridPosition) <= Mathf.Max(1, ally.MoveRange + 1))
+            {
+                count++;
+            }
+        }
+
+        return count;
     }
 
     private int GetNearbyThreatCount(TacticsCharacterController target)
@@ -1570,6 +1890,12 @@ public sealed class TacticsEnemyStrategicContext
             }
         }
 
+        IReadOnlyList<TacticsApplyStatusEffectData> statusEffects = ability.StatusEffects;
+        for (int i = 0; i < statusEffects.Count; i++)
+        {
+            value += GetStatusStrategicValue(unit, ability, statusEffects[i]);
+        }
+
         if (ability.UsesAreaOfEffect)
         {
             value += ability.AreaOfEffectSize * 0.5f;
@@ -1606,10 +1932,47 @@ public sealed class TacticsEnemyStrategicContext
                 }
             }
 
+            IReadOnlyList<TacticsApplyStatusEffectData> statusEffects = ability.StatusEffects;
+            for (int effectIndex = 0; effectIndex < statusEffects.Count; effectIndex++)
+            {
+                TacticsApplyStatusEffectData effect = statusEffects[effectIndex];
+                if (!TacticsStatusEffectLibrary.GetDescriptor(effect.StatusEffectType).IsBuff)
+                {
+                    abilityValue += GetStatusStrategicValue(unit, ability, effect);
+                }
+            }
+
             bestValue = Mathf.Max(bestValue, abilityValue);
         }
 
         return bestValue;
+    }
+
+    private float GetStatusStrategicValue(
+        TacticsCharacterController unit,
+        TacticsAbilityDefinition ability,
+        TacticsApplyStatusEffectData statusEffect)
+    {
+        TacticsStatusEffectDescriptor descriptor = TacticsStatusEffectLibrary.GetDescriptor(statusEffect.StatusEffectType);
+        float potency = TacticsAbilityEffectMath.EvaluateStatusPotency(unit, ability, statusEffect, useAverageRoll: true);
+        return statusEffect.StatusEffectType switch
+        {
+            TacticsStatusEffectType.Cleanse => (potency * statusEffect.DurationTurns * 0.8f) + 6f,
+            TacticsStatusEffectType.Stun => (16f * statusEffect.DurationTurns) + GetUnitBaseThreat(unit),
+            _ => descriptor.IsBuff ? potency * 0.75f : potency
+        };
+    }
+
+    private static float GetUnitBaseThreat(TacticsCharacterController unit)
+    {
+        if (unit == null)
+        {
+            return 0f;
+        }
+
+        float meleeAverage = (unit.BaseMeleeDamageMin + unit.BaseMeleeDamageMax) * 0.5f;
+        float magicAverage = (unit.BaseMagicDamageMin + unit.BaseMagicDamageMax) * 0.5f;
+        return Mathf.Max(meleeAverage, magicAverage) * 0.2f;
     }
 
     private int CountAlliesThreateningTarget(TacticsCharacterController target)
@@ -1667,7 +2030,17 @@ public sealed class TacticsEnemyStrategicContext
             IReadOnlyList<TacticsAbilityEffectDefinitionData> effects = ability.Effects;
             for (int effectIndex = 0; effectIndex < effects.Count; effectIndex++)
             {
-                if (effects[effectIndex].EffectKind is TacticsAbilityEffectKind.RestoreHitPoints or TacticsAbilityEffectKind.RestoreResource)
+                TacticsAbilityEffectDefinitionData effect = effects[effectIndex];
+                if (effect.EffectKind is TacticsAbilityEffectKind.RestoreHitPoints or TacticsAbilityEffectKind.RestoreResource)
+                {
+                    return true;
+                }
+            }
+
+            IReadOnlyList<TacticsApplyStatusEffectData> statusEffects = ability.StatusEffects;
+            for (int effectIndex = 0; effectIndex < statusEffects.Count; effectIndex++)
+            {
+                if (TacticsStatusEffectLibrary.GetDescriptor(statusEffects[effectIndex].StatusEffectType).IsBuff)
                 {
                     return true;
                 }
