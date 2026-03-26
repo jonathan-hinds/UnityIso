@@ -851,6 +851,8 @@ public sealed class TacticsCombatSystem : MonoBehaviour
             yield return PlayProjectilePresentationRoutine(context);
         }
 
+        PlayHitEffectPresentation(context);
+
         bool appliedAnyEffect = false;
         IReadOnlyList<TacticsAbilityEffectDefinitionData> effects = context.Ability.Effects;
         for (int i = 0; i < effects.Count; i++)
@@ -919,6 +921,26 @@ public sealed class TacticsCombatSystem : MonoBehaviour
             impactPosition,
             sortingLayerId,
             sortingOrder));
+    }
+
+    private static void PlayHitEffectPresentation(TacticsAbilityExecutionContext context)
+    {
+        if (context.Ability == null || !context.Ability.UsesHitEffectPresentation || context.Targets == null)
+        {
+            return;
+        }
+
+        TacticsAbilityHitEffectDefinition hitEffect = context.Ability.HitEffect;
+        for (int i = 0; i < context.Targets.Count; i++)
+        {
+            TacticsCharacterController target = context.Targets[i];
+            if (target == null || !target.isActiveAndEnabled || !target.IsAlive)
+            {
+                continue;
+            }
+
+            TacticsAbilityHitEffectSystem.Show(hitEffect, target);
+        }
     }
 
     private Vector3 ResolveProjectileImpactPosition(TacticsAbilityExecutionContext context)

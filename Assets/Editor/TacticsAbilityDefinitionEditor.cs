@@ -1,5 +1,6 @@
 using UnityEditor;
 using UnityEngine;
+using System.Collections.Generic;
 
 [CustomEditor(typeof(TacticsAbilityDefinition))]
 public sealed class TacticsAbilityDefinitionEditor : Editor
@@ -13,6 +14,7 @@ public sealed class TacticsAbilityDefinitionEditor : Editor
     private SerializedProperty targetRuleProperty;
     private SerializedProperty damageTypeProperty;
     private SerializedProperty projectilePrefabProperty;
+    private SerializedProperty hitEffectProperty;
     private SerializedProperty effectsProperty;
     private SerializedProperty statusEffectsProperty;
     private SerializedProperty costResourceTypeProperty;
@@ -30,6 +32,7 @@ public sealed class TacticsAbilityDefinitionEditor : Editor
         targetRuleProperty = serializedObject.FindProperty("targetRule");
         damageTypeProperty = serializedObject.FindProperty("damageType");
         projectilePrefabProperty = serializedObject.FindProperty("projectilePrefab");
+        hitEffectProperty = serializedObject.FindProperty("hitEffect");
         effectsProperty = serializedObject.FindProperty("effects");
         statusEffectsProperty = serializedObject.FindProperty("statusEffects");
         costResourceTypeProperty = serializedObject.FindProperty("costResourceType");
@@ -67,6 +70,7 @@ public sealed class TacticsAbilityDefinitionEditor : Editor
         EditorGUILayout.Space();
         EditorGUILayout.LabelField("Presentation", EditorStyles.boldLabel);
         EditorGUILayout.PropertyField(projectilePrefabProperty, new GUIContent("Projectile Prefab", "Optional prefab spawned for ranged-style ability presentation. Leave empty for instant effects."));
+        DrawHitEffectPresentationInspector();
 
         EditorGUILayout.Space();
         EditorGUILayout.LabelField("Ability Effects", EditorStyles.boldLabel);
@@ -115,5 +119,82 @@ public sealed class TacticsAbilityDefinitionEditor : Editor
         return rangeType == TacticsAbilityRangeType.SurroundingAoE ||
                rangeType == TacticsAbilityRangeType.RangedAoE ||
                rangeType == TacticsAbilityRangeType.AbsoluteAoE;
+    }
+
+    private void DrawHitEffectPresentationInspector()
+    {
+        if (hitEffectProperty == null)
+        {
+            return;
+        }
+
+        SerializedProperty sourceTextureProperty = hitEffectProperty.FindPropertyRelative("sourceTexture");
+        SerializedProperty framesProperty = hitEffectProperty.FindPropertyRelative("frames");
+        SerializedProperty framesPerSecondProperty = hitEffectProperty.FindPropertyRelative("framesPerSecond");
+        SerializedProperty durationProperty = hitEffectProperty.FindPropertyRelative("duration");
+        SerializedProperty scaleProperty = hitEffectProperty.FindPropertyRelative("scale");
+        SerializedProperty worldOffsetProperty = hitEffectProperty.FindPropertyRelative("worldOffset");
+        SerializedProperty tintProperty = hitEffectProperty.FindPropertyRelative("tint");
+        SerializedProperty sortingOrderOffsetProperty = hitEffectProperty.FindPropertyRelative("sortingOrderOffset");
+
+        EditorGUI.BeginChangeCheck();
+        EditorGUILayout.PropertyField(sourceTextureProperty, new GUIContent("Hit Effect Sprite Sheet", "Pick a sliced sprite sheet such as spell1 through spell6. All sprite frames from that texture will be used as the hit animation."));
+        if (EditorGUI.EndChangeCheck())
+        {
+            SyncFramesFromTexture(sourceTextureProperty, framesProperty);
+        }
+
+        using (new EditorGUI.DisabledScope(true))
+        {
+            EditorGUILayout.IntField("Resolved Frames", framesProperty.arraySize);
+        }
+
+        if (framesProperty.arraySize > 0)
+        {
+            EditorGUILayout.PropertyField(framesPerSecondProperty);
+            EditorGUILayout.PropertyField(durationProperty, new GUIContent("Duration", "How long the hit effect should remain visible. Leave at the default to match the animation length."));
+            EditorGUILayout.PropertyField(scaleProperty);
+            EditorGUILayout.PropertyField(worldOffsetProperty, new GUIContent("World Offset", "Additional offset applied over the target anchor in world units."));
+            EditorGUILayout.PropertyField(tintProperty);
+            EditorGUILayout.PropertyField(sortingOrderOffsetProperty);
+        }
+        else
+        {
+            EditorGUILayout.HelpBox("Assign one of the sliced spell sprite sheets to enable an animated hit effect for this ability.", MessageType.Info);
+        }
+    }
+
+    private static void SyncFramesFromTexture(SerializedProperty sourceTextureProperty, SerializedProperty framesProperty)
+    {
+        framesProperty.ClearArray();
+
+        Texture2D sourceTexture = sourceTextureProperty.objectReferenceValue as Texture2D;
+        if (sourceTexture == null)
+        {
+            return;
+        }
+
+        string assetPath = AssetDatabase.GetAssetPath(sourceTexture);
+        if (string.IsNullOrWhiteSpace(assetPath))
+        {
+            return;
+        }
+
+        Object[] assets = AssetDatabase.LoadAllAssetsAtPath(assetPath);
+        List<Sprite> sprites = new List<Sprite>();
+        for (int i = 0; i < assets.Length; i++)
+        {
+            if (assets[i] is Sprite sprite)
+            {
+                sprites.Add(sprite);
+            }
+        }
+
+        sprites.Sort((left, right) => EditorUtility.NaturalCompare(left.name, right.name));
+        for (int i = 0; i < sprites.Count; i++)
+        {
+            framesProperty.InsertArrayElementAtIndex(i);
+            framesProperty.GetArrayElementAtIndex(i).objectReferenceValue = sprites[i];
+        }
     }
 }

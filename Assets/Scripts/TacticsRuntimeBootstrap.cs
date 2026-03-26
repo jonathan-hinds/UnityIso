@@ -300,6 +300,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         TacticsCharacterMenuView characterMenuView = EnsureCharacterMenuView();
         TacticsTileTargetOverlay tileTargetOverlay = EnsureTileTargetOverlay();
         EnsureCombatTextSystem();
+        EnsureAbilityHitEffectSystem();
         EnsureStatusEffectTrayView();
         EnsureTurnCameraDirector();
         TacticsCharacterRegistry characterRegistry = EnsureCharacterRegistry();
@@ -674,6 +675,17 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         combatTextObject.AddComponent<TacticsCombatTextSystem>();
     }
 
+    private void EnsureAbilityHitEffectSystem()
+    {
+        if (FindFirstObjectByType<TacticsAbilityHitEffectSystem>() != null)
+        {
+            return;
+        }
+
+        GameObject hitEffectObject = new GameObject("Tactics Ability Hit Effect System");
+        hitEffectObject.AddComponent<TacticsAbilityHitEffectSystem>();
+    }
+
     private static void SetCameraInputEnabled(bool enabled)
     {
         MouseCameraController cameraController = FindFirstObjectByType<MouseCameraController>();
@@ -723,6 +735,8 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         DestroyAllOfType<TacticsTopRightNavBarView>();
         DestroyAllOfType<TacticsCharacterMenuView>();
         DestroyAllOfType<TacticsCombatTextSystem>();
+        DestroyAllOfType<TacticsAbilityHitEffectSystem>();
+        DestroyAllOfType<TacticsAbilityHitEffectInstance>();
         DestroyAllOfType<TacticsChestEncounterService>();
         DestroyAllOfType<TacticsFloatingCombatText>();
         DestroyAllOfType<TacticsOverheadHealthBar>();

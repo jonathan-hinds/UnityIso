@@ -21,6 +21,21 @@ MonoBehaviour:
   targetRule: 3
   damageType: 0
   projectilePrefab: {fileID: 0}
+  hitEffect:
+    sourceTexture: {fileID: 2800000, guid: bed7e0044d956b3438a47396bb2fa0fe, type: 3}
+    frames:
+    - {fileID: 9195339178586855736, guid: bed7e0044d956b3438a47396bb2fa0fe, type: 3}
+    - {fileID: -8916462741642943312, guid: bed7e0044d956b3438a47396bb2fa0fe, type: 3}
+    - {fileID: -642250516793536865, guid: bed7e0044d956b3438a47396bb2fa0fe, type: 3}
+    - {fileID: -2696747344480536269, guid: bed7e0044d956b3438a47396bb2fa0fe, type: 3}
+    - {fileID: 876077250008989347, guid: bed7e0044d956b3438a47396bb2fa0fe, type: 3}
+    - {fileID: -8451307879057019884, guid: bed7e0044d956b3438a47396bb2fa0fe, type: 3}
+    framesPerSecond: 12
+    duration: 0.5
+    scale: 2
+    worldOffset: {x: 0, y: 0}
+    tint: {r: 1, g: 1, b: 1, a: 1}
+    sortingOrderOffset: 0
   effects:
   - effectKind: 2
     dealDamage:
@@ -43,6 +58,7 @@ MonoBehaviour:
       scaling:
       - stat: 1
         rank: 3
+  statusEffects: []
   costResourceType: 3
   costAmount: 1
   allowMovementAsAlternateCost: 0

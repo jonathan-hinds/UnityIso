@@ -14,13 +14,29 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   abilityId: taunt
   displayName: Taunt
-  description: Force hostile single-target abilities to target you while you remain a valid target.
+  description: Force hostile single-target abilities to target you while you remain
+    a valid target.
   rangeType: 0
   range: 1
   areaOfEffectSize: 1
   targetRule: 3
   damageType: 0
   projectilePrefab: {fileID: 0}
+  hitEffect:
+    sourceTexture: {fileID: 2800000, guid: e23df6350c732e140a5682d68949b150, type: 3}
+    frames:
+    - {fileID: 1505722187724781760, guid: e23df6350c732e140a5682d68949b150, type: 3}
+    - {fileID: -1296957694667232424, guid: e23df6350c732e140a5682d68949b150, type: 3}
+    - {fileID: 6271026001932261562, guid: e23df6350c732e140a5682d68949b150, type: 3}
+    - {fileID: 5387141249611449715, guid: e23df6350c732e140a5682d68949b150, type: 3}
+    - {fileID: -9065579135672007347, guid: e23df6350c732e140a5682d68949b150, type: 3}
+    - {fileID: 7944167025139519249, guid: e23df6350c732e140a5682d68949b150, type: 3}
+    framesPerSecond: 12
+    duration: 0.5
+    scale: 2
+    worldOffset: {x: 0, y: 0}
+    tint: {r: 1, g: 1, b: 1, a: 1}
+    sortingOrderOffset: 0
   effects: []
   statusEffects:
   - statusEffectType: 2

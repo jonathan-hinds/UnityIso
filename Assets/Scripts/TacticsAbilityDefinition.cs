@@ -20,6 +20,7 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
 
     [Header("Presentation")]
     [SerializeField] private TacticsAbilityProjectile projectilePrefab;
+    [SerializeField] private TacticsAbilityHitEffectDefinition hitEffect;
 
     [Header("Effects")]
     [SerializeField] private List<TacticsAbilityEffectDefinitionData> effects = new()
@@ -50,6 +51,8 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
     public TacticsAbilityDamageType DamageType => damageType;
     public TacticsAbilityProjectile ProjectilePrefab => projectilePrefab;
     public bool UsesProjectilePresentation => projectilePrefab != null;
+    public TacticsAbilityHitEffectDefinition HitEffect => hitEffect;
+    public bool UsesHitEffectPresentation => hitEffect.IsConfigured;
     public IReadOnlyList<TacticsAbilityEffectDefinitionData> Effects => effects;
     public IReadOnlyList<TacticsApplyStatusEffectData> StatusEffects => statusEffects;
     public TacticsAbilityResourceType CostResourceType => ResolvedCostAmount > 0 ? costResourceType : TacticsAbilityResourceType.None;
@@ -76,6 +79,7 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
         ability.costResourceType = TacticsAbilityResourceType.None;
         ability.costAmount = 0;
         ability.allowMovementAsAlternateCost = false;
+        ability.hitEffect = TacticsAbilityHitEffectDefinition.Default();
         ability.effects = new List<TacticsAbilityEffectDefinitionData>
         {
             TacticsAbilityEffectDefinitionData.CreateDealDamage(
@@ -114,6 +118,7 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
             allowMovementAsAlternateCost = false;
         }
 
+        hitEffect.Sanitize();
         effects ??= new List<TacticsAbilityEffectDefinitionData>();
         statusEffects ??= new List<TacticsApplyStatusEffectData>();
 
@@ -130,6 +135,54 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
             statusEffect.Sanitize();
             statusEffects[i] = statusEffect;
         }
+    }
+}
+
+[Serializable]
+public struct TacticsAbilityHitEffectDefinition
+{
+    [SerializeField] private Texture2D sourceTexture;
+    [SerializeField] private Sprite[] frames;
+    [SerializeField, Min(0.01f)] private float framesPerSecond;
+    [SerializeField, Min(0.01f)] private float duration;
+    [SerializeField, Min(0.01f)] private float scale;
+    [SerializeField] private Vector2 worldOffset;
+    [SerializeField] private Color tint;
+    [SerializeField] private int sortingOrderOffset;
+
+    public Texture2D SourceTexture => sourceTexture;
+    public IReadOnlyList<Sprite> Frames => frames;
+    public int FrameCount => frames?.Length ?? 0;
+    public float FramesPerSecond => framesPerSecond <= 0f ? 12f : framesPerSecond;
+    public float Duration => duration <= 0f ? Mathf.Max(0.01f, FrameCount / FramesPerSecond) : duration;
+    public float Scale => scale <= 0f ? 1f : scale;
+    public Vector2 WorldOffset => worldOffset;
+    public Color Tint => tint.a <= 0f && tint == default ? Color.white : tint;
+    public int SortingOrderOffset => sortingOrderOffset;
+    public bool IsConfigured => frames != null && frames.Length > 0;
+
+    public static TacticsAbilityHitEffectDefinition Default()
+    {
+        return new TacticsAbilityHitEffectDefinition
+        {
+            sourceTexture = null,
+            frames = Array.Empty<Sprite>(),
+            framesPerSecond = 12f,
+            duration = 0.5f,
+            scale = 1f,
+            worldOffset = new Vector2(0f, 0.25f),
+            tint = Color.white,
+            sortingOrderOffset = 20
+        };
+    }
+
+    public void Sanitize()
+    {
+        frames ??= Array.Empty<Sprite>();
+        framesPerSecond = framesPerSecond <= 0f ? 12f : framesPerSecond;
+        duration = duration <= 0f ? Mathf.Max(0.01f, frames.Length > 0 ? frames.Length / framesPerSecond : 0.5f) : duration;
+        scale = scale <= 0f ? 1f : scale;
+        tint = tint.a <= 0f && tint == default ? Color.white : tint;
     }
 }
 

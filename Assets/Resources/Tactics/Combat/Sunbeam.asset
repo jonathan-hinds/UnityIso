@@ -21,6 +21,21 @@ MonoBehaviour:
   targetRule: 0
   damageType: 1
   projectilePrefab: {fileID: 1919018610427331710, guid: b696f3366c66355408ebce01080f3b47, type: 3}
+  hitEffect:
+    sourceTexture: {fileID: 2800000, guid: 4c733829ca8293e41bd60b753d69d720, type: 3}
+    frames:
+    - {fileID: 884025345500549633, guid: 4c733829ca8293e41bd60b753d69d720, type: 3}
+    - {fileID: 7821742519144330123, guid: 4c733829ca8293e41bd60b753d69d720, type: 3}
+    - {fileID: -879048871337303746, guid: 4c733829ca8293e41bd60b753d69d720, type: 3}
+    - {fileID: 6787080363974117590, guid: 4c733829ca8293e41bd60b753d69d720, type: 3}
+    - {fileID: 1154582569333474199, guid: 4c733829ca8293e41bd60b753d69d720, type: 3}
+    - {fileID: -5297250284646986259, guid: 4c733829ca8293e41bd60b753d69d720, type: 3}
+    framesPerSecond: 12
+    duration: 0.5
+    scale: 2
+    worldOffset: {x: 0, y: -0.16}
+    tint: {r: 1, g: 1, b: 1, a: 1}
+    sortingOrderOffset: 0
   effects:
   - effectKind: 0
     dealDamage:
@@ -35,5 +50,13 @@ MonoBehaviour:
       flatAmount: 0
       bonusMultiplier: 1
       scaling: []
+    restoreResource:
+      resourceType: 1
+      restoreFormula: 0
+      flatAmount: 0
+      bonusMultiplier: 1
+      scaling: []
+  statusEffects: []
   costResourceType: 2
   costAmount: 10
+  allowMovementAsAlternateCost: 0

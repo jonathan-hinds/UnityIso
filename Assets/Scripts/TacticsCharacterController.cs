@@ -1022,6 +1022,11 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         return GetVisualAnchorPosition(normalizedHeight, new Vector3(0f, 0.45f, 0f));
     }
 
+    public Vector3 GetHitEffectAnchorPosition(float normalizedHeight = 0.72f)
+    {
+        return GetVisualAnchorPosition(normalizedHeight, new Vector3(0f, 0.9f, 0f));
+    }
+
     public int GetCurrentResource(TacticsAbilityResourceType resourceType)
     {
         return resourceType switch
