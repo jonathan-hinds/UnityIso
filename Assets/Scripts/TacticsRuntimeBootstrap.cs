@@ -300,6 +300,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         TacticsCharacterMenuView characterMenuView = EnsureCharacterMenuView();
         TacticsTileTargetOverlay tileTargetOverlay = EnsureTileTargetOverlay();
         EnsureCombatTextSystem();
+        EnsureStatusEffectTrayView();
         EnsureTurnCameraDirector();
         TacticsCharacterRegistry characterRegistry = EnsureCharacterRegistry();
         TacticsTurnManager turnManager = EnsureTurnManager();
@@ -374,6 +375,17 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
         GameObject controllerObject = new GameObject("Tactics Player Controller");
         controllerObject.AddComponent<TacticsPlayerController>();
+    }
+
+    private void EnsureStatusEffectTrayView()
+    {
+        if (FindFirstObjectByType<TacticsStatusEffectTrayView>() != null)
+        {
+            return;
+        }
+
+        GameObject trayObject = new GameObject("Status Effect Tray HUD");
+        trayObject.AddComponent<TacticsStatusEffectTrayView>();
     }
 
     private void EnsureEventSystem()

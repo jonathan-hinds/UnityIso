@@ -49,6 +49,7 @@ public sealed class TacticsAbilityTooltipView : MonoBehaviour
         titleText.text = content.Title;
         metaText.text = content.Meta;
         bodyText.text = content.Body;
+        metaText.gameObject.SetActive(!string.IsNullOrWhiteSpace(content.Meta));
         footerText.text = content.Footer;
         footerText.gameObject.SetActive(!string.IsNullOrWhiteSpace(content.Footer));
 
@@ -59,6 +60,31 @@ public sealed class TacticsAbilityTooltipView : MonoBehaviour
         UpdatePosition(screenPosition);
     }
 
+    public void ShowInCanvasSpace(TacticsAbilityTooltipContent content, Vector2 canvasPosition, Canvas canvas)
+    {
+        if (!content.IsValid)
+        {
+            Hide();
+            return;
+        }
+
+        EnsureBuilt();
+        AssignCanvas(canvas);
+
+        titleText.text = content.Title;
+        metaText.text = content.Meta;
+        bodyText.text = content.Body;
+        metaText.gameObject.SetActive(!string.IsNullOrWhiteSpace(content.Meta));
+        footerText.text = content.Footer;
+        footerText.gameObject.SetActive(!string.IsNullOrWhiteSpace(content.Footer));
+
+        panelRect.gameObject.SetActive(true);
+        panelRect.SetAsLastSibling();
+        LayoutRebuilder.ForceRebuildLayoutImmediate(panelRect);
+        Canvas.ForceUpdateCanvases();
+        UpdatePositionInCanvasSpace(canvasPosition);
+    }
+
     public void UpdatePosition(Vector2 screenPosition)
     {
         if (panelRect == null || !panelRect.gameObject.activeSelf)
@@ -67,6 +93,17 @@ public sealed class TacticsAbilityTooltipView : MonoBehaviour
         }
 
         EnsureBuilt();
+        if (parentCanvas != null)
+        {
+            RectTransform canvasRect = parentCanvas.transform as RectTransform;
+            if (canvasRect != null &&
+                RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRect, screenPosition, parentCanvas.worldCamera, out Vector2 canvasPosition))
+            {
+                UpdatePositionInCanvasSpace(canvasPosition);
+                return;
+            }
+        }
+
         Rect screenBounds = parentCanvas != null
             ? parentCanvas.pixelRect
             : new Rect(0f, 0f, Screen.width, Screen.height);
@@ -96,6 +133,43 @@ public sealed class TacticsAbilityTooltipView : MonoBehaviour
         panelRect.position = clampedScreenPosition;
     }
 
+    public void UpdatePositionInCanvasSpace(Vector2 canvasPosition)
+    {
+        if (panelRect == null || !panelRect.gameObject.activeSelf)
+        {
+            return;
+        }
+
+        EnsureBuilt();
+        RectTransform canvasRect = parentCanvas != null
+            ? parentCanvas.transform as RectTransform
+            : null;
+        if (canvasRect == null)
+        {
+            return;
+        }
+
+        Vector2 preferredSize = LayoutUtility.GetPreferredSize(panelRect, 0) > 0f || LayoutUtility.GetPreferredSize(panelRect, 1) > 0f
+            ? new Vector2(LayoutUtility.GetPreferredSize(panelRect, 0), LayoutUtility.GetPreferredSize(panelRect, 1))
+            : panelRect.rect.size;
+        if (preferredSize.x <= 0f || preferredSize.y <= 0f)
+        {
+            preferredSize = new Vector2(420f, 180f);
+        }
+
+        Rect rect = canvasRect.rect;
+        float minX = rect.xMin + EdgePadding;
+        float maxX = rect.xMax - preferredSize.x - EdgePadding;
+        float minY = rect.yMin + preferredSize.y + EdgePadding;
+        float maxY = rect.yMax - EdgePadding;
+
+        Vector2 clampedCanvasPosition = new(
+            Mathf.Clamp(canvasPosition.x + PointerOffset.x, minX, maxX),
+            Mathf.Clamp(canvasPosition.y + PointerOffset.y, minY, maxY));
+
+        panelRect.anchoredPosition = clampedCanvasPosition;
+    }
+
     public void Hide()
     {
         EnsureBuilt();
@@ -117,8 +191,8 @@ public sealed class TacticsAbilityTooltipView : MonoBehaviour
 
         GameObject panelObject = CreateUiObject("AbilityTooltipPanel", transform);
         panelRect = panelObject.GetComponent<RectTransform>();
-        panelRect.anchorMin = new Vector2(0f, 0f);
-        panelRect.anchorMax = new Vector2(0f, 0f);
+        panelRect.anchorMin = new Vector2(0.5f, 0.5f);
+        panelRect.anchorMax = new Vector2(0.5f, 0.5f);
         panelRect.pivot = new Vector2(0f, 1f);
         panelRect.sizeDelta = new Vector2(420f, 0f);
 

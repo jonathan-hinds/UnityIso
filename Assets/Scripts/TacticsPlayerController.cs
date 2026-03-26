@@ -205,6 +205,14 @@ public class TacticsPlayerController : MonoBehaviour
         Vector2 point = new Vector2(worldPosition.x, worldPosition.y);
         Collider2D[] hits = Physics2D.OverlapPointAll(point);
 
+        if (TryGetClickedStatusEffectIcon(hits, out TacticsStatusEffectTrayHitTarget statusEffectHitTarget))
+        {
+            TacticsStatusEffectTrayView.ToggleFor(statusEffectHitTarget.Character, targetCamera);
+            return;
+        }
+
+        TacticsStatusEffectTrayView.HideTray();
+
         if (selectionState == SelectionState.AwaitingAbilityTarget &&
             ReferenceEquals(selectedCharacter, GetActivePlayerCharacter()))
         {
@@ -351,6 +359,25 @@ public class TacticsPlayerController : MonoBehaviour
         }
 
         return tile != null;
+    }
+
+    private bool TryGetClickedStatusEffectIcon(Collider2D[] hits, out TacticsStatusEffectTrayHitTarget hitTarget)
+    {
+        hitTarget = null;
+
+        for (int i = 0; i < hits.Length; i++)
+        {
+            TacticsStatusEffectTrayHitTarget candidate = hits[i].GetComponentInParent<TacticsStatusEffectTrayHitTarget>();
+            if (candidate == null || candidate.Character == null)
+            {
+                continue;
+            }
+
+            hitTarget = candidate;
+            return true;
+        }
+
+        return false;
     }
 
     public void AssignHud(TacticsActionMenuView view)
@@ -518,6 +545,7 @@ public class TacticsPlayerController : MonoBehaviour
         {
             selectionState = SelectionState.CharacterSelected;
             SetHoveredAbilityTargets(null);
+            TacticsStatusEffectTrayView.HideTray();
             RefreshHud();
         }
         else if (selectionState == SelectionState.AwaitingAbilityTarget)
@@ -525,6 +553,7 @@ public class TacticsPlayerController : MonoBehaviour
             combatSystem?.CancelTargeting();
             selectionState = SelectionState.CharacterSelected;
             SetHoveredAbilityTargets(null);
+            TacticsStatusEffectTrayView.HideTray();
             RefreshHud();
         }
     }

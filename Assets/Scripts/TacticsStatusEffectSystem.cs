@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Text;
 using UnityEngine;
 
 public enum TacticsStatusEffectType
@@ -18,23 +20,32 @@ public readonly struct TacticsStatusEffectDescriptor
     public TacticsStatusEffectDescriptor(
         TacticsStatusEffectType statusEffectType,
         string displayName,
+        string shortLabel,
         TacticsStatusEffectCategory category,
         bool appliesAtTurnStart,
-        bool blocksActions)
+        bool blocksActions,
+        Color accentColor,
+        Color backgroundColor)
     {
         StatusEffectType = statusEffectType;
         DisplayName = displayName;
+        ShortLabel = shortLabel;
         Category = category;
         AppliesAtTurnStart = appliesAtTurnStart;
         BlocksActions = blocksActions;
+        AccentColor = accentColor;
+        BackgroundColor = backgroundColor;
     }
 
     public TacticsStatusEffectType StatusEffectType { get; }
     public string DisplayName { get; }
+    public string ShortLabel { get; }
     public TacticsStatusEffectCategory Category { get; }
     public bool AppliesAtTurnStart { get; }
     public bool BlocksActions { get; }
     public bool IsBuff => Category == TacticsStatusEffectCategory.Buff;
+    public Color AccentColor { get; }
+    public Color BackgroundColor { get; }
 }
 
 [Serializable]
@@ -72,6 +83,9 @@ public struct TacticsStatusEffectInstance
 
 public static class TacticsStatusEffectLibrary
 {
+    private const string IconResourcePath = "UI/StatusEffects";
+    private static readonly Dictionary<TacticsStatusEffectType, Sprite> IconCache = new();
+
     public static TacticsStatusEffectDescriptor GetDescriptor(TacticsStatusEffectType statusEffectType)
     {
         return statusEffectType switch
@@ -79,21 +93,92 @@ public static class TacticsStatusEffectLibrary
             TacticsStatusEffectType.Cleanse => new TacticsStatusEffectDescriptor(
                 TacticsStatusEffectType.Cleanse,
                 "Cleanse",
+                "CL",
                 TacticsStatusEffectCategory.Buff,
                 appliesAtTurnStart: true,
-                blocksActions: false),
+                blocksActions: false,
+                accentColor: new Color(0.44f, 0.88f, 0.62f, 1f),
+                backgroundColor: new Color(0.12f, 0.34f, 0.2f, 0.92f)),
             TacticsStatusEffectType.Stun => new TacticsStatusEffectDescriptor(
                 TacticsStatusEffectType.Stun,
                 "Stun",
+                "ST",
                 TacticsStatusEffectCategory.Debuff,
                 appliesAtTurnStart: true,
-                blocksActions: true),
+                blocksActions: true,
+                accentColor: new Color(0.92f, 0.58f, 0.3f, 1f),
+                backgroundColor: new Color(0.34f, 0.16f, 0.1f, 0.92f)),
             _ => new TacticsStatusEffectDescriptor(
                 statusEffectType,
                 statusEffectType.ToString(),
+                statusEffectType.ToString().Length >= 2
+                    ? statusEffectType.ToString().Substring(0, 2).ToUpperInvariant()
+                    : statusEffectType.ToString().ToUpperInvariant(),
                 TacticsStatusEffectCategory.Buff,
                 appliesAtTurnStart: false,
-                blocksActions: false)
+                blocksActions: false,
+                accentColor: new Color(0.72f, 0.8f, 0.94f, 1f),
+                backgroundColor: new Color(0.14f, 0.18f, 0.25f, 0.92f))
         };
+    }
+
+    public static Sprite GetIconSprite(TacticsStatusEffectType statusEffectType)
+    {
+        if (IconCache.TryGetValue(statusEffectType, out Sprite cachedSprite))
+        {
+            return cachedSprite;
+        }
+
+        Sprite sprite = Resources.Load<Sprite>($"{IconResourcePath}/{statusEffectType}");
+        IconCache[statusEffectType] = sprite;
+        return sprite;
+    }
+
+    public static string BuildTooltipBody(TacticsStatusEffectInstance statusEffect)
+    {
+        TacticsStatusEffectDescriptor descriptor = GetDescriptor(statusEffect.StatusEffectType);
+        StringBuilder builder = new();
+
+        switch (statusEffect.StatusEffectType)
+        {
+            case TacticsStatusEffectType.Cleanse:
+                builder.Append("Heals ");
+                builder.Append(Mathf.Max(0, statusEffect.Potency));
+                builder.Append(" HP at the start of each turn.");
+                break;
+
+            case TacticsStatusEffectType.Stun:
+                builder.Append("This unit cannot act during its turn.");
+                break;
+
+            default:
+                builder.Append(descriptor.DisplayName);
+                if (statusEffect.Potency > 0)
+                {
+                    builder.Append(" potency: ");
+                    builder.Append(statusEffect.Potency);
+                    builder.Append('.');
+                }
+                else
+                {
+                    builder.Append(" is active.");
+                }
+                break;
+        }
+
+        return builder.ToString();
+    }
+
+    public static TacticsAbilityTooltipContent BuildTooltipContent(TacticsStatusEffectInstance statusEffect)
+    {
+        TacticsStatusEffectDescriptor descriptor = GetDescriptor(statusEffect.StatusEffectType);
+        string footer = statusEffect.RemainingTurns == 1
+            ? "1 turn remaining"
+            : $"{Mathf.Max(0, statusEffect.RemainingTurns)} turns remaining";
+        return new TacticsAbilityTooltipContent(
+            descriptor.DisplayName,
+            string.Empty,
+            BuildTooltipBody(statusEffect),
+            footer);
     }
 }
