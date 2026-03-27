@@ -17,6 +17,7 @@ public sealed class TacticsAbilityDefinitionEditor : Editor
     private SerializedProperty hitEffectProperty;
     private SerializedProperty effectsProperty;
     private SerializedProperty statusEffectsProperty;
+    private SerializedProperty knockbackProperty;
     private SerializedProperty costResourceTypeProperty;
     private SerializedProperty costAmountProperty;
     private SerializedProperty allowMovementAsAlternateCostProperty;
@@ -35,6 +36,7 @@ public sealed class TacticsAbilityDefinitionEditor : Editor
         hitEffectProperty = serializedObject.FindProperty("hitEffect");
         effectsProperty = serializedObject.FindProperty("effects");
         statusEffectsProperty = serializedObject.FindProperty("statusEffects");
+        knockbackProperty = serializedObject.FindProperty("knockback");
         costResourceTypeProperty = serializedObject.FindProperty("costResourceType");
         costAmountProperty = serializedObject.FindProperty("costAmount");
         allowMovementAsAlternateCostProperty = serializedObject.FindProperty("allowMovementAsAlternateCost");
@@ -79,6 +81,29 @@ public sealed class TacticsAbilityDefinitionEditor : Editor
         EditorGUILayout.Space();
         EditorGUILayout.LabelField("Status Applications", EditorStyles.boldLabel);
         EditorGUILayout.PropertyField(statusEffectsProperty, true);
+
+        EditorGUILayout.Space();
+        EditorGUILayout.LabelField("Battlefield Control", EditorStyles.boldLabel);
+        if (knockbackProperty != null)
+        {
+            SerializedProperty distanceInTilesProperty = knockbackProperty.FindPropertyRelative("distanceInTiles");
+            SerializedProperty durationProperty = knockbackProperty.FindPropertyRelative("duration");
+            SerializedProperty arcHeightProperty = knockbackProperty.FindPropertyRelative("arcHeight");
+            EditorGUILayout.PropertyField(
+                distanceInTilesProperty,
+                new GUIContent(
+                    "Knockback Tiles",
+                    "How many tiles hostile targets are thrown away from the attacker. A value of 0 disables knockback."));
+            if (distanceInTilesProperty.intValue > 0)
+            {
+                EditorGUILayout.PropertyField(
+                    durationProperty,
+                    new GUIContent("Knockback Fly Time", "Total time the target spends airborne during knockback."));
+                EditorGUILayout.PropertyField(
+                    arcHeightProperty,
+                    new GUIContent("Knockback Arc Height", "Additional vertical arc applied while the target is thrown."));
+            }
+        }
 
         EditorGUILayout.Space();
         EditorGUILayout.LabelField("Cost", EditorStyles.boldLabel);

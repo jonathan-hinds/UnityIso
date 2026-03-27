@@ -710,6 +710,8 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
             totalValue += ScoreStatusEffect(ability, sourceTile, statusEffects[i], affectedTargets, bestAlternativeOffenseScore);
         }
 
+        totalValue += ScoreKnockbackEffect(ability, sourceTile, affectedTargets);
+
         return totalValue;
     }
 
@@ -1045,6 +1047,54 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         TacticsCharacterController target = null)
     {
         return TacticsAbilityEffectMath.EvaluateStatusPotency(character, target, ability, statusEffect, useAverageRoll: true);
+    }
+
+    private float ScoreKnockbackEffect(
+        TacticsAbilityDefinition ability,
+        Vector2Int sourceTile,
+        IReadOnlyList<TacticsCharacterController> affectedTargets)
+    {
+        if (ability == null ||
+            !ability.AppliesKnockback ||
+            combatSystem == null ||
+            character == null ||
+            affectedTargets == null)
+        {
+            return 0f;
+        }
+
+        float totalValue = 0f;
+        for (int i = 0; i < affectedTargets.Count; i++)
+        {
+            TacticsCharacterController target = affectedTargets[i];
+            if (target == null ||
+                !target.IsAlive ||
+                !combatSystem.TryGetKnockbackDestination(character, sourceTile, target, ability, out Vector2Int destination))
+            {
+                continue;
+            }
+
+            int movedTiles = GetTileDistance(target.GridPosition, destination);
+            if (movedTiles <= 0)
+            {
+                continue;
+            }
+
+            float beforeDistance = GetTileDistance(sourceTile, target.GridPosition);
+            float afterDistance = GetTileDistance(sourceTile, destination);
+            float preferredDistance = GetPreferredCombatDistance(target);
+            float preferenceDisruption = Mathf.Abs(afterDistance - preferredDistance) - Mathf.Abs(beforeDistance - preferredDistance);
+            float spacingChange = afterDistance - beforeDistance;
+            float offensiveSuppression = GetTargetOffensivePotential(target) * 0.06f * movedTiles;
+            float teamBias = target.Team == character.Team ? -8f : 2f;
+            totalValue += (movedTiles * 4f) +
+                          (preferenceDisruption * 5f) +
+                          (spacingChange * 2.5f) +
+                          offensiveSuppression +
+                          teamBias;
+        }
+
+        return totalValue;
     }
 
     private float GetCostPenalty(
@@ -2594,6 +2644,8 @@ public sealed class TacticsEnemyStrategicContext
             value += ability.AreaOfEffectSize * 0.5f;
         }
 
+        value += GetKnockbackStrategicValue(ability);
+
         return value;
     }
 
@@ -2634,6 +2686,8 @@ public sealed class TacticsEnemyStrategicContext
                     abilityValue += GetStatusStrategicValue(unit, ability, effect);
                 }
             }
+
+            abilityValue += GetKnockbackStrategicValue(ability);
 
             bestValue = Mathf.Max(bestValue, abilityValue);
         }
@@ -2679,6 +2733,13 @@ public sealed class TacticsEnemyStrategicContext
         float meleeAverage = (unit.BaseMeleeDamageMin + unit.BaseMeleeDamageMax) * 0.5f;
         float magicAverage = (unit.BaseMagicDamageMin + unit.BaseMagicDamageMax) * 0.5f;
         return Mathf.Max(meleeAverage, magicAverage) * 0.2f;
+    }
+
+    private static float GetKnockbackStrategicValue(TacticsAbilityDefinition ability)
+    {
+        return ability != null && ability.AppliesKnockback
+            ? ability.Knockback.DistanceInTiles * 4.5f
+            : 0f;
     }
 
     private int CountAlliesThreateningTarget(TacticsCharacterController target)

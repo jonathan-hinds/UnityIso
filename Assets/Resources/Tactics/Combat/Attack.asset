@@ -57,6 +57,10 @@ MonoBehaviour:
       bonusMultiplier: 1
       scaling: []
   statusEffects: []
+  knockback:
+    distanceInTiles: 1
+    duration: 0.5
+    arcHeight: 0.5
   costResourceType: 1
   costAmount: 5
   allowMovementAsAlternateCost: 0

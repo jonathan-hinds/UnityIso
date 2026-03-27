@@ -28,6 +28,7 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
         TacticsAbilityEffectDefinitionData.CreateDealDamage()
     };
     [SerializeField] private List<TacticsApplyStatusEffectData> statusEffects = new();
+    [SerializeField] private TacticsAbilityKnockbackData knockback;
 
     [Header("Cost")]
     [SerializeField] private TacticsAbilityResourceType costResourceType = TacticsAbilityResourceType.None;
@@ -55,6 +56,8 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
     public bool UsesHitEffectPresentation => hitEffect.IsConfigured;
     public IReadOnlyList<TacticsAbilityEffectDefinitionData> Effects => effects;
     public IReadOnlyList<TacticsApplyStatusEffectData> StatusEffects => statusEffects;
+    public TacticsAbilityKnockbackData Knockback => knockback;
+    public bool AppliesKnockback => knockback.IsEnabled;
     public TacticsAbilityResourceType CostResourceType => ResolvedCostAmount > 0 ? costResourceType : TacticsAbilityResourceType.None;
     public int CostAmount => ResolvedCostAmount;
     public bool HasCost => CostResourceType != TacticsAbilityResourceType.None && CostAmount > 0;
@@ -90,6 +93,7 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
                         TacticsAbilityScalingRank.A)))
         };
         ability.statusEffects = new List<TacticsApplyStatusEffectData>();
+        ability.knockback = TacticsAbilityKnockbackData.None();
         return ability;
     }
 
@@ -121,6 +125,7 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
         hitEffect.Sanitize();
         effects ??= new List<TacticsAbilityEffectDefinitionData>();
         statusEffects ??= new List<TacticsApplyStatusEffectData>();
+        knockback.Sanitize();
 
         for (int i = 0; i < effects.Count; i++)
         {
@@ -183,6 +188,128 @@ public struct TacticsAbilityHitEffectDefinition
         duration = duration <= 0f ? Mathf.Max(0.01f, frames.Length > 0 ? frames.Length / framesPerSecond : 0.5f) : duration;
         scale = scale <= 0f ? 1f : scale;
         tint = tint.a <= 0f && tint == default ? Color.white : tint;
+    }
+}
+
+[Serializable]
+public struct TacticsAbilityKnockbackData
+{
+    [SerializeField, Min(0)] private int distanceInTiles;
+    [SerializeField, Min(0.01f)] private float duration;
+    [SerializeField, Min(0f)] private float arcHeight;
+
+    public int DistanceInTiles => Mathf.Max(0, distanceInTiles);
+    public bool IsEnabled => DistanceInTiles > 0;
+    public float Duration => duration <= 0f ? 0.18f : duration;
+    public float ArcHeight => arcHeight < 0f ? 0.35f : arcHeight;
+
+    public static TacticsAbilityKnockbackData None()
+    {
+        return new TacticsAbilityKnockbackData
+        {
+            distanceInTiles = 0,
+            duration = 0.18f,
+            arcHeight = 0.35f
+        };
+    }
+
+    public static TacticsAbilityKnockbackData Create(int distanceInTiles, float duration = 0.18f, float arcHeight = 0.35f)
+    {
+        return new TacticsAbilityKnockbackData
+        {
+            distanceInTiles = Mathf.Max(0, distanceInTiles),
+            duration = duration <= 0f ? 0.18f : duration,
+            arcHeight = Mathf.Max(0f, arcHeight)
+        };
+    }
+
+    public void Sanitize()
+    {
+        distanceInTiles = Mathf.Max(0, distanceInTiles);
+        duration = duration <= 0f ? 0.18f : duration;
+        arcHeight = Mathf.Max(0f, arcHeight);
+    }
+}
+
+public readonly struct TacticsKnockbackPlan
+{
+    public TacticsKnockbackPlan(
+        TacticsCharacterController target,
+        Vector2Int destination,
+        TacticsMovementDirection travelDirection,
+        TacticsMovementDirection animationDirection,
+        TacticsAbilityKnockbackData settings)
+    {
+        Target = target;
+        Destination = destination;
+        TravelDirection = travelDirection;
+        AnimationDirection = animationDirection;
+        Settings = settings;
+    }
+
+    public TacticsCharacterController Target { get; }
+    public Vector2Int Destination { get; }
+    public TacticsMovementDirection TravelDirection { get; }
+    public TacticsMovementDirection AnimationDirection { get; }
+    public TacticsAbilityKnockbackData Settings { get; }
+}
+
+public static class TacticsKnockbackUtility
+{
+    public static bool TryGetStepDelta(Vector2Int sourceTile, Vector2Int targetTile, out Vector2Int stepDelta)
+    {
+        Vector2Int offset = targetTile - sourceTile;
+        if (offset == Vector2Int.zero)
+        {
+            stepDelta = default;
+            return false;
+        }
+
+        if (Mathf.Abs(offset.x) >= Mathf.Abs(offset.y) && offset.x != 0)
+        {
+            stepDelta = new Vector2Int(offset.x > 0 ? 1 : -1, 0);
+            return true;
+        }
+
+        if (offset.y != 0)
+        {
+            stepDelta = new Vector2Int(0, offset.y > 0 ? 1 : -1);
+            return true;
+        }
+
+        stepDelta = default;
+        return false;
+    }
+
+    public static TacticsMovementDirection GetMovementDirection(Vector2Int stepDelta)
+    {
+        if (stepDelta.x > 0)
+        {
+            return TacticsMovementDirection.NorthEast;
+        }
+
+        if (stepDelta.x < 0)
+        {
+            return TacticsMovementDirection.SouthWest;
+        }
+
+        if (stepDelta.y > 0)
+        {
+            return TacticsMovementDirection.NorthWest;
+        }
+
+        return TacticsMovementDirection.SouthEast;
+    }
+
+    public static TacticsMovementDirection GetOppositeDirection(TacticsMovementDirection direction)
+    {
+        return direction switch
+        {
+            TacticsMovementDirection.NorthEast => TacticsMovementDirection.SouthWest,
+            TacticsMovementDirection.NorthWest => TacticsMovementDirection.SouthEast,
+            TacticsMovementDirection.SouthEast => TacticsMovementDirection.NorthWest,
+            _ => TacticsMovementDirection.NorthEast
+        };
     }
 }
 

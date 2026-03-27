@@ -242,6 +242,8 @@ public static class TacticsEnemyUtilityAbilityScorer
             value += ability.AreaOfEffectSize * 0.5f;
         }
 
+        value += GetKnockbackStrategicValue(ability);
+
         return value;
     }
 
@@ -272,6 +274,14 @@ public static class TacticsEnemyUtilityAbilityScorer
 
         return false;
     }
+
+    private static float GetKnockbackStrategicValue(TacticsAbilityDefinition ability)
+    {
+        return ability != null && ability.AppliesKnockback
+            ? ability.Knockback.DistanceInTiles * 4.5f
+            : 0f;
+    }
+
     private static float GetUnitBaseThreat(TacticsCharacterController unit)
     {
         if (unit == null)

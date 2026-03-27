@@ -18,6 +18,7 @@ public sealed class TacticsCombatSystem : MonoBehaviour
     private readonly List<Vector2Int> reusableAreaTiles = new();
     private readonly List<TacticsCharacterController> reusableCharacterBuffer = new();
     private readonly List<TacticsCharacterController> reusableTauntBuffer = new();
+    private readonly List<TacticsKnockbackPlan> reusableKnockbackPlans = new();
     private Coroutine resolveRoutine;
 
     public event Action StateChanged;
@@ -394,6 +395,16 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         }
 
         return reusableAreaTiles;
+    }
+
+    public bool TryGetKnockbackDestination(
+        TacticsCharacterController source,
+        Vector2Int sourceTile,
+        TacticsCharacterController target,
+        TacticsAbilityDefinition ability,
+        out Vector2Int destination)
+    {
+        return TryGetKnockbackDestination(source, sourceTile, target, ability, null, null, out destination);
     }
 
     private bool IsValidTarget(TacticsCharacterController source, TacticsAbilityDefinition ability, TacticsCharacterController target)
@@ -797,7 +808,187 @@ public sealed class TacticsCombatSystem : MonoBehaviour
             }
         }
 
-        return false;
+        return BuildKnockbackPlans(context).Count > 0;
+    }
+
+    private List<TacticsKnockbackPlan> BuildKnockbackPlans(TacticsAbilityExecutionContext context)
+    {
+        reusableKnockbackPlans.Clear();
+        if (context.Source == null ||
+            context.Ability == null ||
+            !context.Ability.AppliesKnockback ||
+            context.Targets == null ||
+            context.Targets.Count == 0)
+        {
+            return reusableKnockbackPlans;
+        }
+
+        HashSet<TacticsCharacterController> displacedTargets = new();
+        for (int i = 0; i < context.Targets.Count; i++)
+        {
+            TacticsCharacterController target = context.Targets[i];
+            if (target != null && target.isActiveAndEnabled && target.IsAlive)
+            {
+                displacedTargets.Add(target);
+            }
+        }
+
+        HashSet<Vector2Int> reservedDestinations = new();
+        for (int i = 0; i < context.Targets.Count; i++)
+        {
+            TacticsCharacterController target = context.Targets[i];
+            if (target == null || !target.isActiveAndEnabled || !target.IsAlive)
+            {
+                continue;
+            }
+
+            if (!TryGetKnockbackDestination(
+                    context.Source,
+                    context.Source.GridPosition,
+                    target,
+                    context.Ability,
+                    reservedDestinations,
+                    displacedTargets,
+                    out Vector2Int destination))
+            {
+                continue;
+            }
+
+            if (!TacticsKnockbackUtility.TryGetStepDelta(context.Source.GridPosition, target.GridPosition, out Vector2Int stepDelta))
+            {
+                continue;
+            }
+
+            TacticsMovementDirection travelDirection = TacticsKnockbackUtility.GetMovementDirection(stepDelta);
+            reservedDestinations.Add(destination);
+            reusableKnockbackPlans.Add(new TacticsKnockbackPlan(
+                target,
+                destination,
+                travelDirection,
+                TacticsKnockbackUtility.GetOppositeDirection(travelDirection),
+                context.Ability.Knockback));
+        }
+
+        return reusableKnockbackPlans;
+    }
+
+    private bool TryGetKnockbackDestination(
+        TacticsCharacterController source,
+        Vector2Int sourceTile,
+        TacticsCharacterController target,
+        TacticsAbilityDefinition ability,
+        ISet<Vector2Int> reservedDestinations,
+        ISet<TacticsCharacterController> displacedTargets,
+        out Vector2Int destination)
+    {
+        destination = default;
+        if (source == null ||
+            target == null ||
+            ability == null ||
+            !ability.AppliesKnockback ||
+            mapGenerator == null ||
+            !mapGenerator.HasGeneratedMap ||
+            !target.isActiveAndEnabled ||
+            !target.IsAlive ||
+            !TacticsKnockbackUtility.TryGetStepDelta(sourceTile, target.GridPosition, out Vector2Int stepDelta))
+        {
+            return false;
+        }
+
+        bool ignoreSourceOccupancy = source.GridPosition != sourceTile;
+        Vector2Int currentTile = target.GridPosition;
+        Vector2Int furthestReachableTile = currentTile;
+        for (int step = 0; step < ability.Knockback.DistanceInTiles; step++)
+        {
+            Vector2Int nextTile = currentTile + stepDelta;
+            if (!CanOccupyKnockbackTile(
+                    source,
+                    target,
+                    currentTile,
+                    nextTile,
+                    ignoreSourceOccupancy,
+                    reservedDestinations,
+                    displacedTargets))
+            {
+                break;
+            }
+
+            furthestReachableTile = nextTile;
+            currentTile = nextTile;
+        }
+
+        if (furthestReachableTile == target.GridPosition)
+        {
+            return false;
+        }
+
+        destination = furthestReachableTile;
+        return true;
+    }
+
+    private bool CanOccupyKnockbackTile(
+        TacticsCharacterController source,
+        TacticsCharacterController target,
+        Vector2Int fromTile,
+        Vector2Int nextTile,
+        bool ignoreSourceOccupancy,
+        ISet<Vector2Int> reservedDestinations,
+        ISet<TacticsCharacterController> displacedTargets)
+    {
+        if (!mapGenerator.IsWithinBounds(nextTile.x, nextTile.y) ||
+            !mapGenerator.IsTraversable(nextTile.x, nextTile.y) ||
+            TacticsChestController.IsBlockingTile(nextTile) ||
+            !target.CanTraverseForcedMovementStep(fromTile, nextTile) ||
+            (reservedDestinations != null && reservedDestinations.Contains(nextTile)))
+        {
+            return false;
+        }
+
+        if (characterRegistry == null ||
+            !characterRegistry.TryGetCharacterAtTile(nextTile, out TacticsCharacterController occupant, target))
+        {
+            return true;
+        }
+
+        if (ignoreSourceOccupancy && ReferenceEquals(occupant, source))
+        {
+            return true;
+        }
+
+        return displacedTargets != null && displacedTargets.Contains(occupant);
+    }
+
+    private IEnumerator ResolveKnockbackRoutine(List<TacticsKnockbackPlan> plans, TacticsCharacterController damageSource)
+    {
+        if (plans == null || plans.Count == 0)
+        {
+            yield break;
+        }
+
+        for (int i = 0; i < plans.Count; i++)
+        {
+            TacticsKnockbackPlan plan = plans[i];
+            TacticsCharacterController target = plan.Target;
+            if (target == null ||
+                !target.isActiveAndEnabled ||
+                !target.IsAlive ||
+                target.GridPosition == plan.Destination ||
+                !target.TryBeginKnockback(plan.Destination, plan.TravelDirection, plan.AnimationDirection, plan.Settings))
+            {
+                continue;
+            }
+
+            while (target != null && target.IsMoving)
+            {
+                yield return null;
+            }
+
+            if (target != null && target.isActiveAndEnabled && target.IsAlive)
+            {
+                Vector3? damageSourcePosition = damageSource != null ? damageSource.TurnFocusPoint : null;
+                target.PlayDamageImpact(damageSourcePosition);
+            }
+        }
     }
 
     private bool CanResolveReplicatedAbility(
@@ -841,6 +1032,26 @@ public sealed class TacticsCombatSystem : MonoBehaviour
 
     private IEnumerator ResolveAbilityRoutine(TacticsAbilityExecutionContext context)
     {
+        List<TacticsKnockbackPlan> knockbackPlans = BuildKnockbackPlans(context);
+        HashSet<TacticsCharacterController> delayedImpactTargets = knockbackPlans.Count > 0
+            ? new HashSet<TacticsCharacterController>()
+            : null;
+        if (delayedImpactTargets != null)
+        {
+            for (int i = 0; i < knockbackPlans.Count; i++)
+            {
+                delayedImpactTargets.Add(knockbackPlans[i].Target);
+            }
+
+            context = new TacticsAbilityExecutionContext(
+                context.Source,
+                context.Ability,
+                context.TargetTile,
+                context.Targets,
+                context.CostPayment,
+                delayedImpactTargets);
+        }
+
         if (context.Source != null && context.Source.isActiveAndEnabled)
         {
             yield return context.Source.PlayAttackAnimationTowards(context.TargetTile);
@@ -884,6 +1095,12 @@ public sealed class TacticsCombatSystem : MonoBehaviour
 
             statusEffectProcessor.Apply(context, statusEffect);
             appliedAnyEffect = true;
+        }
+
+        if (knockbackPlans.Count > 0)
+        {
+            appliedAnyEffect = true;
+            yield return ResolveKnockbackRoutine(knockbackPlans, context.Source);
         }
 
         if (appliedAnyEffect && context.Source != null && context.Source.isActiveAndEnabled)
@@ -1001,13 +1218,15 @@ public readonly struct TacticsAbilityExecutionContext
         TacticsAbilityDefinition ability,
         Vector2Int targetTile,
         IReadOnlyList<TacticsCharacterController> targets,
-        TacticsAbilityCostPayment costPayment)
+        TacticsAbilityCostPayment costPayment,
+        IReadOnlyCollection<TacticsCharacterController> delayedImpactTargets = null)
     {
         Source = source;
         Ability = ability;
         TargetTile = targetTile;
         Targets = targets;
         CostPayment = costPayment;
+        DelayedImpactTargets = delayedImpactTargets;
     }
 
     public TacticsCharacterController Source { get; }
@@ -1015,6 +1234,25 @@ public readonly struct TacticsAbilityExecutionContext
     public Vector2Int TargetTile { get; }
     public IReadOnlyList<TacticsCharacterController> Targets { get; }
     public TacticsAbilityCostPayment CostPayment { get; }
+    public IReadOnlyCollection<TacticsCharacterController> DelayedImpactTargets { get; }
+
+    public bool ShouldDelayImpactFor(TacticsCharacterController target)
+    {
+        if (target == null || DelayedImpactTargets == null)
+        {
+            return false;
+        }
+
+        foreach (TacticsCharacterController delayedTarget in DelayedImpactTargets)
+        {
+            if (ReferenceEquals(delayedTarget, target))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }
 
 public interface ITacticsAbilityEffectProcessor
@@ -1060,7 +1298,8 @@ public sealed class TacticsDealDamageEffectProcessor : ITacticsAbilityEffectProc
                 continue;
             }
 
-            target.ApplyDamage(amount, damageSourcePosition, isCriticalHit, context.Source);
+            bool playImpactAnimation = !context.ShouldDelayImpactFor(target);
+            target.ApplyDamage(amount, damageSourcePosition, isCriticalHit, context.Source, playImpactAnimation);
         }
     }
 }

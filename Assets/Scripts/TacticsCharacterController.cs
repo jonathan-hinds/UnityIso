@@ -488,7 +488,8 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         int damageAmount,
         Vector3? damageSourceWorldPosition = null,
         bool isCriticalHit = false,
-        TacticsCharacterController damageSourceCharacter = null)
+        TacticsCharacterController damageSourceCharacter = null,
+        bool playImpactAnimation = true)
     {
         if (!IsAlive || damageAmount <= 0)
         {
@@ -496,7 +497,10 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         }
 
         runtimeResources.hitPoints = Mathf.Max(0, runtimeResources.hitPoints - damageAmount);
-        characterAnimator?.PlayDamageImpact(damageSourceWorldPosition);
+        if (playImpactAnimation)
+        {
+            characterAnimator?.PlayDamageImpact(damageSourceWorldPosition);
+        }
         TacticsCombatTextSystem.ShowDamage(this, damageAmount, isCriticalHit);
         TacticsOverheadHealthBar.ShowFor(this);
         NotifyTurnStateChanged();
@@ -754,6 +758,52 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         NotifyTurnStateChanged();
     }
 
+    public bool CanTraverseForcedMovementStep(Vector2Int from, Vector2Int to)
+    {
+        if (mapGenerator == null ||
+            !mapGenerator.HasGeneratedMap ||
+            !mapGenerator.IsTraversable(to.x, to.y))
+        {
+            return false;
+        }
+
+        int startElevation = mapGenerator.GetTileElevation(from.x, from.y);
+        int endElevation = mapGenerator.GetTileElevation(to.x, to.y);
+        int elevationDelta = endElevation - startElevation;
+        return elevationDelta <= maxStepUp && elevationDelta >= -maxStepDown;
+    }
+
+    public bool TryBeginKnockback(
+        Vector2Int destination,
+        TacticsMovementDirection travelDirection,
+        TacticsMovementDirection animationDirection,
+        TacticsAbilityKnockbackData settings)
+    {
+        if (!IsAlive ||
+            movementRoutine != null ||
+            mapGenerator == null ||
+            !mapGenerator.HasGeneratedMap ||
+            destination == GridPosition ||
+            !mapGenerator.TryGetTileWorldPosition(destination.x, destination.y, out _))
+        {
+            return false;
+        }
+
+        movementRoutine = StartCoroutine(PlayKnockbackRoutine(destination, travelDirection, animationDirection, settings));
+        NotifyTurnStateChanged();
+        return true;
+    }
+
+    public void PlayDamageImpact(Vector3? damageSourceWorldPosition = null)
+    {
+        if (!IsAlive)
+        {
+            return;
+        }
+
+        characterAnimator?.PlayDamageImpact(damageSourceWorldPosition);
+    }
+
     public bool TryGetPathTo(Vector2Int destination, out List<Vector2Int> path, bool enforceMoveRange = true)
     {
         path = null;
@@ -915,6 +965,55 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
 
         transform.position = endPosition;
         ApplySorting(sortingLayerId, endSortingOrder);
+    }
+
+    private IEnumerator PlayKnockbackRoutine(
+        Vector2Int destination,
+        TacticsMovementDirection travelDirection,
+        TacticsMovementDirection animationDirection,
+        TacticsAbilityKnockbackData settings)
+    {
+        Vector2Int startTile = GridPosition;
+        int startElevation = mapGenerator.GetTileElevation(startTile.x, startTile.y);
+        int endElevation = mapGenerator.GetTileElevation(destination.x, destination.y);
+        Vector3 startPosition = GetTileAnchorWorldPosition(startTile, startElevation);
+        Vector3 endPosition = GetTileAnchorWorldPosition(destination, endElevation);
+        int tileDistance = Mathf.Abs(destination.x - startTile.x) + Mathf.Abs(destination.y - startTile.y);
+        float duration = Mathf.Max(0.01f, settings.Duration);
+        float arcHeight = Mathf.Max(jumpArcHeight, settings.ArcHeight);
+
+        currentDirection = travelDirection;
+        int sortingLayerId = characterAnimator != null ? characterAnimator.CurrentSortingLayerId : SortingLayer.NameToID("Default");
+        int startSortingOrder = mapGenerator.GetCharacterSortingOrder(startTile.x, startTile.y, startElevation);
+        int endSortingOrder = mapGenerator.GetCharacterSortingOrder(destination.x, destination.y, endElevation);
+
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.Clamp01(elapsed / duration);
+            Vector3 position = Vector3.Lerp(startPosition, endPosition, t);
+            position.y += Mathf.Sin(t * Mathf.PI) * arcHeight;
+            transform.position = position;
+            ApplySorting(sortingLayerId, ResolveMovementSortingOrder(startSortingOrder, endSortingOrder, t, movementSortHandoffNormalizedTime));
+            characterAnimator?.SetJump(animationDirection);
+            yield return null;
+        }
+
+        transform.position = endPosition;
+        ApplySorting(sortingLayerId, endSortingOrder);
+        GridPosition = destination;
+        RefreshCharacterRegistryState();
+        ResolveTriggeredStatusEffects(TacticsStatusEffectTrigger.TileMoved);
+        if (!IsAlive)
+        {
+            yield break;
+        }
+
+        movementRoutine = null;
+        currentDirection = animationDirection;
+        characterAnimator?.SetIdle(currentDirection);
+        NotifyTurnStateChanged();
     }
 
     private static int ResolveMovementSortingOrder(
