@@ -975,6 +975,44 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
                     totalValue += fireValue + focusFireBonus + stackBonus + applyBonus;
                     break;
                 }
+
+                case TacticsStatusEffectType.StatBuff:
+                {
+                    if (target.Team != character.Team)
+                    {
+                        continue;
+                    }
+
+                    float buffValue = TacticsStatusEffectLibrary.EvaluateStrategicValue(
+                        statusEffect,
+                        averagePotency,
+                        statusEffect.DurationTurns,
+                        target,
+                        GetTargetOffensivePotential(target));
+                    float selfBonus = ReferenceEquals(target, character) ? 3.5f : 1.5f;
+                    float urgencyBonus = GetNearbyThreatCount(target) * 1.35f;
+                    totalValue += buffValue + selfBonus + urgencyBonus;
+                    break;
+                }
+
+                case TacticsStatusEffectType.StatDebuff:
+                {
+                    if (target.Team == character.Team)
+                    {
+                        continue;
+                    }
+
+                    float debuffValue = TacticsStatusEffectLibrary.EvaluateStrategicValue(
+                        statusEffect,
+                        averagePotency,
+                        statusEffect.DurationTurns,
+                        target,
+                        GetTargetOffensivePotential(target));
+                    float focusFireBonus = CountAlliedPressureOnTarget(target) * 1.2f;
+                    float applyBonus = 4.25f;
+                    totalValue += debuffValue + focusFireBonus + applyBonus;
+                    break;
+                }
             }
         }
 
@@ -2617,6 +2655,12 @@ public sealed class TacticsEnemyStrategicContext
             TacticsStatusEffectType.Taunt => (10f * statusEffect.DurationTurns) + (GetUnitBaseThreat(unit) * 0.85f),
             TacticsStatusEffectType.Bleed or TacticsStatusEffectType.Poison or TacticsStatusEffectType.Fire => TacticsStatusEffectLibrary.EvaluateStrategicValue(
                 statusEffect.StatusEffectType,
+                potency,
+                statusEffect.DurationTurns,
+                unit,
+                GetUnitBaseThreat(unit) * 5f),
+            TacticsStatusEffectType.StatBuff or TacticsStatusEffectType.StatDebuff => TacticsStatusEffectLibrary.EvaluateStrategicValue(
+                statusEffect,
                 potency,
                 statusEffect.DurationTurns,
                 unit,

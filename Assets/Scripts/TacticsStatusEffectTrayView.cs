@@ -331,7 +331,7 @@ public sealed class TacticsStatusEffectTrayView : MonoBehaviour
                     continue;
                 }
 
-                TacticsStatusEffectDescriptor descriptor = TacticsStatusEffectLibrary.GetDescriptor(effect.StatusEffectType);
+                TacticsStatusEffectDescriptor descriptor = TacticsStatusEffectLibrary.GetDescriptor(effect);
                 if (descriptor.IsBuff)
                 {
                     if (reusableBuffs.Count < SlotsPerSection)
@@ -370,7 +370,7 @@ public sealed class TacticsStatusEffectTrayView : MonoBehaviour
             return;
         }
 
-        TacticsStatusEffectDescriptor descriptor = TacticsStatusEffectLibrary.GetDescriptor(effect.StatusEffectType);
+        TacticsStatusEffectDescriptor descriptor = TacticsStatusEffectLibrary.GetDescriptor(effect);
         Sprite iconSprite = TacticsStatusEffectLibrary.GetIconSprite(effect.StatusEffectType);
         widgets.Button.interactable = true;
         widgets.Background.color = occupiedSlotColor;

@@ -258,7 +258,7 @@ public sealed class TacticsOverheadHealthBar : MonoBehaviour
                 continue;
             }
 
-            TacticsStatusEffectDescriptor descriptor = TacticsStatusEffectLibrary.GetDescriptor(effect.StatusEffectType);
+            TacticsStatusEffectDescriptor descriptor = TacticsStatusEffectLibrary.GetDescriptor(effect);
             hasBuff |= descriptor.IsBuff;
             hasDebuff |= !descriptor.IsBuff;
         }

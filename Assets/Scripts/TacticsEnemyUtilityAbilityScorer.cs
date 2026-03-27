@@ -227,6 +227,12 @@ public static class TacticsEnemyUtilityAbilityScorer
                     statusEffect.DurationTurns,
                     unit,
                     GetUnitBaseThreat(unit) * 5f),
+                TacticsStatusEffectType.StatBuff or TacticsStatusEffectType.StatDebuff => TacticsStatusEffectLibrary.EvaluateStrategicValue(
+                    statusEffect,
+                    potency,
+                    statusEffect.DurationTurns,
+                    unit,
+                    GetUnitBaseThreat(unit) * 5f),
                 _ => descriptor.IsBuff ? potency * 0.75f : potency
             };
         }

@@ -122,3 +122,31 @@ MonoBehaviour:
     - {fileID: 11400000, guid: 6a6672c1565e0f0438af0fab463d3ca8, type: 2}
     minExperienceReward: 75
     maxExperienceReward: 100
+  - enemyId: trickster
+    displayName: Trickster
+    spriteSheetResourcePath: Characters/guy18
+    walkFramesPerSecond: 5
+    baseColor: {r: 1, g: 0.82, b: 0.82, a: 1}
+    selectedColor: {r: 1, g: 0.58, b: 0.58, a: 1}
+    moveSpeed: 1.2
+    jumpDuration: 0.5
+    jumpArcHeight: 0.5
+    maxStepUp: 1
+    maxStepDown: 1
+    tileAnchorOffset: {x: 0.18, y: 0.17}
+    baseStats:
+      primaryStats:
+        stamina: 2
+        strength: 1
+        agility: 5
+        wisdom: 1
+        intelligence: 1
+      mobilityStats:
+        moveRange: 5
+        jumpHeight: 2
+    startingAbilities:
+    - {fileID: 11400000, guid: 3001edcb51eaa3147bde39d09a4a27fd, type: 2}
+    - {fileID: 11400000, guid: 9b3f5f72177c3aa459bff7f3c789a64d, type: 2}
+    - {fileID: 11400000, guid: 54fa6e5b2ffb41a409211881e1b304cb, type: 2}
+    minExperienceReward: 25
+    maxExperienceReward: 50

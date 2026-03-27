@@ -563,6 +563,8 @@ MonoBehaviour:
     count: 1
   - enemyId: hobgoblin
     count: 1
+  - enemyId: trickster
+    count: 1
   chestSpawnSettings:
     spawnChance: 1
     mimicChance: 1

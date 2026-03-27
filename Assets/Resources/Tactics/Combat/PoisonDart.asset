@@ -10,17 +10,17 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e7b9484a5008cb04fb02b3a3ce7d7f91, type: 3}
-  m_Name: Attack
+  m_Name: PoisonDart
   m_EditorClassIdentifier: 
-  abilityId: attack
-  displayName: Attack
-  description: A basic melee strike.
-  rangeType: 0
-  range: 1
+  abilityId: poison_dart
+  displayName: Poison Dart
+  description: Shoot the enemy with a poisonous dart.
+  rangeType: 1
+  range: 5
   areaOfEffectSize: 1
   targetRule: 0
   damageType: 0
-  projectilePrefab: {fileID: 0}
+  projectilePrefab: {fileID: 1919018610427331710, guid: 573d592cc58e4c2479104d78e2fe7db7, type: 3}
   hitEffect:
     sourceTexture: {fileID: 2800000, guid: 53379df1bb73055498f53f70519aca81, type: 3}
     frames:
@@ -36,27 +36,20 @@ MonoBehaviour:
     worldOffset: {x: 0, y: 0}
     tint: {r: 1, g: 1, b: 1, a: 1}
     sortingOrderOffset: 0
-  effects:
-  - effectKind: 0
-    dealDamage:
-      damageFormula: 0
-      flatAmount: 0
-      bonusMultiplier: 1
-      scaling:
-      - stat: 0
-        rank: 4
-    restoreHitPoints:
-      healingFormula: 0
-      flatAmount: 0
-      bonusMultiplier: 1
-      scaling: []
-    restoreResource:
-      resourceType: 1
-      restoreFormula: 0
-      flatAmount: 0
-      bonusMultiplier: 1
-      scaling: []
-  statusEffects: []
+  effects: []
+  statusEffects:
+  - statusEffectType: 4
+    durationTurns: 3
+    potencyFormula: 0
+    flatPotency: 0
+    potencyMultiplier: 1
+    scaling:
+    - stat: 1
+      rank: 2
+    customDisplayName: 
+    customShortLabel: 
+    statModifier:
+      statType: 0
   costResourceType: 1
-  costAmount: 5
+  costAmount: 9
   allowMovementAsAlternateCost: 0

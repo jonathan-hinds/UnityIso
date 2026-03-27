@@ -227,7 +227,7 @@ public static class TacticsAbilityPreviewCalculator
         TacticsAbilityDefinition ability,
         TacticsApplyStatusEffectData statusEffect)
     {
-        TacticsStatusEffectDescriptor descriptor = TacticsStatusEffectLibrary.GetDescriptor(statusEffect.StatusEffectType);
+        TacticsStatusEffectDescriptor descriptor = TacticsStatusEffectLibrary.GetDescriptor(statusEffect);
         StringBuilder builder = new();
         builder.Append("Applies ");
         builder.Append(descriptor.DisplayName);
@@ -306,6 +306,24 @@ public static class TacticsAbilityPreviewCalculator
                     builder.Append(')');
                 }
                 break;
+
+            case TacticsStatusEffectType.StatBuff:
+            case TacticsStatusEffectType.StatDebuff:
+                (int statMin, int statMax) = TacticsAbilityEffectMath.GetStatusPotencyRange(source, ability, statusEffect);
+                builder.Append(". Modifies ");
+                builder.Append(TacticsCharacterStatModifierUtility.GetStatLabel(statusEffect.StatModifier.StatType));
+                builder.Append(" by ");
+                builder.Append(FormatSignedRange(statMin, statMax));
+                builder.Append(" while active");
+
+                string statScalingText = BuildScalingText(statusEffect.Scaling);
+                if (!string.IsNullOrWhiteSpace(statScalingText))
+                {
+                    builder.Append(" (");
+                    builder.Append(statScalingText);
+                    builder.Append(')');
+                }
+                break;
         }
 
         return builder.ToString();
@@ -366,5 +384,20 @@ public static class TacticsAbilityPreviewCalculator
     private static string FormatRange(int minAmount, int maxAmount)
     {
         return minAmount == maxAmount ? minAmount.ToString() : $"{minAmount}-{maxAmount}";
+    }
+
+    private static string FormatSignedRange(int minAmount, int maxAmount)
+    {
+        if (minAmount == maxAmount)
+        {
+            return FormatSignedValue(minAmount);
+        }
+
+        return $"{FormatSignedValue(minAmount)} to {FormatSignedValue(maxAmount)}";
+    }
+
+    private static string FormatSignedValue(int value)
+    {
+        return value >= 0 ? $"+{value}" : value.ToString();
     }
 }

@@ -108,6 +108,16 @@ public sealed class TacticsCombatTextSystem : MonoBehaviour
         Instance.SpawnStatusEffectAppliedText(target, statusEffectType);
     }
 
+    public static void ShowStatusEffectApplied(ITacticsCombatTextAnchor target, TacticsApplyStatusEffectData statusEffect)
+    {
+        if (target == null)
+        {
+            return;
+        }
+
+        Instance.SpawnStatusEffectAppliedText(target, statusEffect);
+    }
+
     private void SpawnDamageNumber(ITacticsCombatTextAnchor target, int amount, bool isCriticalHit)
     {
         SpawnText(target, isCriticalHit ? $"-{amount}!" : $"-{amount}", Color.white, Color.black);
@@ -133,6 +143,18 @@ public sealed class TacticsCombatTextSystem : MonoBehaviour
     private void SpawnStatusEffectAppliedText(ITacticsCombatTextAnchor target, TacticsStatusEffectType statusEffectType)
     {
         TacticsStatusEffectDescriptor descriptor = TacticsStatusEffectLibrary.GetDescriptor(statusEffectType);
+        Color fillColor = descriptor.IsBuff
+            ? new Color(0.58f, 0.94f, 0.64f, 1f)
+            : new Color(1f, 0.72f, 0.4f, 1f);
+        Color outlineColor = descriptor.IsBuff
+            ? new Color(0.08f, 0.28f, 0.11f, 1f)
+            : new Color(0.36f, 0.12f, 0.04f, 1f);
+        SpawnText(target, descriptor.DisplayName.ToUpperInvariant(), fillColor, outlineColor);
+    }
+
+    private void SpawnStatusEffectAppliedText(ITacticsCombatTextAnchor target, TacticsApplyStatusEffectData statusEffect)
+    {
+        TacticsStatusEffectDescriptor descriptor = TacticsStatusEffectLibrary.GetDescriptor(statusEffect);
         Color fillColor = descriptor.IsBuff
             ? new Color(0.58f, 0.94f, 0.64f, 1f)
             : new Color(1f, 0.72f, 0.4f, 1f);

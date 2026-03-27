@@ -10,7 +10,9 @@ public enum TacticsStatusEffectType
     Taunt = 2,
     Bleed = 3,
     Poison = 4,
-    Fire = 5
+    Fire = 5,
+    StatBuff = 6,
+    StatDebuff = 7
 }
 
 public enum TacticsStatusEffectCategory
@@ -73,18 +75,43 @@ public struct TacticsStatusEffectInstance
 {
     [SerializeField] private TacticsStatusEffectType statusEffectType;
     [SerializeField, Min(0)] private int remainingTurns;
-    [SerializeField, Min(0)] private int potency;
+    [SerializeField] private int potency;
+    [SerializeField] private string effectKey;
+    [SerializeField] private string displayNameOverride;
+    [SerializeField] private string shortLabelOverride;
+    [SerializeField] private TacticsStatusEffectStatModifierData statModifier;
 
     public TacticsStatusEffectInstance(TacticsStatusEffectType statusEffectType, int remainingTurns, int potency)
     {
         this.statusEffectType = statusEffectType;
         this.remainingTurns = Mathf.Max(0, remainingTurns);
-        this.potency = Mathf.Max(0, potency);
+        this.potency = potency;
+        effectKey = string.Empty;
+        displayNameOverride = string.Empty;
+        shortLabelOverride = string.Empty;
+        statModifier = TacticsStatusEffectStatModifierData.Default();
+    }
+
+    public TacticsStatusEffectInstance(TacticsApplyStatusEffectData statusEffectData, int remainingTurns, int potency)
+    {
+        statusEffectType = statusEffectData.StatusEffectType;
+        this.remainingTurns = Mathf.Max(0, remainingTurns);
+        this.potency = potency;
+        effectKey = TacticsStatusEffectLibrary.BuildEffectKey(statusEffectData);
+        displayNameOverride = statusEffectData.CustomDisplayName;
+        shortLabelOverride = statusEffectData.CustomShortLabel;
+        statModifier = statusEffectData.StatModifier;
     }
 
     public TacticsStatusEffectType StatusEffectType => statusEffectType;
     public int RemainingTurns => Mathf.Max(0, remainingTurns);
-    public int Potency => Mathf.Max(0, potency);
+    public int Potency => statusEffectType is TacticsStatusEffectType.StatBuff or TacticsStatusEffectType.StatDebuff
+        ? potency
+        : Mathf.Max(0, potency);
+    public string EffectKey => string.IsNullOrWhiteSpace(effectKey) ? statusEffectType.ToString() : effectKey;
+    public string DisplayNameOverride => string.IsNullOrWhiteSpace(displayNameOverride) ? string.Empty : displayNameOverride.Trim();
+    public string ShortLabelOverride => string.IsNullOrWhiteSpace(shortLabelOverride) ? string.Empty : shortLabelOverride.Trim().ToUpperInvariant();
+    public TacticsStatusEffectStatModifierData StatModifier => statModifier;
     public bool IsExpired => RemainingTurns <= 0;
 
     public TacticsStatusEffectInstance WithRemainingTurns(int updatedRemainingTurns)
@@ -96,7 +123,7 @@ public struct TacticsStatusEffectInstance
     public TacticsStatusEffectInstance Refresh(int updatedRemainingTurns, int updatedPotency)
     {
         remainingTurns = Mathf.Max(0, updatedRemainingTurns);
-        potency = Mathf.Max(0, updatedPotency);
+        potency = updatedPotency;
         return this;
     }
 }
@@ -171,6 +198,26 @@ public static class TacticsStatusEffectLibrary
                 stackingMode: TacticsStatusEffectStackingMode.AddPotency,
                 accentColor: new Color(1f, 0.48f, 0.2f, 1f),
                 backgroundColor: new Color(0.34f, 0.12f, 0.04f, 0.92f)),
+            TacticsStatusEffectType.StatBuff => new TacticsStatusEffectDescriptor(
+                TacticsStatusEffectType.StatBuff,
+                "Stat Buff",
+                "SB",
+                TacticsStatusEffectCategory.Buff,
+                appliesAtTurnStart: false,
+                blocksActions: false,
+                stackingMode: TacticsStatusEffectStackingMode.RefreshHighestPotency,
+                accentColor: new Color(0.42f, 0.86f, 0.95f, 1f),
+                backgroundColor: new Color(0.08f, 0.23f, 0.31f, 0.92f)),
+            TacticsStatusEffectType.StatDebuff => new TacticsStatusEffectDescriptor(
+                TacticsStatusEffectType.StatDebuff,
+                "Stat Debuff",
+                "SD",
+                TacticsStatusEffectCategory.Debuff,
+                appliesAtTurnStart: false,
+                blocksActions: false,
+                stackingMode: TacticsStatusEffectStackingMode.RefreshHighestPotency,
+                accentColor: new Color(0.96f, 0.49f, 0.49f, 1f),
+                backgroundColor: new Color(0.32f, 0.1f, 0.12f, 0.92f)),
             _ => new TacticsStatusEffectDescriptor(
                 statusEffectType,
                 statusEffectType.ToString(),
@@ -184,6 +231,46 @@ public static class TacticsStatusEffectLibrary
                 accentColor: new Color(0.72f, 0.8f, 0.94f, 1f),
                 backgroundColor: new Color(0.14f, 0.18f, 0.25f, 0.92f))
         };
+    }
+
+    public static TacticsStatusEffectDescriptor GetDescriptor(TacticsApplyStatusEffectData statusEffect)
+    {
+        TacticsStatusEffectDescriptor baseDescriptor = GetDescriptor(statusEffect.StatusEffectType);
+        if (!statusEffect.UsesCustomDescriptor)
+        {
+            return baseDescriptor;
+        }
+
+        return new TacticsStatusEffectDescriptor(
+            baseDescriptor.StatusEffectType,
+            GetDisplayName(statusEffect),
+            GetShortLabel(statusEffect),
+            baseDescriptor.Category,
+            baseDescriptor.AppliesAtTurnStart,
+            baseDescriptor.BlocksActions,
+            baseDescriptor.StackingMode,
+            baseDescriptor.AccentColor,
+            baseDescriptor.BackgroundColor);
+    }
+
+    public static TacticsStatusEffectDescriptor GetDescriptor(TacticsStatusEffectInstance statusEffect)
+    {
+        TacticsStatusEffectDescriptor baseDescriptor = GetDescriptor(statusEffect.StatusEffectType);
+        if (statusEffect.StatusEffectType is not (TacticsStatusEffectType.StatBuff or TacticsStatusEffectType.StatDebuff))
+        {
+            return baseDescriptor;
+        }
+
+        return new TacticsStatusEffectDescriptor(
+            baseDescriptor.StatusEffectType,
+            GetDisplayName(statusEffect),
+            GetShortLabel(statusEffect),
+            baseDescriptor.Category,
+            baseDescriptor.AppliesAtTurnStart,
+            baseDescriptor.BlocksActions,
+            baseDescriptor.StackingMode,
+            baseDescriptor.AccentColor,
+            baseDescriptor.BackgroundColor);
     }
 
     public static Sprite GetIconSprite(TacticsStatusEffectType statusEffectType)
@@ -200,7 +287,7 @@ public static class TacticsStatusEffectLibrary
 
     public static string BuildTooltipBody(TacticsStatusEffectInstance statusEffect)
     {
-        TacticsStatusEffectDescriptor descriptor = GetDescriptor(statusEffect.StatusEffectType);
+        TacticsStatusEffectDescriptor descriptor = GetDescriptor(statusEffect);
         StringBuilder builder = new();
 
         switch (statusEffect.StatusEffectType)
@@ -237,9 +324,14 @@ public static class TacticsStatusEffectLibrary
                 builder.Append(" fire damage at the start of each turn. Additional fire stacks add to the burn damage.");
                 break;
 
+            case TacticsStatusEffectType.StatBuff:
+            case TacticsStatusEffectType.StatDebuff:
+                AppendStatModifierDescription(builder, descriptor.DisplayName, statusEffect.StatModifier, statusEffect.Potency);
+                break;
+
             default:
                 builder.Append(descriptor.DisplayName);
-                if (statusEffect.Potency > 0)
+                if (statusEffect.Potency != 0)
                 {
                     builder.Append(" potency: ");
                     builder.Append(statusEffect.Potency);
@@ -257,7 +349,7 @@ public static class TacticsStatusEffectLibrary
 
     public static TacticsAbilityTooltipContent BuildTooltipContent(TacticsStatusEffectInstance statusEffect)
     {
-        TacticsStatusEffectDescriptor descriptor = GetDescriptor(statusEffect.StatusEffectType);
+        TacticsStatusEffectDescriptor descriptor = GetDescriptor(statusEffect);
         string footer = statusEffect.RemainingTurns == 1
             ? "1 turn remaining"
             : $"{Mathf.Max(0, statusEffect.RemainingTurns)} turns remaining";
@@ -317,10 +409,31 @@ public static class TacticsStatusEffectLibrary
         };
     }
 
+    public static float EvaluateStrategicValue(
+        TacticsApplyStatusEffectData statusEffect,
+        float potency,
+        int durationTurns,
+        TacticsCharacterController target,
+        float targetOffensivePotential = 0f)
+    {
+        if (statusEffect.StatusEffectType is not (TacticsStatusEffectType.StatBuff or TacticsStatusEffectType.StatDebuff))
+        {
+            return EvaluateStrategicValue(
+                statusEffect.StatusEffectType,
+                potency,
+                durationTurns,
+                target,
+                targetOffensivePotential);
+        }
+
+        return EvaluateStatModifierStrategicValue(statusEffect.StatModifier, potency, durationTurns, target, targetOffensivePotential);
+    }
+
     public static int NormalizePotency(TacticsStatusEffectType statusEffectType, int potency)
     {
         return statusEffectType switch
         {
+            TacticsStatusEffectType.StatBuff or TacticsStatusEffectType.StatDebuff => potency,
             TacticsStatusEffectType.Cleanse or TacticsStatusEffectType.Bleed or TacticsStatusEffectType.Poison or TacticsStatusEffectType.Fire => Mathf.Max(1, potency),
             _ => Mathf.Max(0, potency)
         };
@@ -331,6 +444,15 @@ public static class TacticsStatusEffectLibrary
         int normalizedExistingPotency = NormalizePotency(statusEffectType, existingPotency);
         int normalizedIncomingPotency = NormalizePotency(statusEffectType, incomingPotency);
         TacticsStatusEffectDescriptor descriptor = GetDescriptor(statusEffectType);
+        if (statusEffectType is TacticsStatusEffectType.StatBuff or TacticsStatusEffectType.StatDebuff)
+        {
+            return descriptor.StackingMode == TacticsStatusEffectStackingMode.AddPotency
+                ? normalizedExistingPotency + normalizedIncomingPotency
+                : Mathf.Abs(normalizedExistingPotency) >= Mathf.Abs(normalizedIncomingPotency)
+                    ? normalizedExistingPotency
+                    : normalizedIncomingPotency;
+        }
+
         return descriptor.StackingMode == TacticsStatusEffectStackingMode.AddPotency
             ? Mathf.Max(1, normalizedExistingPotency + normalizedIncomingPotency)
             : Mathf.Max(normalizedExistingPotency, normalizedIncomingPotency);
@@ -356,6 +478,80 @@ public static class TacticsStatusEffectLibrary
         }
 
         return 0;
+    }
+
+    public static string BuildEffectKey(TacticsApplyStatusEffectData statusEffect)
+    {
+        if (statusEffect.StatusEffectType is not (TacticsStatusEffectType.StatBuff or TacticsStatusEffectType.StatDebuff))
+        {
+            return statusEffect.StatusEffectType.ToString();
+        }
+
+        string displayName = GetDisplayName(statusEffect);
+        return $"{statusEffect.StatusEffectType}:{displayName}:{statusEffect.StatModifier.StatType}";
+    }
+
+    public static string GetDisplayName(TacticsApplyStatusEffectData statusEffect)
+    {
+        if (!string.IsNullOrWhiteSpace(statusEffect.CustomDisplayName))
+        {
+            return statusEffect.CustomDisplayName;
+        }
+
+        return statusEffect.StatusEffectType switch
+        {
+            TacticsStatusEffectType.StatBuff => $"{TacticsCharacterStatModifierUtility.GetStatLabel(statusEffect.StatModifier.StatType)} Buff",
+            TacticsStatusEffectType.StatDebuff => $"{TacticsCharacterStatModifierUtility.GetStatLabel(statusEffect.StatModifier.StatType)} Debuff",
+            _ => GetDescriptor(statusEffect.StatusEffectType).DisplayName
+        };
+    }
+
+    public static string GetDisplayName(TacticsStatusEffectInstance statusEffect)
+    {
+        if (!string.IsNullOrWhiteSpace(statusEffect.DisplayNameOverride))
+        {
+            return statusEffect.DisplayNameOverride;
+        }
+
+        return statusEffect.StatusEffectType switch
+        {
+            TacticsStatusEffectType.StatBuff => $"{TacticsCharacterStatModifierUtility.GetStatLabel(statusEffect.StatModifier.StatType)} Buff",
+            TacticsStatusEffectType.StatDebuff => $"{TacticsCharacterStatModifierUtility.GetStatLabel(statusEffect.StatModifier.StatType)} Debuff",
+            _ => GetDescriptor(statusEffect.StatusEffectType).DisplayName
+        };
+    }
+
+    public static string GetShortLabel(TacticsApplyStatusEffectData statusEffect)
+    {
+        if (!string.IsNullOrWhiteSpace(statusEffect.CustomShortLabel))
+        {
+            return statusEffect.CustomShortLabel;
+        }
+
+        return TacticsCharacterStatModifierUtility.GetStatLabel(statusEffect.StatModifier.StatType);
+    }
+
+    public static string GetShortLabel(TacticsStatusEffectInstance statusEffect)
+    {
+        if (!string.IsNullOrWhiteSpace(statusEffect.ShortLabelOverride))
+        {
+            return statusEffect.ShortLabelOverride;
+        }
+
+        return TacticsCharacterStatModifierUtility.GetStatLabel(statusEffect.StatModifier.StatType);
+    }
+
+    public static bool TryApplyPersistentStatModifier(ref TacticsCharacterStats stats, TacticsStatusEffectInstance statusEffect)
+    {
+        if (statusEffect.IsExpired ||
+            statusEffect.StatusEffectType is not (TacticsStatusEffectType.StatBuff or TacticsStatusEffectType.StatDebuff) ||
+            statusEffect.Potency == 0)
+        {
+            return false;
+        }
+
+        TacticsCharacterStatModifierUtility.ApplyModifier(ref stats, statusEffect.StatModifier, statusEffect.Potency);
+        return true;
     }
 
     private static float EvaluateBleedStrategicValue(
@@ -449,6 +645,55 @@ public static class TacticsStatusEffectLibrary
             ? 6.5f + stackPressure
             : 4.5f;
         return effectiveDamage + offensivePressure + sustainPressure + stackPressure + applyBias;
+    }
+
+    private static float EvaluateStatModifierStrategicValue(
+        TacticsStatusEffectStatModifierData modifier,
+        float potency,
+        int durationTurns,
+        TacticsCharacterController target,
+        float targetOffensivePotential)
+    {
+        if (potency == 0f || durationTurns <= 0)
+        {
+            return 0f;
+        }
+
+        float signedPotency = potency;
+        float absolutePotency = Mathf.Abs(signedPotency);
+        float statWeight = TacticsCharacterStatModifierUtility.GetStrategicWeight(modifier.StatType, target);
+        float threatPressure = targetOffensivePotential > 0f
+            ? targetOffensivePotential * 0.14f
+            : EstimateUnitThreat(target) * 0.7f;
+        float durationWeight = Mathf.Lerp(0.9f, 1.65f, Mathf.Clamp01((durationTurns - 1) / 3f));
+        float value = absolutePotency * statWeight * durationWeight;
+
+        if (modifier.StatType == TacticsCharacterStatType.Stamina && target != null)
+        {
+            value += Mathf.Max(0f, target.MaxHitPoints * 0.08f);
+        }
+
+        if (modifier.StatType == TacticsCharacterStatType.MoveRange && target != null)
+        {
+            value += Mathf.Max(0f, target.MoveRange - 1) * 2.5f;
+        }
+
+        return value + threatPressure;
+    }
+
+    private static void AppendStatModifierDescription(
+        StringBuilder builder,
+        string displayName,
+        TacticsStatusEffectStatModifierData modifier,
+        int potency)
+    {
+        builder.Append(displayName);
+        builder.Append(": ");
+        builder.Append(potency >= 0 ? '+' : '-');
+        builder.Append(Mathf.Abs(potency));
+        builder.Append(' ');
+        builder.Append(TacticsCharacterStatModifierUtility.GetStatLabel(modifier.StatType));
+        builder.Append(". Derived combat stats update immediately while this effect is active.");
     }
 
     private static float EstimateBleedTriggerCount(TacticsCharacterController target, int durationTurns)

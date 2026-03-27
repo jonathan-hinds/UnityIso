@@ -516,16 +516,25 @@ public struct TacticsApplyStatusEffectData
     [SerializeField] private TacticsStatusEffectType statusEffectType;
     [SerializeField, Min(1)] private int durationTurns;
     [SerializeField] private TacticsDamageFormula potencyFormula;
-    [SerializeField, Min(0)] private int flatPotency;
+    [SerializeField] private int flatPotency;
     [SerializeField, Min(0.01f)] private float potencyMultiplier;
     [SerializeField] private List<TacticsAbilityScalingDefinitionData> scaling;
+    [SerializeField] private string customDisplayName;
+    [SerializeField] private string customShortLabel;
+    [SerializeField] private TacticsStatusEffectStatModifierData statModifier;
 
     public TacticsStatusEffectType StatusEffectType => statusEffectType;
     public int DurationTurns => Mathf.Max(1, durationTurns);
     public TacticsDamageFormula PotencyFormula => potencyFormula;
-    public int FlatPotency => Mathf.Max(0, flatPotency);
+    public int FlatPotency => statusEffectType is TacticsStatusEffectType.StatBuff or TacticsStatusEffectType.StatDebuff
+        ? flatPotency
+        : Mathf.Max(0, flatPotency);
     public float PotencyMultiplier => potencyMultiplier <= 0f ? 1f : potencyMultiplier;
     public IReadOnlyList<TacticsAbilityScalingDefinitionData> Scaling => scaling;
+    public string CustomDisplayName => string.IsNullOrWhiteSpace(customDisplayName) ? string.Empty : customDisplayName.Trim();
+    public string CustomShortLabel => string.IsNullOrWhiteSpace(customShortLabel) ? string.Empty : customShortLabel.Trim().ToUpperInvariant();
+    public TacticsStatusEffectStatModifierData StatModifier => statModifier;
+    public bool UsesCustomDescriptor => statusEffectType is TacticsStatusEffectType.StatBuff or TacticsStatusEffectType.StatDebuff;
 
     public static TacticsApplyStatusEffectData Default()
     {
@@ -536,16 +545,30 @@ public struct TacticsApplyStatusEffectData
             potencyFormula = TacticsDamageFormula.FlatValue,
             flatPotency = 1,
             potencyMultiplier = 1f,
-            scaling = new List<TacticsAbilityScalingDefinitionData>()
+            scaling = new List<TacticsAbilityScalingDefinitionData>(),
+            customDisplayName = string.Empty,
+            customShortLabel = string.Empty,
+            statModifier = TacticsStatusEffectStatModifierData.Default()
         };
     }
 
     public void Sanitize()
     {
         durationTurns = Mathf.Max(1, durationTurns);
-        flatPotency = Mathf.Max(0, flatPotency);
+        if (statusEffectType is not (TacticsStatusEffectType.StatBuff or TacticsStatusEffectType.StatDebuff))
+        {
+            flatPotency = Mathf.Max(0, flatPotency);
+            customDisplayName = string.Empty;
+            customShortLabel = string.Empty;
+            statModifier = TacticsStatusEffectStatModifierData.Default();
+        }
+
         potencyMultiplier = potencyMultiplier <= 0f ? 1f : potencyMultiplier;
         scaling ??= new List<TacticsAbilityScalingDefinitionData>();
+        customDisplayName = string.IsNullOrWhiteSpace(customDisplayName) ? string.Empty : customDisplayName.Trim();
+        customShortLabel = string.IsNullOrWhiteSpace(customShortLabel)
+            ? string.Empty
+            : customShortLabel.Trim().ToUpperInvariant();
     }
 
     public static TacticsApplyStatusEffectData Create(
@@ -560,11 +583,16 @@ public struct TacticsApplyStatusEffectData
             statusEffectType = statusEffectType,
             durationTurns = Mathf.Max(1, durationTurns),
             potencyFormula = potencyFormula,
-            flatPotency = Mathf.Max(0, flatPotency),
+            flatPotency = statusEffectType is TacticsStatusEffectType.StatBuff or TacticsStatusEffectType.StatDebuff
+                ? flatPotency
+                : Mathf.Max(0, flatPotency),
             potencyMultiplier = 1f,
             scaling = scalingDefinitions != null
                 ? new List<TacticsAbilityScalingDefinitionData>(scalingDefinitions)
-                : new List<TacticsAbilityScalingDefinitionData>()
+                : new List<TacticsAbilityScalingDefinitionData>(),
+            customDisplayName = string.Empty,
+            customShortLabel = string.Empty,
+            statModifier = TacticsStatusEffectStatModifierData.Default()
         };
     }
 }
@@ -717,12 +745,13 @@ public static class TacticsAbilityEffectMath
             return 0;
         }
 
+        bool isStatModifier = statusEffect.StatusEffectType is TacticsStatusEffectType.StatBuff or TacticsStatusEffectType.StatDebuff;
         float baseAmount = statusEffect.PotencyFormula switch
         {
             TacticsDamageFormula.AttackerBaseDamage => useAverageRoll
                 ? GetAverageBaseDamage(source, ability != null ? ability.DamageType : TacticsAbilityDamageType.Magic)
                 : source.RollBaseDamage(ability != null ? ability.DamageType : TacticsAbilityDamageType.Magic),
-            _ => statusEffect.FlatPotency
+            _ => isStatModifier ? Mathf.Abs(statusEffect.FlatPotency) : statusEffect.FlatPotency
         };
 
         if (statusEffect.StatusEffectType == TacticsStatusEffectType.Poison && target != null)
@@ -731,6 +760,18 @@ public static class TacticsAbilityEffectMath
         }
 
         float scalingBonus = TacticsAbilityScalingCalculator.EvaluateDamageBonus(source, statusEffect.Scaling);
+        if (isStatModifier)
+        {
+            int direction = statusEffect.StatusEffectType == TacticsStatusEffectType.StatDebuff ? -1 : 1;
+            if (statusEffect.PotencyFormula == TacticsDamageFormula.FlatValue && statusEffect.FlatPotency < 0)
+            {
+                direction *= -1;
+            }
+
+            int resolvedAmount = Mathf.Max(0, Mathf.RoundToInt((baseAmount + scalingBonus) * statusEffect.PotencyMultiplier));
+            return resolvedAmount * direction;
+        }
+
         return Mathf.Max(0, Mathf.RoundToInt((baseAmount + scalingBonus) * statusEffect.PotencyMultiplier));
     }
 
@@ -794,6 +835,7 @@ public static class TacticsAbilityEffectMath
         TacticsAbilityDefinition ability,
         TacticsApplyStatusEffectData statusEffect)
     {
+        bool isStatModifier = statusEffect.StatusEffectType is TacticsStatusEffectType.StatBuff or TacticsStatusEffectType.StatDebuff;
         int bonus = source != null
             ? TacticsAbilityScalingCalculator.EvaluateDamageBonus(source, statusEffect.Scaling)
             : 0;
@@ -801,7 +843,7 @@ public static class TacticsAbilityEffectMath
             source,
             ability != null ? ability.DamageType : TacticsAbilityDamageType.Magic,
             statusEffect.PotencyFormula,
-            statusEffect.FlatPotency);
+            isStatModifier ? Mathf.Abs(statusEffect.FlatPotency) : statusEffect.FlatPotency);
 
         if (statusEffect.StatusEffectType == TacticsStatusEffectType.Poison && target != null)
         {
@@ -810,7 +852,21 @@ public static class TacticsAbilityEffectMath
             baseMax += poisonBase;
         }
 
-        return ApplyBonusAndMultiplier(baseMin, baseMax, bonus, statusEffect.PotencyMultiplier);
+        (int min, int max) = ApplyBonusAndMultiplier(baseMin, baseMax, bonus, statusEffect.PotencyMultiplier);
+        if (!isStatModifier)
+        {
+            return (min, max);
+        }
+
+        int direction = statusEffect.StatusEffectType == TacticsStatusEffectType.StatDebuff ? -1 : 1;
+        if (statusEffect.PotencyFormula == TacticsDamageFormula.FlatValue && statusEffect.FlatPotency < 0)
+        {
+            direction *= -1;
+        }
+
+        int signedMin = min * direction;
+        int signedMax = max * direction;
+        return signedMin <= signedMax ? (signedMin, signedMax) : (signedMax, signedMin);
     }
 
     public static float GetAverageBaseDamage(TacticsCharacterController source, TacticsAbilityDamageType damageType)

@@ -405,11 +405,13 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         TacticsStatusEffectDescriptor descriptor = TacticsStatusEffectLibrary.GetDescriptor(statusEffectData.StatusEffectType);
         int resolvedPotency = TacticsStatusEffectLibrary.NormalizePotency(descriptor.StatusEffectType, potency);
         bool refreshedExistingEffect = false;
+        string effectKey = TacticsStatusEffectLibrary.BuildEffectKey(statusEffectData);
 
         for (int i = 0; i < activeStatusEffects.Count; i++)
         {
             TacticsStatusEffectInstance existingEffect = activeStatusEffects[i];
-            if (existingEffect.StatusEffectType != statusEffectData.StatusEffectType)
+            if (existingEffect.StatusEffectType != statusEffectData.StatusEffectType ||
+                !string.Equals(existingEffect.EffectKey, effectKey, StringComparison.Ordinal))
             {
                 continue;
             }
@@ -426,10 +428,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
 
         if (!refreshedExistingEffect)
         {
-            activeStatusEffects.Add(new TacticsStatusEffectInstance(
-                statusEffectData.StatusEffectType,
-                statusEffectData.DurationTurns,
-                resolvedPotency));
+            activeStatusEffects.Add(new TacticsStatusEffectInstance(statusEffectData, statusEffectData.DurationTurns, resolvedPotency));
         }
 
         if (descriptor.BlocksActions && IsTurnActive)
@@ -439,7 +438,8 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
             HasActedThisTurn = true;
         }
 
-        TacticsCombatTextSystem.ShowStatusEffectApplied(this, statusEffectData.StatusEffectType);
+        RefreshStatsFromStatusEffects();
+        TacticsCombatTextSystem.ShowStatusEffectApplied(this, statusEffectData);
         TacticsOverheadHealthBar.ShowFor(this);
         NotifyTurnStateChanged();
         return true;
@@ -717,7 +717,15 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     {
         TacticsCharacterProgressionSnapshot resolvedProgression =
             ResolveProgression(snapshot, characterData != null ? characterData.CharacterId : string.Empty);
-        return resolvedProgression.ApplyTo(characterData != null ? characterData.BaseStats : TacticsCharacterStats.Default());
+        TacticsCharacterStats resolvedStats =
+            resolvedProgression.ApplyTo(characterData != null ? characterData.BaseStats : TacticsCharacterStats.Default());
+
+        for (int i = 0; i < activeStatusEffects.Count; i++)
+        {
+            TacticsStatusEffectLibrary.TryApplyPersistentStatModifier(ref resolvedStats, activeStatusEffects[i]);
+        }
+
+        return resolvedStats;
     }
 
     public TacticsCharacterDerivedStats GetDerivedStatsForProgression(TacticsCharacterProgressionSnapshot snapshot)
@@ -1120,6 +1128,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
             return;
         }
 
+        bool statsChanged = false;
         for (int i = activeStatusEffects.Count - 1; i >= 0; i--)
         {
             if (i >= activeStatusEffects.Count)
@@ -1131,6 +1140,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
             if (statusEffect.IsExpired)
             {
                 activeStatusEffects.RemoveAt(i);
+                statsChanged = true;
                 continue;
             }
 
@@ -1147,6 +1157,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
                 if (statusEffect.IsExpired)
                 {
                     activeStatusEffects.RemoveAt(i);
+                    statsChanged = true;
                     continue;
                 }
             }
@@ -1155,11 +1166,17 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
             if (statusEffect.IsExpired)
             {
                 activeStatusEffects.RemoveAt(i);
+                statsChanged = true;
             }
             else
             {
                 activeStatusEffects[i] = statusEffect;
             }
+        }
+
+        if (statsChanged)
+        {
+            RefreshStatsFromStatusEffects();
         }
     }
 
@@ -1248,10 +1265,22 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         NotifyTurnStateChanged();
     }
 
+    private void RefreshStatsFromStatusEffects()
+    {
+        TacticsCharacterRuntimeResources adjustedResources = runtimeResources;
+        RefreshEffectiveStats(ref adjustedResources, refillResources: false);
+        runtimeResources = adjustedResources;
+    }
+
     private void RefreshEffectiveStats(ref TacticsCharacterRuntimeResources adjustedResources, bool refillResources)
     {
         TacticsCharacterDerivedStats previousDerivedStats = derivedStats;
         effectiveStats = progression.ApplyTo(characterData != null ? characterData.BaseStats : TacticsCharacterStats.Default());
+        for (int i = 0; i < activeStatusEffects.Count; i++)
+        {
+            TacticsStatusEffectLibrary.TryApplyPersistentStatModifier(ref effectiveStats, activeStatusEffects[i]);
+        }
+
         derivedStats = effectiveStats.CalculateDerivedStats();
         CurrentLevel = progression.Level;
         CurrentExperience = progression.CurrentExperience;
@@ -1445,6 +1474,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         isPerformingAction = false;
         isActionLockedThisTurn = false;
         activeStatusEffects.Clear();
+        RefreshStatsFromStatusEffects();
 
         IsTurnActive = false;
         HasMovedThisTurn = true;
