@@ -1191,7 +1191,15 @@ public sealed class TacticsApplyStatusEffectProcessor
                 continue;
             }
 
-            target.ApplyStatusEffect(statusEffect, potency, context.Source);
+            int resolvedPotency = statusEffect.StatusEffectType == TacticsStatusEffectType.Poison
+                ? TacticsAbilityEffectMath.EvaluateStatusPotency(
+                    context.Source,
+                    target,
+                    context.Ability,
+                    statusEffect,
+                    useAverageRoll: false)
+                : potency;
+            target.ApplyStatusEffect(statusEffect, resolvedPotency, context.Source);
         }
     }
 }

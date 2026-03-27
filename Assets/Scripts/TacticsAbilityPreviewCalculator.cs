@@ -274,6 +274,23 @@ public static class TacticsAbilityPreviewCalculator
                     builder.Append(')');
                 }
                 break;
+
+            case TacticsStatusEffectType.Poison:
+                (int poisonMin, int poisonMax) = TacticsAbilityEffectMath.GetStatusPotencyRange(source, ability, statusEffect);
+                builder.Append(". Deals ");
+                builder.Append(TacticsStatusEffectLibrary.GetPoisonPercentDisplayValue(statusEffect.PotencyMultiplier).ToString("0.##"));
+                builder.Append("% max HP plus ");
+                builder.Append(FormatRange(poisonMin, poisonMax));
+                builder.Append(" damage at turn start");
+
+                string poisonScalingText = BuildScalingText(statusEffect.Scaling);
+                if (!string.IsNullOrWhiteSpace(poisonScalingText))
+                {
+                    builder.Append(" (");
+                    builder.Append(poisonScalingText);
+                    builder.Append(')');
+                }
+                break;
         }
 
         return builder.ToString();

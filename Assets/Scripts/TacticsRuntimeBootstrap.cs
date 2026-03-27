@@ -239,14 +239,12 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             return;
         }
 
-        if (mapGenerator.HasGeneratedMap)
-        {
-            SetupScene();
-            return;
-        }
-
         mapGenerator.MapGenerated -= HandleMapGenerated;
         mapGenerator.MapGenerated += HandleMapGenerated;
+        // Always rebuild the battlefield from the currently selected match settings.
+        // Reusing an already-generated board leaves each peer free to keep a stale local
+        // map, which breaks command replication because movement/ability resolution then
+        // happens against different traversable layouts on each machine.
         mapGenerator.GenerateMap();
     }
 

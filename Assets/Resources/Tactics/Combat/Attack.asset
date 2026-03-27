@@ -56,7 +56,15 @@ MonoBehaviour:
       flatAmount: 0
       bonusMultiplier: 1
       scaling: []
-  statusEffects: []
+  statusEffects:
+  - statusEffectType: 4
+    durationTurns: 3
+    potencyFormula: 1
+    flatPotency: 0
+    potencyMultiplier: 1
+    scaling:
+    - stat: 1
+      rank: 3
   costResourceType: 1
   costAmount: 5
   allowMovementAsAlternateCost: 0

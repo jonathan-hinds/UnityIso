@@ -386,7 +386,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         }
 
         TacticsStatusEffectDescriptor descriptor = TacticsStatusEffectLibrary.GetDescriptor(statusEffectData.StatusEffectType);
-        int resolvedPotency = descriptor.StatusEffectType is TacticsStatusEffectType.Cleanse or TacticsStatusEffectType.Bleed
+        int resolvedPotency = descriptor.StatusEffectType is TacticsStatusEffectType.Cleanse or TacticsStatusEffectType.Bleed or TacticsStatusEffectType.Poison
             ? Mathf.Max(1, potency)
             : Mathf.Max(0, potency);
         bool refreshedExistingEffect = false;
@@ -1146,6 +1146,13 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
                 if (descriptor.BlocksActions)
                 {
                     isActionLockedThisTurn = true;
+                }
+                break;
+
+            case TacticsStatusEffectType.Poison:
+                if (statusEffect.Potency > 0)
+                {
+                    ApplyDamage(statusEffect.Potency);
                 }
                 break;
         }

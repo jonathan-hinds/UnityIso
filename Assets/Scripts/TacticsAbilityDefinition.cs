@@ -702,6 +702,16 @@ public static class TacticsAbilityEffectMath
         TacticsApplyStatusEffectData statusEffect,
         bool useAverageRoll)
     {
+        return EvaluateStatusPotency(source, null, ability, statusEffect, useAverageRoll);
+    }
+
+    public static int EvaluateStatusPotency(
+        TacticsCharacterController source,
+        TacticsCharacterController target,
+        TacticsAbilityDefinition ability,
+        TacticsApplyStatusEffectData statusEffect,
+        bool useAverageRoll)
+    {
         if (source == null)
         {
             return 0;
@@ -714,6 +724,11 @@ public static class TacticsAbilityEffectMath
                 : source.RollBaseDamage(ability != null ? ability.DamageType : TacticsAbilityDamageType.Magic),
             _ => statusEffect.FlatPotency
         };
+
+        if (statusEffect.StatusEffectType == TacticsStatusEffectType.Poison && target != null)
+        {
+            baseAmount += TacticsStatusEffectLibrary.GetPoisonBaseDamage(target.MaxHitPoints);
+        }
 
         float scalingBonus = TacticsAbilityScalingCalculator.EvaluateDamageBonus(source, statusEffect.Scaling);
         return Mathf.Max(0, Mathf.RoundToInt((baseAmount + scalingBonus) * statusEffect.PotencyMultiplier));
@@ -770,6 +785,15 @@ public static class TacticsAbilityEffectMath
         TacticsAbilityDefinition ability,
         TacticsApplyStatusEffectData statusEffect)
     {
+        return GetStatusPotencyRange(source, null, ability, statusEffect);
+    }
+
+    public static (int min, int max) GetStatusPotencyRange(
+        TacticsCharacterController source,
+        TacticsCharacterController target,
+        TacticsAbilityDefinition ability,
+        TacticsApplyStatusEffectData statusEffect)
+    {
         int bonus = source != null
             ? TacticsAbilityScalingCalculator.EvaluateDamageBonus(source, statusEffect.Scaling)
             : 0;
@@ -778,6 +802,14 @@ public static class TacticsAbilityEffectMath
             ability != null ? ability.DamageType : TacticsAbilityDamageType.Magic,
             statusEffect.PotencyFormula,
             statusEffect.FlatPotency);
+
+        if (statusEffect.StatusEffectType == TacticsStatusEffectType.Poison && target != null)
+        {
+            int poisonBase = Mathf.RoundToInt(TacticsStatusEffectLibrary.GetPoisonBaseDamage(target.MaxHitPoints));
+            baseMin += poisonBase;
+            baseMax += poisonBase;
+        }
+
         return ApplyBonusAndMultiplier(baseMin, baseMax, bonus, statusEffect.PotencyMultiplier);
     }
 

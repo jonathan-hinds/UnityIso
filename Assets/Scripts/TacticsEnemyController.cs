@@ -825,7 +825,6 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         float bestAlternativeOffenseScore)
     {
         TacticsStatusEffectDescriptor descriptor = TacticsStatusEffectLibrary.GetDescriptor(statusEffect.StatusEffectType);
-        float averagePotency = GetAverageStatusPotency(ability, statusEffect);
         float totalValue = 0f;
 
         for (int i = 0; i < affectedTargets.Count; i++)
@@ -836,6 +835,7 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
                 continue;
             }
 
+            float averagePotency = GetAverageStatusPotency(ability, statusEffect, target);
             switch (statusEffect.StatusEffectType)
             {
                 case TacticsStatusEffectType.Cleanse:
@@ -922,6 +922,27 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
                     totalValue += bleedValue + focusFireBonus + applyBonus;
                     break;
                 }
+
+                case TacticsStatusEffectType.Poison:
+                {
+                    if (target.Team == character.Team)
+                    {
+                        continue;
+                    }
+
+                    float offensivePotential = GetTargetOffensivePotential(target);
+                    float poisonValue = TacticsStatusEffectLibrary.EvaluateStrategicValue(
+                        statusEffect.StatusEffectType,
+                        averagePotency,
+                        statusEffect.DurationTurns,
+                        target,
+                        offensivePotential);
+                    float focusFireBonus = CountAlliedPressureOnTarget(target) * 1.25f;
+                    float tankPressureBonus = Mathf.Clamp(target.MaxHitPoints * 0.04f, 1f, 8f);
+                    float applyBonus = target.HasStatusEffect(TacticsStatusEffectType.Poison) ? 1.25f : 5.5f;
+                    totalValue += poisonValue + focusFireBonus + tankPressureBonus + applyBonus;
+                    break;
+                }
             }
         }
 
@@ -948,9 +969,12 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         return TacticsAbilityEffectMath.EvaluateRestoreResourceAmount(character, restoreResource, useAverageRoll: true);
     }
 
-    private float GetAverageStatusPotency(TacticsAbilityDefinition ability, TacticsApplyStatusEffectData statusEffect)
+    private float GetAverageStatusPotency(
+        TacticsAbilityDefinition ability,
+        TacticsApplyStatusEffectData statusEffect,
+        TacticsCharacterController target = null)
     {
-        return TacticsAbilityEffectMath.EvaluateStatusPotency(character, ability, statusEffect, useAverageRoll: true);
+        return TacticsAbilityEffectMath.EvaluateStatusPotency(character, target, ability, statusEffect, useAverageRoll: true);
     }
 
     private float GetCostPenalty(
@@ -2479,13 +2503,13 @@ public sealed class TacticsEnemyStrategicContext
         TacticsApplyStatusEffectData statusEffect)
     {
         TacticsStatusEffectDescriptor descriptor = TacticsStatusEffectLibrary.GetDescriptor(statusEffect.StatusEffectType);
-        float potency = TacticsAbilityEffectMath.EvaluateStatusPotency(unit, ability, statusEffect, useAverageRoll: true);
+        float potency = TacticsAbilityEffectMath.EvaluateStatusPotency(unit, unit, ability, statusEffect, useAverageRoll: true);
         return statusEffect.StatusEffectType switch
         {
             TacticsStatusEffectType.Cleanse => (potency * statusEffect.DurationTurns * 0.8f) + 6f,
             TacticsStatusEffectType.Stun => (16f * statusEffect.DurationTurns) + GetUnitBaseThreat(unit),
             TacticsStatusEffectType.Taunt => (10f * statusEffect.DurationTurns) + (GetUnitBaseThreat(unit) * 0.85f),
-            TacticsStatusEffectType.Bleed => TacticsStatusEffectLibrary.EvaluateStrategicValue(
+            TacticsStatusEffectType.Bleed or TacticsStatusEffectType.Poison => TacticsStatusEffectLibrary.EvaluateStrategicValue(
                 statusEffect.StatusEffectType,
                 potency,
                 statusEffect.DurationTurns,

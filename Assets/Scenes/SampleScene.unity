@@ -558,14 +558,14 @@ MonoBehaviour:
   cameraPadding: 1
   enemySpawnEntries:
   - enemyId: bandit
-    count: 4
+    count: 1
   - enemyId: shaman
-    count: 4
+    count: 1
   - enemyId: hobgoblin
-    count: 4
+    count: 1
   chestSpawnSettings:
     spawnChance: 1
-    mimicChance: 0.5
+    mimicChance: 1
     maxChestCount: 4
     minGoldReward: 5
     maxGoldReward: 100

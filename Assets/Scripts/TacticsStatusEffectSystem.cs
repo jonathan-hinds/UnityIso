@@ -8,7 +8,8 @@ public enum TacticsStatusEffectType
     Cleanse = 0,
     Stun = 1,
     Taunt = 2,
-    Bleed = 3
+    Bleed = 3,
+    Poison = 4
 }
 
 public enum TacticsStatusEffectCategory
@@ -93,6 +94,7 @@ public struct TacticsStatusEffectInstance
 public static class TacticsStatusEffectLibrary
 {
     private const string IconResourcePath = "UI/StatusEffects";
+    public const float PoisonMaxHitPointPercent = 0.03f;
     private static readonly Dictionary<TacticsStatusEffectType, Sprite> IconCache = new();
 
     public static TacticsStatusEffectDescriptor GetDescriptor(TacticsStatusEffectType statusEffectType)
@@ -135,6 +137,15 @@ public static class TacticsStatusEffectLibrary
                 blocksActions: false,
                 accentColor: new Color(0.94f, 0.29f, 0.29f, 1f),
                 backgroundColor: new Color(0.34f, 0.08f, 0.08f, 0.92f)),
+            TacticsStatusEffectType.Poison => new TacticsStatusEffectDescriptor(
+                TacticsStatusEffectType.Poison,
+                "Poison",
+                "PS",
+                TacticsStatusEffectCategory.Debuff,
+                appliesAtTurnStart: true,
+                blocksActions: false,
+                accentColor: new Color(0.54f, 0.88f, 0.26f, 1f),
+                backgroundColor: new Color(0.16f, 0.3f, 0.08f, 0.92f)),
             _ => new TacticsStatusEffectDescriptor(
                 statusEffectType,
                 statusEffectType.ToString(),
@@ -188,6 +199,12 @@ public static class TacticsStatusEffectLibrary
                 builder.Append(" damage after each tile moved and after each action performed.");
                 break;
 
+            case TacticsStatusEffectType.Poison:
+                builder.Append("Takes ");
+                builder.Append(Mathf.Max(1, statusEffect.Potency));
+                builder.Append(" damage at the start of each turn.");
+                break;
+
             default:
                 builder.Append(descriptor.DisplayName);
                 if (statusEffect.Potency > 0)
@@ -227,6 +244,7 @@ public static class TacticsStatusEffectLibrary
         {
             TacticsStatusEffectType.Cleanse => trigger == TacticsStatusEffectTrigger.TurnStart,
             TacticsStatusEffectType.Stun => trigger == TacticsStatusEffectTrigger.TurnStart,
+            TacticsStatusEffectType.Poison => trigger == TacticsStatusEffectTrigger.TurnStart,
             TacticsStatusEffectType.Bleed => trigger is TacticsStatusEffectTrigger.TileMoved or TacticsStatusEffectTrigger.ActionPerformed,
             _ => false
         };
@@ -244,6 +262,7 @@ public static class TacticsStatusEffectLibrary
         return statusEffect.StatusEffectType switch
         {
             TacticsStatusEffectType.Bleed => Mathf.Max(0, statusEffect.Potency),
+            TacticsStatusEffectType.Poison => Mathf.Max(0, statusEffect.Potency),
             _ => 0
         };
     }
@@ -258,6 +277,7 @@ public static class TacticsStatusEffectLibrary
         return statusEffectType switch
         {
             TacticsStatusEffectType.Bleed => EvaluateBleedStrategicValue(potency, durationTurns, target, targetOffensivePotential),
+            TacticsStatusEffectType.Poison => EvaluatePoisonStrategicValue(potency, durationTurns, target, targetOffensivePotential),
             _ => Mathf.Max(0f, potency)
         };
     }
@@ -291,6 +311,37 @@ public static class TacticsStatusEffectLibrary
             ? expectedDamage * 0.2f
             : 6f;
         return effectiveDamage + healthPressure + offensivePressure + mobilityPressure + applyBias;
+    }
+
+    private static float EvaluatePoisonStrategicValue(
+        float potency,
+        int durationTurns,
+        TacticsCharacterController target,
+        float targetOffensivePotential)
+    {
+        if (potency <= 0f || durationTurns <= 0)
+        {
+            return 0f;
+        }
+
+        float expectedTriggers = Mathf.Max(1f, durationTurns);
+        float expectedDamage = potency * expectedTriggers;
+        float effectiveDamage = target != null
+            ? Mathf.Min(Mathf.Max(1f, target.CurrentHitPoints), expectedDamage)
+            : expectedDamage;
+        float offensivePressure = targetOffensivePotential > 0f
+            ? targetOffensivePotential * 0.28f
+            : EstimateUnitThreat(target) * 0.45f;
+        float durabilityPressure = target != null
+            ? Mathf.Max(0f, target.MaxHitPoints * 0.05f)
+            : 0f;
+        float sustainPressure = target != null
+            ? GetHealthRatio(target) * 7f
+            : 0f;
+        float applyBias = target != null && target.HasStatusEffect(TacticsStatusEffectType.Poison)
+            ? expectedDamage * 0.15f
+            : 5f;
+        return effectiveDamage + offensivePressure + durabilityPressure + sustainPressure + applyBias;
     }
 
     private static float EstimateBleedTriggerCount(TacticsCharacterController target, int durationTurns)
@@ -391,5 +442,20 @@ public static class TacticsStatusEffectLibrary
         }
 
         return Mathf.Clamp01(target.CurrentHitPoints / (float)target.MaxHitPoints);
+    }
+
+    public static float GetPoisonPercentDisplayValue(float potencyMultiplier = 1f)
+    {
+        return PoisonMaxHitPointPercent * 100f * Mathf.Max(0.01f, potencyMultiplier);
+    }
+
+    public static float GetPoisonBaseDamage(int maxHitPoints)
+    {
+        if (maxHitPoints <= 0)
+        {
+            return 0f;
+        }
+
+        return Mathf.Ceil(maxHitPoints * PoisonMaxHitPointPercent);
     }
 }

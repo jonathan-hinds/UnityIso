@@ -215,13 +215,13 @@ public static class TacticsEnemyUtilityAbilityScorer
         {
             TacticsApplyStatusEffectData statusEffect = statusEffects[i];
             TacticsStatusEffectDescriptor descriptor = TacticsStatusEffectLibrary.GetDescriptor(statusEffect.StatusEffectType);
-            float potency = TacticsAbilityEffectMath.EvaluateStatusPotency(unit, ability, statusEffect, useAverageRoll: true);
+            float potency = TacticsAbilityEffectMath.EvaluateStatusPotency(unit, unit, ability, statusEffect, useAverageRoll: true);
             value += statusEffect.StatusEffectType switch
             {
                 TacticsStatusEffectType.Cleanse => (potency * statusEffect.DurationTurns * 0.8f) + 6f,
                 TacticsStatusEffectType.Stun => 16f * statusEffect.DurationTurns,
                 TacticsStatusEffectType.Taunt => (10f * statusEffect.DurationTurns) + (GetUnitBaseThreat(unit) * 0.85f),
-                TacticsStatusEffectType.Bleed => TacticsStatusEffectLibrary.EvaluateStrategicValue(
+                TacticsStatusEffectType.Bleed or TacticsStatusEffectType.Poison => TacticsStatusEffectLibrary.EvaluateStrategicValue(
                     statusEffect.StatusEffectType,
                     potency,
                     statusEffect.DurationTurns,
