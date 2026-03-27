@@ -943,6 +943,30 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
                     totalValue += poisonValue + focusFireBonus + tankPressureBonus + applyBonus;
                     break;
                 }
+
+                case TacticsStatusEffectType.Fire:
+                {
+                    if (target.Team == character.Team)
+                    {
+                        continue;
+                    }
+
+                    float offensivePotential = GetTargetOffensivePotential(target);
+                    float fireValue = TacticsStatusEffectLibrary.EvaluateStrategicValue(
+                        statusEffect.StatusEffectType,
+                        averagePotency,
+                        statusEffect.DurationTurns,
+                        target,
+                        offensivePotential);
+                    float focusFireBonus = CountAlliedPressureOnTarget(target) * 1.4f;
+                    float existingFirePotency = TacticsStatusEffectLibrary.GetActivePotency(target, TacticsStatusEffectType.Fire);
+                    float stackBonus = existingFirePotency > 0f
+                        ? Mathf.Clamp(existingFirePotency * 0.4f, 2f, 10f)
+                        : 0f;
+                    float applyBonus = existingFirePotency > 0f ? 6.75f : 4.75f;
+                    totalValue += fireValue + focusFireBonus + stackBonus + applyBonus;
+                    break;
+                }
             }
         }
 
@@ -2509,7 +2533,7 @@ public sealed class TacticsEnemyStrategicContext
             TacticsStatusEffectType.Cleanse => (potency * statusEffect.DurationTurns * 0.8f) + 6f,
             TacticsStatusEffectType.Stun => (16f * statusEffect.DurationTurns) + GetUnitBaseThreat(unit),
             TacticsStatusEffectType.Taunt => (10f * statusEffect.DurationTurns) + (GetUnitBaseThreat(unit) * 0.85f),
-            TacticsStatusEffectType.Bleed or TacticsStatusEffectType.Poison => TacticsStatusEffectLibrary.EvaluateStrategicValue(
+            TacticsStatusEffectType.Bleed or TacticsStatusEffectType.Poison or TacticsStatusEffectType.Fire => TacticsStatusEffectLibrary.EvaluateStrategicValue(
                 statusEffect.StatusEffectType,
                 potency,
                 statusEffect.DurationTurns,

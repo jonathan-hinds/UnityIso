@@ -386,9 +386,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         }
 
         TacticsStatusEffectDescriptor descriptor = TacticsStatusEffectLibrary.GetDescriptor(statusEffectData.StatusEffectType);
-        int resolvedPotency = descriptor.StatusEffectType is TacticsStatusEffectType.Cleanse or TacticsStatusEffectType.Bleed or TacticsStatusEffectType.Poison
-            ? Mathf.Max(1, potency)
-            : Mathf.Max(0, potency);
+        int resolvedPotency = TacticsStatusEffectLibrary.NormalizePotency(descriptor.StatusEffectType, potency);
         bool refreshedExistingEffect = false;
 
         for (int i = 0; i < activeStatusEffects.Count; i++)
@@ -401,7 +399,10 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
 
             activeStatusEffects[i] = existingEffect.Refresh(
                 Mathf.Max(existingEffect.RemainingTurns, statusEffectData.DurationTurns),
-                Mathf.Max(existingEffect.Potency, resolvedPotency));
+                TacticsStatusEffectLibrary.MergePotency(
+                    existingEffect.StatusEffectType,
+                    existingEffect.Potency,
+                    resolvedPotency));
             refreshedExistingEffect = true;
             break;
         }
@@ -1150,6 +1151,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
                 break;
 
             case TacticsStatusEffectType.Poison:
+            case TacticsStatusEffectType.Fire:
                 if (statusEffect.Potency > 0)
                 {
                     ApplyDamage(statusEffect.Potency);

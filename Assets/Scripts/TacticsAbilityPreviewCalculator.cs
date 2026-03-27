@@ -291,6 +291,21 @@ public static class TacticsAbilityPreviewCalculator
                     builder.Append(')');
                 }
                 break;
+
+            case TacticsStatusEffectType.Fire:
+                (int fireMin, int fireMax) = TacticsAbilityEffectMath.GetStatusPotencyRange(source, ability, statusEffect);
+                builder.Append(". Deals ");
+                builder.Append(FormatRange(fireMin, fireMax));
+                builder.Append(" fire damage at turn start and stacks with other fire effects");
+
+                string fireScalingText = BuildScalingText(statusEffect.Scaling);
+                if (!string.IsNullOrWhiteSpace(fireScalingText))
+                {
+                    builder.Append(" (");
+                    builder.Append(fireScalingText);
+                    builder.Append(')');
+                }
+                break;
         }
 
         return builder.ToString();

@@ -9,7 +9,8 @@ public enum TacticsStatusEffectType
     Stun = 1,
     Taunt = 2,
     Bleed = 3,
-    Poison = 4
+    Poison = 4,
+    Fire = 5
 }
 
 public enum TacticsStatusEffectCategory
@@ -25,6 +26,12 @@ public enum TacticsStatusEffectTrigger
     ActionPerformed = 2
 }
 
+public enum TacticsStatusEffectStackingMode
+{
+    RefreshHighestPotency = 0,
+    AddPotency = 1
+}
+
 public readonly struct TacticsStatusEffectDescriptor
 {
     public TacticsStatusEffectDescriptor(
@@ -34,6 +41,7 @@ public readonly struct TacticsStatusEffectDescriptor
         TacticsStatusEffectCategory category,
         bool appliesAtTurnStart,
         bool blocksActions,
+        TacticsStatusEffectStackingMode stackingMode,
         Color accentColor,
         Color backgroundColor)
     {
@@ -43,6 +51,7 @@ public readonly struct TacticsStatusEffectDescriptor
         Category = category;
         AppliesAtTurnStart = appliesAtTurnStart;
         BlocksActions = blocksActions;
+        StackingMode = stackingMode;
         AccentColor = accentColor;
         BackgroundColor = backgroundColor;
     }
@@ -53,6 +62,7 @@ public readonly struct TacticsStatusEffectDescriptor
     public TacticsStatusEffectCategory Category { get; }
     public bool AppliesAtTurnStart { get; }
     public bool BlocksActions { get; }
+    public TacticsStatusEffectStackingMode StackingMode { get; }
     public bool IsBuff => Category == TacticsStatusEffectCategory.Buff;
     public Color AccentColor { get; }
     public Color BackgroundColor { get; }
@@ -108,6 +118,7 @@ public static class TacticsStatusEffectLibrary
                 TacticsStatusEffectCategory.Buff,
                 appliesAtTurnStart: true,
                 blocksActions: false,
+                stackingMode: TacticsStatusEffectStackingMode.RefreshHighestPotency,
                 accentColor: new Color(0.44f, 0.88f, 0.62f, 1f),
                 backgroundColor: new Color(0.12f, 0.34f, 0.2f, 0.92f)),
             TacticsStatusEffectType.Stun => new TacticsStatusEffectDescriptor(
@@ -117,6 +128,7 @@ public static class TacticsStatusEffectLibrary
                 TacticsStatusEffectCategory.Debuff,
                 appliesAtTurnStart: true,
                 blocksActions: true,
+                stackingMode: TacticsStatusEffectStackingMode.RefreshHighestPotency,
                 accentColor: new Color(0.92f, 0.58f, 0.3f, 1f),
                 backgroundColor: new Color(0.34f, 0.16f, 0.1f, 0.92f)),
             TacticsStatusEffectType.Taunt => new TacticsStatusEffectDescriptor(
@@ -126,6 +138,7 @@ public static class TacticsStatusEffectLibrary
                 TacticsStatusEffectCategory.Buff,
                 appliesAtTurnStart: false,
                 blocksActions: false,
+                stackingMode: TacticsStatusEffectStackingMode.RefreshHighestPotency,
                 accentColor: new Color(0.97f, 0.85f, 0.34f, 1f),
                 backgroundColor: new Color(0.38f, 0.28f, 0.08f, 0.92f)),
             TacticsStatusEffectType.Bleed => new TacticsStatusEffectDescriptor(
@@ -135,6 +148,7 @@ public static class TacticsStatusEffectLibrary
                 TacticsStatusEffectCategory.Debuff,
                 appliesAtTurnStart: false,
                 blocksActions: false,
+                stackingMode: TacticsStatusEffectStackingMode.RefreshHighestPotency,
                 accentColor: new Color(0.94f, 0.29f, 0.29f, 1f),
                 backgroundColor: new Color(0.34f, 0.08f, 0.08f, 0.92f)),
             TacticsStatusEffectType.Poison => new TacticsStatusEffectDescriptor(
@@ -144,8 +158,19 @@ public static class TacticsStatusEffectLibrary
                 TacticsStatusEffectCategory.Debuff,
                 appliesAtTurnStart: true,
                 blocksActions: false,
+                stackingMode: TacticsStatusEffectStackingMode.RefreshHighestPotency,
                 accentColor: new Color(0.54f, 0.88f, 0.26f, 1f),
                 backgroundColor: new Color(0.16f, 0.3f, 0.08f, 0.92f)),
+            TacticsStatusEffectType.Fire => new TacticsStatusEffectDescriptor(
+                TacticsStatusEffectType.Fire,
+                "Fire",
+                "FI",
+                TacticsStatusEffectCategory.Debuff,
+                appliesAtTurnStart: true,
+                blocksActions: false,
+                stackingMode: TacticsStatusEffectStackingMode.AddPotency,
+                accentColor: new Color(1f, 0.48f, 0.2f, 1f),
+                backgroundColor: new Color(0.34f, 0.12f, 0.04f, 0.92f)),
             _ => new TacticsStatusEffectDescriptor(
                 statusEffectType,
                 statusEffectType.ToString(),
@@ -155,6 +180,7 @@ public static class TacticsStatusEffectLibrary
                 TacticsStatusEffectCategory.Buff,
                 appliesAtTurnStart: false,
                 blocksActions: false,
+                stackingMode: TacticsStatusEffectStackingMode.RefreshHighestPotency,
                 accentColor: new Color(0.72f, 0.8f, 0.94f, 1f),
                 backgroundColor: new Color(0.14f, 0.18f, 0.25f, 0.92f))
         };
@@ -205,6 +231,12 @@ public static class TacticsStatusEffectLibrary
                 builder.Append(" damage at the start of each turn.");
                 break;
 
+            case TacticsStatusEffectType.Fire:
+                builder.Append("Takes ");
+                builder.Append(Mathf.Max(1, statusEffect.Potency));
+                builder.Append(" fire damage at the start of each turn. Additional fire stacks add to the burn damage.");
+                break;
+
             default:
                 builder.Append(descriptor.DisplayName);
                 if (statusEffect.Potency > 0)
@@ -245,6 +277,7 @@ public static class TacticsStatusEffectLibrary
             TacticsStatusEffectType.Cleanse => trigger == TacticsStatusEffectTrigger.TurnStart,
             TacticsStatusEffectType.Stun => trigger == TacticsStatusEffectTrigger.TurnStart,
             TacticsStatusEffectType.Poison => trigger == TacticsStatusEffectTrigger.TurnStart,
+            TacticsStatusEffectType.Fire => trigger == TacticsStatusEffectTrigger.TurnStart,
             TacticsStatusEffectType.Bleed => trigger is TacticsStatusEffectTrigger.TileMoved or TacticsStatusEffectTrigger.ActionPerformed,
             _ => false
         };
@@ -263,6 +296,7 @@ public static class TacticsStatusEffectLibrary
         {
             TacticsStatusEffectType.Bleed => Mathf.Max(0, statusEffect.Potency),
             TacticsStatusEffectType.Poison => Mathf.Max(0, statusEffect.Potency),
+            TacticsStatusEffectType.Fire => Mathf.Max(0, statusEffect.Potency),
             _ => 0
         };
     }
@@ -278,8 +312,50 @@ public static class TacticsStatusEffectLibrary
         {
             TacticsStatusEffectType.Bleed => EvaluateBleedStrategicValue(potency, durationTurns, target, targetOffensivePotential),
             TacticsStatusEffectType.Poison => EvaluatePoisonStrategicValue(potency, durationTurns, target, targetOffensivePotential),
+            TacticsStatusEffectType.Fire => EvaluateFireStrategicValue(potency, durationTurns, target, targetOffensivePotential),
             _ => Mathf.Max(0f, potency)
         };
+    }
+
+    public static int NormalizePotency(TacticsStatusEffectType statusEffectType, int potency)
+    {
+        return statusEffectType switch
+        {
+            TacticsStatusEffectType.Cleanse or TacticsStatusEffectType.Bleed or TacticsStatusEffectType.Poison or TacticsStatusEffectType.Fire => Mathf.Max(1, potency),
+            _ => Mathf.Max(0, potency)
+        };
+    }
+
+    public static int MergePotency(TacticsStatusEffectType statusEffectType, int existingPotency, int incomingPotency)
+    {
+        int normalizedExistingPotency = NormalizePotency(statusEffectType, existingPotency);
+        int normalizedIncomingPotency = NormalizePotency(statusEffectType, incomingPotency);
+        TacticsStatusEffectDescriptor descriptor = GetDescriptor(statusEffectType);
+        return descriptor.StackingMode == TacticsStatusEffectStackingMode.AddPotency
+            ? Mathf.Max(1, normalizedExistingPotency + normalizedIncomingPotency)
+            : Mathf.Max(normalizedExistingPotency, normalizedIncomingPotency);
+    }
+
+    public static int GetActivePotency(TacticsCharacterController target, TacticsStatusEffectType statusEffectType)
+    {
+        if (target == null || target.ActiveStatusEffects == null)
+        {
+            return 0;
+        }
+
+        IReadOnlyList<TacticsStatusEffectInstance> activeEffects = target.ActiveStatusEffects;
+        for (int i = 0; i < activeEffects.Count; i++)
+        {
+            TacticsStatusEffectInstance activeEffect = activeEffects[i];
+            if (activeEffect.IsExpired || activeEffect.StatusEffectType != statusEffectType)
+            {
+                continue;
+            }
+
+            return Mathf.Max(0, activeEffect.Potency);
+        }
+
+        return 0;
     }
 
     private static float EvaluateBleedStrategicValue(
@@ -342,6 +418,37 @@ public static class TacticsStatusEffectLibrary
             ? expectedDamage * 0.15f
             : 5f;
         return effectiveDamage + offensivePressure + durabilityPressure + sustainPressure + applyBias;
+    }
+
+    private static float EvaluateFireStrategicValue(
+        float potency,
+        int durationTurns,
+        TacticsCharacterController target,
+        float targetOffensivePotential)
+    {
+        if (potency <= 0f || durationTurns <= 0)
+        {
+            return 0f;
+        }
+
+        float expectedTriggers = Mathf.Max(1f, durationTurns);
+        float expectedDamage = potency * expectedTriggers;
+        float effectiveDamage = target != null
+            ? Mathf.Min(Mathf.Max(1f, target.CurrentHitPoints), expectedDamage)
+            : expectedDamage;
+        float offensivePressure = targetOffensivePotential > 0f
+            ? targetOffensivePotential * 0.32f
+            : EstimateUnitThreat(target) * 0.52f;
+        float sustainPressure = target != null
+            ? GetHealthRatio(target) * 5.5f
+            : 0f;
+        float stackPressure = target != null
+            ? Mathf.Clamp(GetActivePotency(target, TacticsStatusEffectType.Fire) * 0.45f, 0f, 14f)
+            : 0f;
+        float applyBias = target != null && target.HasStatusEffect(TacticsStatusEffectType.Fire)
+            ? 6.5f + stackPressure
+            : 4.5f;
+        return effectiveDamage + offensivePressure + sustainPressure + stackPressure + applyBias;
     }
 
     private static float EstimateBleedTriggerCount(TacticsCharacterController target, int durationTurns)
