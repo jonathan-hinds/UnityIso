@@ -221,6 +221,12 @@ public static class TacticsEnemyUtilityAbilityScorer
                 TacticsStatusEffectType.Cleanse => (potency * statusEffect.DurationTurns * 0.8f) + 6f,
                 TacticsStatusEffectType.Stun => 16f * statusEffect.DurationTurns,
                 TacticsStatusEffectType.Taunt => (10f * statusEffect.DurationTurns) + (GetUnitBaseThreat(unit) * 0.85f),
+                TacticsStatusEffectType.Bleed => TacticsStatusEffectLibrary.EvaluateStrategicValue(
+                    statusEffect.StatusEffectType,
+                    potency,
+                    statusEffect.DurationTurns,
+                    unit,
+                    GetUnitBaseThreat(unit) * 5f),
                 _ => descriptor.IsBuff ? potency * 0.75f : potency
             };
         }

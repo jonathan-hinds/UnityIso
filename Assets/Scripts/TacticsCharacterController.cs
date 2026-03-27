@@ -358,9 +358,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
             return false;
         }
 
-        HasActedThisTurn = true;
-        NotifyTurnStateChanged();
-        return true;
+        return CommitActionUse();
     }
 
     public bool HasStatusEffect(TacticsStatusEffectType statusEffectType)
@@ -388,7 +386,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         }
 
         TacticsStatusEffectDescriptor descriptor = TacticsStatusEffectLibrary.GetDescriptor(statusEffectData.StatusEffectType);
-        int resolvedPotency = descriptor.StatusEffectType == TacticsStatusEffectType.Cleanse
+        int resolvedPotency = descriptor.StatusEffectType is TacticsStatusEffectType.Cleanse or TacticsStatusEffectType.Bleed
             ? Mathf.Max(1, potency)
             : Mathf.Max(0, potency);
         bool refreshedExistingEffect = false;
@@ -436,9 +434,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
             return false;
         }
 
-        HasActedThisTurn = true;
-        NotifyTurnStateChanged();
-        return true;
+        return CommitActionUse();
     }
 
     public TacticsAbilityDefinition GetPrimaryActionAbility()
@@ -713,13 +709,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
 
     public void CommitAbilityUse()
     {
-        if (HasActedThisTurn)
-        {
-            return;
-        }
-
-        HasActedThisTurn = true;
-        NotifyTurnStateChanged();
+        CommitActionUse();
     }
 
     public IEnumerator PlayAttackAnimationTowards(Vector2Int targetTile)
@@ -784,6 +774,11 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
             yield return MoveBetweenTiles(path[i - 1], path[i]);
             GridPosition = path[i];
             RefreshCharacterRegistryState();
+            ResolveTriggeredStatusEffects(TacticsStatusEffectTrigger.TileMoved);
+            if (!IsAlive)
+            {
+                yield break;
+            }
         }
 
         movementRoutine = null;
@@ -806,6 +801,52 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         NotifyTurnStateChanged();
         movementRoutine = StartCoroutine(FollowPath(path));
         return true;
+    }
+
+    private bool CommitActionUse()
+    {
+        if (HasActedThisTurn)
+        {
+            return false;
+        }
+
+        HasActedThisTurn = true;
+        ResolveTriggeredStatusEffects(TacticsStatusEffectTrigger.ActionPerformed);
+        if (IsAlive)
+        {
+            NotifyTurnStateChanged();
+        }
+
+        return true;
+    }
+
+    private void ResolveTriggeredStatusEffects(TacticsStatusEffectTrigger trigger)
+    {
+        if (!IsAlive || activeStatusEffects.Count == 0)
+        {
+            return;
+        }
+
+        for (int i = 0; i < activeStatusEffects.Count; i++)
+        {
+            TacticsStatusEffectInstance statusEffect = activeStatusEffects[i];
+            if (statusEffect.IsExpired)
+            {
+                continue;
+            }
+
+            int damageAmount = TacticsStatusEffectLibrary.GetTriggeredDamage(statusEffect, trigger);
+            if (damageAmount <= 0)
+            {
+                continue;
+            }
+
+            ApplyDamage(damageAmount);
+            if (!IsAlive)
+            {
+                return;
+            }
+        }
     }
 
     private IEnumerator MoveBetweenTiles(Vector2Int from, Vector2Int to)

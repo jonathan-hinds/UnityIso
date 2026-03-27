@@ -7,13 +7,21 @@ public enum TacticsStatusEffectType
 {
     Cleanse = 0,
     Stun = 1,
-    Taunt = 2
+    Taunt = 2,
+    Bleed = 3
 }
 
 public enum TacticsStatusEffectCategory
 {
     Buff = 0,
     Debuff = 1
+}
+
+public enum TacticsStatusEffectTrigger
+{
+    TurnStart = 0,
+    TileMoved = 1,
+    ActionPerformed = 2
 }
 
 public readonly struct TacticsStatusEffectDescriptor
@@ -118,6 +126,15 @@ public static class TacticsStatusEffectLibrary
                 blocksActions: false,
                 accentColor: new Color(0.97f, 0.85f, 0.34f, 1f),
                 backgroundColor: new Color(0.38f, 0.28f, 0.08f, 0.92f)),
+            TacticsStatusEffectType.Bleed => new TacticsStatusEffectDescriptor(
+                TacticsStatusEffectType.Bleed,
+                "Bleed",
+                "BL",
+                TacticsStatusEffectCategory.Debuff,
+                appliesAtTurnStart: false,
+                blocksActions: false,
+                accentColor: new Color(0.94f, 0.29f, 0.29f, 1f),
+                backgroundColor: new Color(0.34f, 0.08f, 0.08f, 0.92f)),
             _ => new TacticsStatusEffectDescriptor(
                 statusEffectType,
                 statusEffectType.ToString(),
@@ -165,6 +182,12 @@ public static class TacticsStatusEffectLibrary
                 builder.Append("Hostile single-target abilities must target this unit when it is a valid target.");
                 break;
 
+            case TacticsStatusEffectType.Bleed:
+                builder.Append("Takes ");
+                builder.Append(Mathf.Max(1, statusEffect.Potency));
+                builder.Append(" damage after each tile moved and after each action performed.");
+                break;
+
             default:
                 builder.Append(descriptor.DisplayName);
                 if (statusEffect.Potency > 0)
@@ -194,5 +217,179 @@ public static class TacticsStatusEffectLibrary
             string.Empty,
             BuildTooltipBody(statusEffect),
             footer);
+    }
+
+    public static bool RespondsToTrigger(
+        TacticsStatusEffectInstance statusEffect,
+        TacticsStatusEffectTrigger trigger)
+    {
+        return statusEffect.StatusEffectType switch
+        {
+            TacticsStatusEffectType.Cleanse => trigger == TacticsStatusEffectTrigger.TurnStart,
+            TacticsStatusEffectType.Stun => trigger == TacticsStatusEffectTrigger.TurnStart,
+            TacticsStatusEffectType.Bleed => trigger is TacticsStatusEffectTrigger.TileMoved or TacticsStatusEffectTrigger.ActionPerformed,
+            _ => false
+        };
+    }
+
+    public static int GetTriggeredDamage(
+        TacticsStatusEffectInstance statusEffect,
+        TacticsStatusEffectTrigger trigger)
+    {
+        if (!RespondsToTrigger(statusEffect, trigger))
+        {
+            return 0;
+        }
+
+        return statusEffect.StatusEffectType switch
+        {
+            TacticsStatusEffectType.Bleed => Mathf.Max(0, statusEffect.Potency),
+            _ => 0
+        };
+    }
+
+    public static float EvaluateStrategicValue(
+        TacticsStatusEffectType statusEffectType,
+        float potency,
+        int durationTurns,
+        TacticsCharacterController target,
+        float targetOffensivePotential = 0f)
+    {
+        return statusEffectType switch
+        {
+            TacticsStatusEffectType.Bleed => EvaluateBleedStrategicValue(potency, durationTurns, target, targetOffensivePotential),
+            _ => Mathf.Max(0f, potency)
+        };
+    }
+
+    private static float EvaluateBleedStrategicValue(
+        float potency,
+        int durationTurns,
+        TacticsCharacterController target,
+        float targetOffensivePotential)
+    {
+        if (potency <= 0f || durationTurns <= 0)
+        {
+            return 0f;
+        }
+
+        float expectedTriggers = EstimateBleedTriggerCount(target, durationTurns);
+        float expectedDamage = potency * expectedTriggers;
+        float effectiveDamage = target != null
+            ? Mathf.Min(Mathf.Max(1f, target.CurrentHitPoints), expectedDamage)
+            : expectedDamage;
+        float healthPressure = target != null
+            ? (1f - GetHealthRatio(target)) * 8f
+            : 0f;
+        float offensivePressure = targetOffensivePotential > 0f
+            ? targetOffensivePotential * 0.3f
+            : EstimateUnitThreat(target) * 0.5f;
+        float mobilityPressure = target != null
+            ? Mathf.Max(0f, target.MoveRange - 1) * durationTurns * 0.8f
+            : 0f;
+        float applyBias = target != null && target.HasStatusEffect(TacticsStatusEffectType.Bleed)
+            ? expectedDamage * 0.2f
+            : 6f;
+        return effectiveDamage + healthPressure + offensivePressure + mobilityPressure + applyBias;
+    }
+
+    private static float EstimateBleedTriggerCount(TacticsCharacterController target, int durationTurns)
+    {
+        float actionTriggers = EstimateBleedActionTriggers(target, durationTurns);
+        float movementTriggers = EstimateBleedMovementTriggersPerTurn(target) * Mathf.Max(1, durationTurns);
+        return Mathf.Max(1f, actionTriggers + movementTriggers);
+    }
+
+    private static float EstimateBleedActionTriggers(TacticsCharacterController target, int durationTurns)
+    {
+        if (durationTurns <= 0)
+        {
+            return 0f;
+        }
+
+        if (target == null)
+        {
+            return durationTurns;
+        }
+
+        float actionTriggers = durationTurns;
+        if (target.IsActionLockedThisTurn)
+        {
+            actionTriggers *= 0.25f;
+        }
+        else if (target.IsTurnActive && target.HasActedThisTurn)
+        {
+            actionTriggers = Mathf.Max(0.35f, durationTurns - 0.75f);
+        }
+        else if (target.IsTurnActive)
+        {
+            actionTriggers += 0.35f;
+        }
+
+        return Mathf.Max(0.35f, actionTriggers);
+    }
+
+    private static float EstimateBleedMovementTriggersPerTurn(TacticsCharacterController target)
+    {
+        if (target == null || target.MoveRange <= 0)
+        {
+            return 0f;
+        }
+
+        float expectedMovementTiles = Mathf.Clamp(target.MoveRange * 0.55f, 0.5f, 3.5f);
+        float rangePressure = GetAbilityRangePressure(target);
+        float mobilityBias = rangePressure <= 1.5f
+            ? 1.15f
+            : rangePressure <= 2.5f
+                ? 0.85f
+                : 0.55f;
+        return expectedMovementTiles * mobilityBias;
+    }
+
+    private static float GetAbilityRangePressure(TacticsCharacterController target)
+    {
+        if (target == null || target.Abilities == null || target.Abilities.Count == 0)
+        {
+            return 1f;
+        }
+
+        float maxPreferredDistance = 1f;
+        IReadOnlyList<TacticsAbilityDefinition> abilities = target.Abilities;
+        for (int i = 0; i < abilities.Count; i++)
+        {
+            TacticsAbilityDefinition ability = abilities[i];
+            if (ability == null)
+            {
+                continue;
+            }
+
+            maxPreferredDistance = Mathf.Max(
+                maxPreferredDistance,
+                ability.UsesAbilityRange ? Mathf.Max(2f, ability.Range - 1) : 1f);
+        }
+
+        return maxPreferredDistance;
+    }
+
+    private static float EstimateUnitThreat(TacticsCharacterController target)
+    {
+        if (target == null)
+        {
+            return 0f;
+        }
+
+        float meleeAverage = (target.BaseMeleeDamageMin + target.BaseMeleeDamageMax) * 0.5f;
+        float magicAverage = (target.BaseMagicDamageMin + target.BaseMagicDamageMax) * 0.5f;
+        return Mathf.Max(meleeAverage, magicAverage) * 0.2f;
+    }
+
+    private static float GetHealthRatio(TacticsCharacterController target)
+    {
+        if (target == null || target.MaxHitPoints <= 0)
+        {
+            return 0f;
+        }
+
+        return Mathf.Clamp01(target.CurrentHitPoints / (float)target.MaxHitPoints);
     }
 }

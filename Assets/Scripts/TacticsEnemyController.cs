@@ -12,6 +12,14 @@ public interface ITacticsAutomatedTurnController
 [RequireComponent(typeof(TacticsCharacterController))]
 public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTurnController
 {
+    private enum EnemyBleedResponseMode
+    {
+        Ignore = 0,
+        FightThrough = 1,
+        Reposition = 2,
+        SeekSupport = 3
+    }
+
     [SerializeField] private TacticsCharacterController character;
     [SerializeField] private TacticsTurnManager turnManager;
     [SerializeField] private TacticsCombatSystem combatSystem;
@@ -19,6 +27,17 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
     [SerializeField] private TacticsCharacterRegistry characterRegistry;
     [SerializeField, Min(0f)] private float thinkDelay = 0.2f;
     [SerializeField, Min(0f)] private float endTurnDelay = 0.15f;
+
+    [Header("Bleed AI")]
+    [SerializeField, Min(0f)] private float bleedIgnoreWeight = 0.6f;
+    [SerializeField, Min(0f)] private float bleedFightThroughWeight = 1.35f;
+    [SerializeField, Min(0f)] private float bleedRepositionWeight = 0.85f;
+    [SerializeField, Min(0f)] private float bleedSeekSupportWeight = 0.9f;
+    [SerializeField, Range(0f, 1f)] private float bleedLowHealthSeekThreshold = 0.4f;
+    [SerializeField, Min(0f)] private float bleedLowHealthSeekBonusWeight = 1.4f;
+    [SerializeField, Min(0f)] private float bleedMovementPenaltyPerDamage = 0.1f;
+    [SerializeField, Min(0f)] private float bleedActionPenaltyPerDamage = 0.32f;
+    [SerializeField, Min(0f)] private float bleedSeekSupportMovementBonus = 4f;
 
     private Coroutine turnRoutine;
     private readonly List<TacticsCharacterController> reusableCandidateTargets = new();
@@ -28,6 +47,7 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
     private readonly List<TacticsCharacterController> reusableAlliedTargetsIncludingSelf = new();
     private string priorityTargetRuntimeCharacterId = string.Empty;
     private TacticsEnemyStrategicContext strategicContext;
+    private EnemyBleedResponseMode currentBleedResponseMode = EnemyBleedResponseMode.FightThrough;
 
     private readonly struct EnemyAbilityPlan
     {
@@ -196,6 +216,7 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         }
 
         strategicContext = BuildStrategicContext();
+        currentBleedResponseMode = ResolveBleedResponseMode();
 
         bool attemptedAction = false;
         if (TryBuildPriorityTargetAbilityPlan(out EnemyAbilityPlan priorityPlan))
@@ -240,6 +261,7 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
 
         priorityTargetRuntimeCharacterId = string.Empty;
         strategicContext = null;
+        currentBleedResponseMode = EnemyBleedResponseMode.FightThrough;
 
         while (combatSystem != null && combatSystem.State == TacticsCombatState.ResolvingAbility)
         {
@@ -631,6 +653,10 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         float teamIntentBonus = strategicContext != null
             ? strategicContext.ScoreTeamPlan(sourceTile, target, ability, affectedTargets, costPayment)
             : 0f;
+        float selfBleedActionPenalty = GetTriggeredSelfStatusDamage(TacticsStatusEffectTrigger.ActionPerformed) *
+                                       bleedActionPenaltyPerDamage *
+                                       GetSelfStatusDamagePenaltyScale() *
+                                       GetBleedActionPenaltyScale();
         float supportCommitmentAdjustment = includeSupportCommitmentAdjustment
             ? TacticsEnemyUtilityAbilityScorer.ScoreSupportCommitment(
                 character,
@@ -641,7 +667,7 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
                 GetNearbyThreatCount(character))
             : 0f;
 
-        return tacticalValue + coordinationBonus + rangeBias + selfPreservationBias + teamIntentBonus + supportCommitmentAdjustment - movementPenalty - distancePenalty - costPenalty;
+        return tacticalValue + coordinationBonus + rangeBias + selfPreservationBias + teamIntentBonus + supportCommitmentAdjustment - movementPenalty - distancePenalty - costPenalty - selfBleedActionPenalty;
     }
 
     private float EvaluateAbilityTacticalValue(
@@ -876,6 +902,26 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
                     totalValue += TacticsEnemyTauntAbilityScorer.Score(tauntContext);
                     break;
                 }
+
+                case TacticsStatusEffectType.Bleed:
+                {
+                    if (target.Team == character.Team)
+                    {
+                        continue;
+                    }
+
+                    float offensivePotential = GetTargetOffensivePotential(target);
+                    float bleedValue = TacticsStatusEffectLibrary.EvaluateStrategicValue(
+                        statusEffect.StatusEffectType,
+                        averagePotency,
+                        statusEffect.DurationTurns,
+                        target,
+                        offensivePotential);
+                    float focusFireBonus = CountAlliedPressureOnTarget(target) * 1.5f;
+                    float applyBonus = target.HasStatusEffect(TacticsStatusEffectType.Bleed) ? 1.5f : 5f;
+                    totalValue += bleedValue + focusFireBonus + applyBonus;
+                    break;
+                }
             }
         }
 
@@ -1096,15 +1142,23 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
               strategicContext.ScoreFormation(null, sourceTile, anchorTarget) +
               (anchorTarget != null ? strategicContext.ScoreFocusFire(sourceTile, anchorTarget) : 0f)
             : 0f;
+        float selfBleedMovementPenalty = GetTriggeredSelfStatusDamage(TacticsStatusEffectTrigger.TileMoved) *
+                                         bleedMovementPenaltyPerDamage *
+                                         pathIndex *
+                                         GetSelfStatusDamagePenaltyScale() *
+                                         GetBleedMovementPenaltyScale();
+        float bleedSupportBias = supportPressure * GetBleedSupportMovementBias();
         return immediateOpportunityScore +
                (hostilePressure * 1.35f) +
                (supportPressure * 0.75f) +
+               bleedSupportBias +
                tauntSetupScore +
                tauntProtectionScore +
                tauntCounterScore +
                teamCoordination -
                (anchorDistance * 0.2f) -
-               (pathIndex * 0.05f);
+               (pathIndex * 0.05f) -
+               selfBleedMovementPenalty;
     }
 
     private float ScorePressurePosition(Vector2Int sourceTile)
@@ -1853,6 +1907,141 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
             ? coopSessionCoordinator.RequestEndTurn(character)
             : character.TryEndTurn();
     }
+
+    private float GetTriggeredSelfStatusDamage(TacticsStatusEffectTrigger trigger)
+    {
+        if (character == null || character.ActiveStatusEffects == null)
+        {
+            return 0f;
+        }
+
+        float totalDamage = 0f;
+        IReadOnlyList<TacticsStatusEffectInstance> activeEffects = character.ActiveStatusEffects;
+        for (int i = 0; i < activeEffects.Count; i++)
+        {
+            totalDamage += TacticsStatusEffectLibrary.GetTriggeredDamage(activeEffects[i], trigger);
+        }
+
+        return totalDamage;
+    }
+
+    private float GetSelfStatusDamagePenaltyScale()
+    {
+        if (character == null || character.MaxHitPoints <= 0)
+        {
+            return 1f;
+        }
+
+        return character.CurrentHitPoints <= Mathf.CeilToInt(character.MaxHitPoints * 0.35f)
+            ? 1.6f
+            : 1f;
+    }
+
+    private EnemyBleedResponseMode ResolveBleedResponseMode()
+    {
+        float movementDamage = GetTriggeredSelfStatusDamage(TacticsStatusEffectTrigger.TileMoved);
+        float actionDamage = GetTriggeredSelfStatusDamage(TacticsStatusEffectTrigger.ActionPerformed);
+        if (movementDamage <= 0f && actionDamage <= 0f)
+        {
+            return EnemyBleedResponseMode.FightThrough;
+        }
+
+        float healthRatio = GetHealthRatio(character);
+        bool hasSupportiveAlly = HasSupportiveAlly();
+        float ignoreWeight = Mathf.Max(0f, bleedIgnoreWeight + (healthRatio >= 0.75f ? 0.2f : 0f));
+        float fightWeight = Mathf.Max(0.05f, bleedFightThroughWeight + (healthRatio >= 0.5f ? 0.25f : 0f));
+        float repositionWeight = Mathf.Max(0f, bleedRepositionWeight + (healthRatio < 0.65f ? 0.2f : 0f));
+        float seekSupportWeight = Mathf.Max(0f, hasSupportiveAlly ? bleedSeekSupportWeight : bleedSeekSupportWeight * 0.2f);
+        if (hasSupportiveAlly && healthRatio <= bleedLowHealthSeekThreshold)
+        {
+            seekSupportWeight += bleedLowHealthSeekBonusWeight;
+        }
+
+        float totalWeight = ignoreWeight + fightWeight + repositionWeight + seekSupportWeight;
+        if (totalWeight <= 0f)
+        {
+            return EnemyBleedResponseMode.FightThrough;
+        }
+
+        float roll = Random.value * totalWeight;
+        if (roll < ignoreWeight)
+        {
+            return EnemyBleedResponseMode.Ignore;
+        }
+
+        roll -= ignoreWeight;
+        if (roll < fightWeight)
+        {
+            return EnemyBleedResponseMode.FightThrough;
+        }
+
+        roll -= fightWeight;
+        if (roll < repositionWeight)
+        {
+            return EnemyBleedResponseMode.Reposition;
+        }
+
+        return EnemyBleedResponseMode.SeekSupport;
+    }
+
+    private float GetBleedMovementPenaltyScale()
+    {
+        return currentBleedResponseMode switch
+        {
+            EnemyBleedResponseMode.Ignore => 0f,
+            EnemyBleedResponseMode.FightThrough => 0.2f,
+            EnemyBleedResponseMode.Reposition => 0.08f,
+            EnemyBleedResponseMode.SeekSupport => 0.03f,
+            _ => 0.2f
+        };
+    }
+
+    private float GetBleedActionPenaltyScale()
+    {
+        return currentBleedResponseMode switch
+        {
+            EnemyBleedResponseMode.Ignore => 0f,
+            EnemyBleedResponseMode.FightThrough => 0.18f,
+            EnemyBleedResponseMode.Reposition => 0.3f,
+            EnemyBleedResponseMode.SeekSupport => 0.24f,
+            _ => 0.18f
+        };
+    }
+
+    private float GetBleedSupportMovementBias()
+    {
+        return currentBleedResponseMode switch
+        {
+            EnemyBleedResponseMode.SeekSupport => bleedSeekSupportMovementBonus,
+            EnemyBleedResponseMode.Reposition => bleedSeekSupportMovementBonus * 0.35f,
+            _ => 0f
+        };
+    }
+
+    private bool HasSupportiveAlly()
+    {
+        List<TacticsCharacterController> allies = GetAlliedTargets(includeSelf: false);
+        for (int i = 0; i < allies.Count; i++)
+        {
+            TacticsCharacterController ally = allies[i];
+            if (ally == null || !ally.IsAlive)
+            {
+                continue;
+            }
+
+            IReadOnlyList<TacticsAbilityDefinition> allyAbilities = ally.Abilities;
+            for (int abilityIndex = 0; abilityIndex < allyAbilities.Count; abilityIndex++)
+            {
+                TacticsAbilityDefinition ability = allyAbilities[abilityIndex];
+                if (ability != null && IsSupportAbility(ability))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
 }
 
 public sealed class TacticsEnemyStrategicContext
@@ -2296,6 +2485,12 @@ public sealed class TacticsEnemyStrategicContext
             TacticsStatusEffectType.Cleanse => (potency * statusEffect.DurationTurns * 0.8f) + 6f,
             TacticsStatusEffectType.Stun => (16f * statusEffect.DurationTurns) + GetUnitBaseThreat(unit),
             TacticsStatusEffectType.Taunt => (10f * statusEffect.DurationTurns) + (GetUnitBaseThreat(unit) * 0.85f),
+            TacticsStatusEffectType.Bleed => TacticsStatusEffectLibrary.EvaluateStrategicValue(
+                statusEffect.StatusEffectType,
+                potency,
+                statusEffect.DurationTurns,
+                unit,
+                GetUnitBaseThreat(unit) * 5f),
             _ => descriptor.IsBuff ? potency * 0.75f : potency
         };
     }

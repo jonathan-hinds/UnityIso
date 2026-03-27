@@ -259,6 +259,21 @@ public static class TacticsAbilityPreviewCalculator
             case TacticsStatusEffectType.Taunt:
                 builder.Append(". Hostile single-target abilities must target the affected unit while it remains a valid target");
                 break;
+
+            case TacticsStatusEffectType.Bleed:
+                (int bleedMin, int bleedMax) = TacticsAbilityEffectMath.GetStatusPotencyRange(source, ability, statusEffect);
+                builder.Append(". Deals ");
+                builder.Append(FormatRange(bleedMin, bleedMax));
+                builder.Append(" damage after each tile moved and after each action performed");
+
+                string bleedScalingText = BuildScalingText(statusEffect.Scaling);
+                if (!string.IsNullOrWhiteSpace(bleedScalingText))
+                {
+                    builder.Append(" (");
+                    builder.Append(bleedScalingText);
+                    builder.Append(')');
+                }
+                break;
         }
 
         return builder.ToString();
