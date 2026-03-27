@@ -375,6 +375,23 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         return false;
     }
 
+    public int GetStatusEffectRemainingTurns(TacticsStatusEffectType statusEffectType)
+    {
+        int remainingTurns = 0;
+        for (int i = 0; i < activeStatusEffects.Count; i++)
+        {
+            TacticsStatusEffectInstance statusEffect = activeStatusEffects[i];
+            if (statusEffect.IsExpired || statusEffect.StatusEffectType != statusEffectType)
+            {
+                continue;
+            }
+
+            remainingTurns = Mathf.Max(remainingTurns, statusEffect.RemainingTurns);
+        }
+
+        return remainingTurns;
+    }
+
     public bool ApplyStatusEffect(
         TacticsApplyStatusEffectData statusEffectData,
         int potency,
@@ -1098,13 +1115,18 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
 
     private void ProcessStartOfTurnStatusEffects()
     {
-        if (activeStatusEffects.Count == 0)
+        if (!IsAlive || activeStatusEffects.Count == 0)
         {
             return;
         }
 
         for (int i = activeStatusEffects.Count - 1; i >= 0; i--)
         {
+            if (i >= activeStatusEffects.Count)
+            {
+                continue;
+            }
+
             TacticsStatusEffectInstance statusEffect = activeStatusEffects[i];
             if (statusEffect.IsExpired)
             {
@@ -1116,6 +1138,17 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
             if (descriptor.AppliesAtTurnStart)
             {
                 ResolveStartOfTurnStatusEffect(statusEffect, descriptor);
+                if (!IsAlive || i >= activeStatusEffects.Count)
+                {
+                    break;
+                }
+
+                statusEffect = activeStatusEffects[i];
+                if (statusEffect.IsExpired)
+                {
+                    activeStatusEffects.RemoveAt(i);
+                    continue;
+                }
             }
 
             statusEffect = statusEffect.WithRemainingTurns(statusEffect.RemainingTurns - 1);

@@ -38,6 +38,8 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
     [SerializeField, Min(0f)] private float bleedMovementPenaltyPerDamage = 0.1f;
     [SerializeField, Min(0f)] private float bleedActionPenaltyPerDamage = 0.32f;
     [SerializeField, Min(0f)] private float bleedSeekSupportMovementBonus = 4f;
+    [SerializeField, Range(0f, 1f)] private float tauntEndangeredHealthThreshold = 0.55f;
+    [SerializeField, Range(0f, 1f)] private float tauntCriticalHealthThreshold = 0.35f;
 
     private Coroutine turnRoutine;
     private readonly List<TacticsCharacterController> reusableCandidateTargets = new();
@@ -883,6 +885,8 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
                     Vector2Int tauntTile = ReferenceEquals(target, character) ? sourceTile : target.GridPosition;
                     int immediateThreats = CountImmediateThreatsAtTile(tauntTile);
                     int protectedAllies = CountProtectedAlliesAtTile(target, tauntTile);
+                    int endangeredProtectedAllies = CountProtectedAlliesByHealthThresholdAtTile(target, tauntTile, tauntEndangeredHealthThreshold);
+                    int criticalProtectedAllies = CountProtectedAlliesByHealthThresholdAtTile(target, tauntTile, tauntCriticalHealthThreshold);
                     float allyProtectionValue = ScoreTauntProtectionWindow(target, tauntTile);
                     float laneControlValue = ScoreTauntLaneControl(tauntTile);
                     bool isFrontliner = GetPreferredCombatDistance(target) <= 1.5f && !IsSupportUnit(target);
@@ -890,7 +894,11 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
                         bestAlternativeOffenseScore,
                         immediateThreats,
                         protectedAllies,
+                        endangeredProtectedAllies,
+                        criticalProtectedAllies,
                         CountNearbyAlliedTaunters(target, tauntTile),
+                        GetRemainingTauntTurns(target),
+                        GetHighestNearbyAlliedTauntCoverageTurns(target, tauntTile),
                         allyProtectionValue,
                         laneControlValue,
                         GetHealthRatio(target),
@@ -1822,6 +1830,45 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         return count;
     }
 
+    private int CountProtectedAlliesByHealthThresholdAtTile(
+        TacticsCharacterController taunter,
+        Vector2Int tauntTile,
+        float maxHealthRatio)
+    {
+        if (maxHealthRatio <= 0f)
+        {
+            return 0;
+        }
+
+        int count = 0;
+        List<TacticsCharacterController> allies = GetAlliedTargets(includeSelf: true);
+        for (int i = 0; i < allies.Count; i++)
+        {
+            TacticsCharacterController ally = allies[i];
+            if (ally == null || ReferenceEquals(ally, taunter))
+            {
+                continue;
+            }
+
+            if (GetTileDistance(ally.GridPosition, tauntTile) > 3)
+            {
+                continue;
+            }
+
+            if (GetHealthRatio(ally) > maxHealthRatio)
+            {
+                continue;
+            }
+
+            if (CountThreatsCoverableFromTile(tauntTile, ally) > 0)
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
     private int CountNearbyAlliedTaunters(TacticsCharacterController taunter, Vector2Int tauntTile)
     {
         int count = 0;
@@ -1843,6 +1890,34 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         return count;
     }
 
+    private int GetHighestNearbyAlliedTauntCoverageTurns(TacticsCharacterController taunter, Vector2Int tauntTile)
+    {
+        int bestRemainingTurns = 0;
+        List<TacticsCharacterController> allies = GetAlliedTargets(includeSelf: true);
+        for (int i = 0; i < allies.Count; i++)
+        {
+            TacticsCharacterController ally = allies[i];
+            if (ally == null || ReferenceEquals(ally, taunter) || !ally.IsTaunting)
+            {
+                continue;
+            }
+
+            if (GetTileDistance(ally.GridPosition, tauntTile) > 3)
+            {
+                continue;
+            }
+
+            if (CountProtectedAlliesAtTile(ally, ally.GridPosition) <= 0)
+            {
+                continue;
+            }
+
+            bestRemainingTurns = Mathf.Max(bestRemainingTurns, GetRemainingTauntTurns(ally));
+        }
+
+        return bestRemainingTurns;
+    }
+
     private float ScoreProtectedAllyValue(TacticsCharacterController ally)
     {
         if (ally == null)
@@ -1854,6 +1929,13 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         float offenseValue = GetTargetOffensivePotential(ally) * 0.16f;
         float fragilityValue = (1f - GetHealthRatio(ally)) * 8f;
         return roleValue + offenseValue + fragilityValue;
+    }
+
+    private static int GetRemainingTauntTurns(TacticsCharacterController unit)
+    {
+        return unit != null
+            ? unit.GetStatusEffectRemainingTurns(TacticsStatusEffectType.Taunt)
+            : 0;
     }
 
     private static bool CanUnitPressureTile(TacticsCharacterController unit, Vector2Int tile)
