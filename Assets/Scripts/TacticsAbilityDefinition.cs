@@ -29,6 +29,7 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
     };
     [SerializeField] private List<TacticsApplyStatusEffectData> statusEffects = new();
     [SerializeField] private TacticsAbilityKnockbackData knockback;
+    [SerializeField] private TacticsAbilityThrowData throwing;
 
     [Header("Cost")]
     [SerializeField] private TacticsAbilityResourceType costResourceType = TacticsAbilityResourceType.None;
@@ -58,6 +59,8 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
     public IReadOnlyList<TacticsApplyStatusEffectData> StatusEffects => statusEffects;
     public TacticsAbilityKnockbackData Knockback => knockback;
     public bool AppliesKnockback => knockback.IsEnabled;
+    public TacticsAbilityThrowData Throwing => throwing;
+    public bool AppliesThrowing => throwing.IsEnabled;
     public TacticsAbilityResourceType CostResourceType => ResolvedCostAmount > 0 ? costResourceType : TacticsAbilityResourceType.None;
     public int CostAmount => ResolvedCostAmount;
     public bool HasCost => CostResourceType != TacticsAbilityResourceType.None && CostAmount > 0;
@@ -94,6 +97,7 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
         };
         ability.statusEffects = new List<TacticsApplyStatusEffectData>();
         ability.knockback = TacticsAbilityKnockbackData.None();
+        ability.throwing = TacticsAbilityThrowData.None();
         return ability;
     }
 
@@ -126,6 +130,7 @@ public sealed class TacticsAbilityDefinition : ScriptableObject
         effects ??= new List<TacticsAbilityEffectDefinitionData>();
         statusEffects ??= new List<TacticsApplyStatusEffectData>();
         knockback.Sanitize();
+        throwing.Sanitize();
 
         for (int i = 0; i < effects.Count; i++)
         {
@@ -231,6 +236,44 @@ public struct TacticsAbilityKnockbackData
     }
 }
 
+[Serializable]
+public struct TacticsAbilityThrowData
+{
+    [SerializeField] private bool enabled;
+    [SerializeField, Min(0.01f)] private float duration;
+    [SerializeField, Min(0f)] private float arcHeight;
+
+    public bool IsEnabled => enabled;
+    public float Duration => duration <= 0f ? 0.22f : duration;
+    public float ArcHeight => arcHeight < 0f ? 0.45f : arcHeight;
+
+    public static TacticsAbilityThrowData None()
+    {
+        return new TacticsAbilityThrowData
+        {
+            enabled = false,
+            duration = 0.22f,
+            arcHeight = 0.45f
+        };
+    }
+
+    public static TacticsAbilityThrowData Create(float duration = 0.22f, float arcHeight = 0.45f)
+    {
+        return new TacticsAbilityThrowData
+        {
+            enabled = true,
+            duration = duration <= 0f ? 0.22f : duration,
+            arcHeight = Mathf.Max(0f, arcHeight)
+        };
+    }
+
+    public void Sanitize()
+    {
+        duration = duration <= 0f ? 0.22f : duration;
+        arcHeight = Mathf.Max(0f, arcHeight);
+    }
+}
+
 public readonly struct TacticsKnockbackPlan
 {
     public TacticsKnockbackPlan(
@@ -252,6 +295,29 @@ public readonly struct TacticsKnockbackPlan
     public TacticsMovementDirection TravelDirection { get; }
     public TacticsMovementDirection AnimationDirection { get; }
     public TacticsAbilityKnockbackData Settings { get; }
+}
+
+public readonly struct TacticsThrowPlan
+{
+    public TacticsThrowPlan(
+        TacticsCharacterController target,
+        Vector2Int destination,
+        TacticsMovementDirection travelDirection,
+        TacticsMovementDirection animationDirection,
+        TacticsAbilityThrowData settings)
+    {
+        Target = target;
+        Destination = destination;
+        TravelDirection = travelDirection;
+        AnimationDirection = animationDirection;
+        Settings = settings;
+    }
+
+    public TacticsCharacterController Target { get; }
+    public Vector2Int Destination { get; }
+    public TacticsMovementDirection TravelDirection { get; }
+    public TacticsMovementDirection AnimationDirection { get; }
+    public TacticsAbilityThrowData Settings { get; }
 }
 
 public static class TacticsKnockbackUtility

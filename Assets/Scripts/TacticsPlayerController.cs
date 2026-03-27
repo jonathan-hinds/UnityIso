@@ -12,7 +12,8 @@ public class TacticsPlayerController : MonoBehaviour
         None = 0,
         CharacterSelected = 1,
         AwaitingMoveTarget = 2,
-        AwaitingAbilityTarget = 3
+        AwaitingAbilityTarget = 3,
+        AwaitingThrowDestination = 4
     }
 
     [SerializeField] private Camera targetCamera;
@@ -25,13 +26,17 @@ public class TacticsPlayerController : MonoBehaviour
     [SerializeField] private TacticsTileTargetOverlay tileTargetOverlay;
     [SerializeField] private TacticsCursorMovementCostView cursorMovementCostView;
     [SerializeField] private TacticsCoopSessionCoordinator coopSessionCoordinator;
+    [SerializeField] private TacticsThrowTargetPreview throwTargetPreview;
 
     private TacticsCharacterController selectedCharacter;
     private SelectionState selectionState;
     private readonly List<TacticsActionMenuAbilityOption> reusableAbilityOptions = new();
     private readonly List<TacticsCharacterController> hoveredAbilityPreviewTargets = new();
     private readonly List<Vector2Int> reusableOverlayTiles = new();
+    private readonly List<Vector2Int> reusableThrowDestinationTiles = new();
     private bool? lastCanOpenChest;
+    private TacticsCharacterController pendingThrowTarget;
+    private Vector2Int? hoveredThrowDestination;
 
     private void Awake()
     {
@@ -67,12 +72,18 @@ public class TacticsPlayerController : MonoBehaviour
             cursorMovementCostView = FindFirstObjectByType<TacticsCursorMovementCostView>();
         }
 
+        if (throwTargetPreview == null)
+        {
+            throwTargetPreview = FindFirstObjectByType<TacticsThrowTargetPreview>();
+        }
+
         if (coopSessionCoordinator == null)
         {
             coopSessionCoordinator = FindFirstObjectByType<TacticsCoopSessionCoordinator>();
         }
 
         EnsureCursorMovementCostView();
+        EnsureThrowTargetPreview();
     }
 
     private void OnEnable()
@@ -104,12 +115,18 @@ public class TacticsPlayerController : MonoBehaviour
             cursorMovementCostView = FindFirstObjectByType<TacticsCursorMovementCostView>();
         }
 
+        if (throwTargetPreview == null)
+        {
+            throwTargetPreview = FindFirstObjectByType<TacticsThrowTargetPreview>();
+        }
+
         if (coopSessionCoordinator == null)
         {
             coopSessionCoordinator = FindFirstObjectByType<TacticsCoopSessionCoordinator>();
         }
 
         EnsureCursorMovementCostView();
+        EnsureThrowTargetPreview();
 
         if (actionMenuView != null)
         {
@@ -157,6 +174,7 @@ public class TacticsPlayerController : MonoBehaviour
         SubscribeToSelectedCharacter(null);
         SetHoveredAbilityTargets(null);
         cursorMovementCostView?.Hide();
+        throwTargetPreview?.Hide();
         RefreshTargetIndicators();
     }
 
@@ -164,6 +182,7 @@ public class TacticsPlayerController : MonoBehaviour
     {
         if (turnManager != null && turnManager.IsTransitioningTurns)
         {
+            ClearPendingThrowTarget();
             SetHoveredAbilityTargets(null);
             tileTargetOverlay?.Hide();
             cursorMovementCostView?.Hide();
@@ -176,7 +195,19 @@ public class TacticsPlayerController : MonoBehaviour
         RefreshHoveredMovementPath();
 
         Mouse mouse = Mouse.current;
-        if (mouse == null || !mouse.leftButton.wasPressedThisFrame)
+        if (mouse == null)
+        {
+            return;
+        }
+
+        if (selectionState == SelectionState.AwaitingThrowDestination)
+        {
+            RefreshThrowDestinationPreview();
+            HandleThrowDestinationInput(mouse);
+            return;
+        }
+
+        if (!mouse.leftButton.wasPressedThisFrame)
         {
             return;
         }
@@ -220,11 +251,21 @@ public class TacticsPlayerController : MonoBehaviour
                 targetedCharacter != null &&
                 combatSystem != null &&
                 combatSystem.TargetingAbility != null &&
-                combatSystem.CanTargetFromTile(selectedCharacter, selectedCharacter.GridPosition, combatSystem.TargetingAbility, targetedCharacter) &&
-                RequestUseAbility(selectedCharacter, combatSystem.TargetingAbility, targetedCharacter.GridPosition))
+                combatSystem.CanTargetFromTile(selectedCharacter, selectedCharacter.GridPosition, combatSystem.TargetingAbility, targetedCharacter))
             {
-                selectionState = SelectionState.CharacterSelected;
-                RefreshHud();
+                if (combatSystem.TargetingAbility.AppliesThrowing)
+                {
+                    if (BeginThrowDestinationSelection(targetedCharacter))
+                    {
+                        RefreshHud();
+                    }
+                }
+                else if (RequestUseAbility(selectedCharacter, combatSystem.TargetingAbility, targetedCharacter.GridPosition))
+                {
+                    selectionState = SelectionState.CharacterSelected;
+                    RefreshHud();
+                }
+
                 return;
             }
 
@@ -278,11 +319,13 @@ public class TacticsPlayerController : MonoBehaviour
             return;
         }
 
-        if (selectionState == SelectionState.AwaitingAbilityTarget)
+        if (selectionState == SelectionState.AwaitingAbilityTarget ||
+            selectionState == SelectionState.AwaitingThrowDestination)
         {
             combatSystem?.CancelTargeting();
         }
 
+        ClearPendingThrowTarget();
         SetHoveredAbilityTargets(null);
         SubscribeToSelectedCharacter(null);
 
@@ -521,11 +564,13 @@ public class TacticsPlayerController : MonoBehaviour
             if (RequestUseAbility(activePlayerCharacter, ability, activePlayerCharacter.GridPosition))
             {
                 selectionState = SelectionState.CharacterSelected;
+                ClearPendingThrowTarget();
             }
         }
         else if (combatSystem.BeginTargeting(activePlayerCharacter, ability))
         {
             selectionState = SelectionState.AwaitingAbilityTarget;
+            ClearPendingThrowTarget();
         }
 
         RefreshHud();
@@ -544,14 +589,17 @@ public class TacticsPlayerController : MonoBehaviour
         if (selectionState == SelectionState.AwaitingMoveTarget)
         {
             selectionState = SelectionState.CharacterSelected;
+            ClearPendingThrowTarget();
             SetHoveredAbilityTargets(null);
             TacticsStatusEffectTrayView.HideTray();
             RefreshHud();
         }
-        else if (selectionState == SelectionState.AwaitingAbilityTarget)
+        else if (selectionState == SelectionState.AwaitingAbilityTarget ||
+                 selectionState == SelectionState.AwaitingThrowDestination)
         {
             combatSystem?.CancelTargeting();
             selectionState = SelectionState.CharacterSelected;
+            ClearPendingThrowTarget();
             SetHoveredAbilityTargets(null);
             TacticsStatusEffectTrayView.HideTray();
             RefreshHud();
@@ -596,7 +644,8 @@ public class TacticsPlayerController : MonoBehaviour
                     activePlayerCharacter,
                     reusableAbilityOptions,
                     selectionState == SelectionState.AwaitingMoveTarget,
-                    selectionState == SelectionState.AwaitingAbilityTarget,
+                    selectionState == SelectionState.AwaitingAbilityTarget ||
+                    selectionState == SelectionState.AwaitingThrowDestination,
                     canOpenChest,
                     turnManager != null ? turnManager.RoundNumber : 1,
                     turnManager != null ? turnManager.TurnNumber : 1,
@@ -621,9 +670,11 @@ public class TacticsPlayerController : MonoBehaviour
         }
 
         if (selectionState == SelectionState.AwaitingMoveTarget ||
-            selectionState == SelectionState.AwaitingAbilityTarget)
+            selectionState == SelectionState.AwaitingAbilityTarget ||
+            selectionState == SelectionState.AwaitingThrowDestination)
         {
             selectionState = SelectionState.CharacterSelected;
+            ClearPendingThrowTarget();
         }
 
         bool shouldSelectActiveCharacter =
@@ -649,9 +700,11 @@ public class TacticsPlayerController : MonoBehaviour
     {
         if (combatSystem == null || combatSystem.State != TacticsCombatState.TargetingAbility)
         {
-            if (selectionState == SelectionState.AwaitingAbilityTarget)
+            if (selectionState == SelectionState.AwaitingAbilityTarget ||
+                selectionState == SelectionState.AwaitingThrowDestination)
             {
                 selectionState = SelectionState.CharacterSelected;
+                ClearPendingThrowTarget();
             }
 
             SetHoveredAbilityTargets(null);
@@ -753,6 +806,17 @@ public class TacticsPlayerController : MonoBehaviour
         cursorMovementCostView = cursorCostObject.AddComponent<TacticsCursorMovementCostView>();
     }
 
+    private void EnsureThrowTargetPreview()
+    {
+        if (throwTargetPreview != null)
+        {
+            return;
+        }
+
+        GameObject previewObject = new GameObject("Throw Target Preview");
+        throwTargetPreview = previewObject.AddComponent<TacticsThrowTargetPreview>();
+    }
+
     private void RefreshTargetOverlay()
     {
         if (tileTargetOverlay == null)
@@ -771,6 +835,15 @@ public class TacticsPlayerController : MonoBehaviour
             return;
         }
 
+        if (selectionState == SelectionState.AwaitingThrowDestination &&
+            ReferenceEquals(selectedCharacter, GetActivePlayerCharacter()) &&
+            pendingThrowTarget != null)
+        {
+            tileTargetOverlay.ShowTiles(reusableThrowDestinationTiles);
+            RefreshTargetIndicators();
+            return;
+        }
+
         tileTargetOverlay.Hide();
         RefreshTargetIndicators();
     }
@@ -784,12 +857,15 @@ public class TacticsPlayerController : MonoBehaviour
         }
 
         HashSet<Vector2Int> validTargetTiles = null;
-        if (selectionState == SelectionState.AwaitingAbilityTarget &&
+        if ((selectionState == SelectionState.AwaitingAbilityTarget ||
+             selectionState == SelectionState.AwaitingThrowDestination) &&
             ReferenceEquals(selectedCharacter, GetActivePlayerCharacter()) &&
             combatSystem != null &&
             combatSystem.TargetingAbility != null)
         {
-            IReadOnlyList<Vector2Int> tiles = combatSystem.GetValidTargetTiles(selectedCharacter, combatSystem.TargetingAbility);
+            IReadOnlyList<Vector2Int> tiles = selectionState == SelectionState.AwaitingThrowDestination
+                ? reusableThrowDestinationTiles
+                : combatSystem.GetValidTargetTiles(selectedCharacter, combatSystem.TargetingAbility);
             validTargetTiles = new HashSet<Vector2Int>(tiles);
         }
 
@@ -816,6 +892,12 @@ public class TacticsPlayerController : MonoBehaviour
             combatSystem == null ||
             combatSystem.TargetingAbility == null)
         {
+            if (selectionState == SelectionState.AwaitingThrowDestination && pendingThrowTarget != null)
+            {
+                SetHoveredAbilityTargets(new[] { pendingThrowTarget });
+                return;
+            }
+
             SetHoveredAbilityTargets(null);
             return;
         }
@@ -903,6 +985,84 @@ public class TacticsPlayerController : MonoBehaviour
 
         tileTargetOverlay.Hide();
         cursorMovementCostView?.Hide();
+    }
+
+    private void RefreshThrowDestinationPreview()
+    {
+        hoveredThrowDestination = null;
+
+        if (selectionState != SelectionState.AwaitingThrowDestination ||
+            pendingThrowTarget == null)
+        {
+            throwTargetPreview?.Hide();
+            return;
+        }
+
+        Mouse mouse = Mouse.current;
+        if (mouse == null)
+        {
+            throwTargetPreview?.Hide();
+            return;
+        }
+
+        Vector2 screenPosition = mouse.position.ReadValue();
+        if (!IsFinite(screenPosition))
+        {
+            throwTargetPreview?.Hide();
+            return;
+        }
+
+        bool isValidThrowDestination = false;
+        if (TryGetPointerHits(out Collider2D[] hits) &&
+            TryGetClickedTile(hits, out IsometricTileHoverInfo hoveredTile) &&
+            hoveredTile != null)
+        {
+            Vector2Int hoveredTilePosition = new Vector2Int(hoveredTile.GridX, hoveredTile.GridY);
+            if (reusableThrowDestinationTiles.Contains(hoveredTilePosition))
+            {
+                hoveredThrowDestination = hoveredTilePosition;
+                isValidThrowDestination = true;
+            }
+        }
+
+        throwTargetPreview?.Show(pendingThrowTarget, screenPosition, isValidThrowDestination);
+    }
+
+    private void HandleThrowDestinationInput(Mouse mouse)
+    {
+        if (mouse == null ||
+            selectionState != SelectionState.AwaitingThrowDestination ||
+            selectedCharacter == null ||
+            pendingThrowTarget == null ||
+            combatSystem == null ||
+            combatSystem.TargetingAbility == null)
+        {
+            return;
+        }
+
+        if (!mouse.leftButton.wasReleasedThisFrame)
+        {
+            return;
+        }
+
+        if (blockWhenPointerOverUi && EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+        {
+            return;
+        }
+
+        if (!hoveredThrowDestination.HasValue)
+        {
+            return;
+        }
+
+        Vector2Int throwDestination = hoveredThrowDestination.Value;
+
+        if (RequestUseAbility(selectedCharacter, combatSystem.TargetingAbility, pendingThrowTarget.GridPosition, throwDestination))
+        {
+            selectionState = SelectionState.CharacterSelected;
+            ClearPendingThrowTarget();
+            RefreshHud();
+        }
     }
 
     private void ShowMovementCostLabel(int movementCost, int moveRange)
@@ -1013,6 +1173,13 @@ public class TacticsPlayerController : MonoBehaviour
             return reusableOverlayTiles;
         }
 
+        if (selectionState == SelectionState.AwaitingThrowDestination &&
+            pendingThrowTarget != null)
+        {
+            AddUniqueTiles(reusableOverlayTiles, reusableThrowDestinationTiles);
+            return reusableOverlayTiles;
+        }
+
         AddUniqueTiles(reusableOverlayTiles, combatSystem.GetTargetableTiles(source, ability));
 
         if (ability.RangeType == TacticsAbilityRangeType.SurroundingAoE)
@@ -1021,6 +1188,41 @@ public class TacticsPlayerController : MonoBehaviour
         }
 
         return reusableOverlayTiles;
+    }
+
+    private bool BeginThrowDestinationSelection(TacticsCharacterController target)
+    {
+        if (selectedCharacter == null ||
+            target == null ||
+            combatSystem == null ||
+            combatSystem.TargetingAbility == null)
+        {
+            return false;
+        }
+
+        IReadOnlyList<Vector2Int> destinations = combatSystem.GetValidThrowDestinations(
+            selectedCharacter,
+            target,
+            combatSystem.TargetingAbility,
+            reusableThrowDestinationTiles);
+        if (destinations.Count == 0)
+        {
+            return false;
+        }
+
+        pendingThrowTarget = target;
+        hoveredThrowDestination = null;
+        selectionState = SelectionState.AwaitingThrowDestination;
+        SetHoveredAbilityTargets(new[] { pendingThrowTarget });
+        return true;
+    }
+
+    private void ClearPendingThrowTarget()
+    {
+        pendingThrowTarget = null;
+        hoveredThrowDestination = null;
+        reusableThrowDestinationTiles.Clear();
+        throwTargetPreview?.Hide();
     }
 
     private static void AddUniqueTiles(List<Vector2Int> destination, IReadOnlyList<Vector2Int> tiles)
@@ -1167,6 +1369,15 @@ public class TacticsPlayerController : MonoBehaviour
 
     private bool RequestUseAbility(TacticsCharacterController character, TacticsAbilityDefinition ability, Vector2Int targetTile)
     {
+        return RequestUseAbility(character, ability, targetTile, null);
+    }
+
+    private bool RequestUseAbility(
+        TacticsCharacterController character,
+        TacticsAbilityDefinition ability,
+        Vector2Int targetTile,
+        Vector2Int? throwDestination)
+    {
         if (character == null || ability == null)
         {
             return false;
@@ -1174,10 +1385,10 @@ public class TacticsPlayerController : MonoBehaviour
 
         if (coopSessionCoordinator != null)
         {
-            return coopSessionCoordinator.RequestUseAbility(character, ability, targetTile);
+            return coopSessionCoordinator.RequestUseAbility(character, ability, targetTile, throwDestination);
         }
 
-        return combatSystem != null && combatSystem.TryUseAbility(character, ability, targetTile);
+        return combatSystem != null && combatSystem.TryUseAbility(character, ability, targetTile, throwDestination);
     }
 
     private bool RequestEndTurn(TacticsCharacterController character)
@@ -1213,5 +1424,129 @@ public class TacticsPlayerController : MonoBehaviour
     private static TacticsChestController FindAdjacentOpenableChest(TacticsCharacterController character)
     {
         return TacticsChestController.FindBestAdjacentClosedChest(character);
+    }
+}
+
+[DisallowMultipleComponent]
+public sealed class TacticsThrowTargetPreview : MonoBehaviour
+{
+    [SerializeField] private Color previewColor = new Color(1f, 0.12f, 0.12f, 0.88f);
+    [SerializeField] private Color invalidPreviewColor = new Color(1f, 0.12f, 0.12f, 0.45f);
+    [SerializeField] private Vector2 screenOffset = new Vector2(0f, 36f);
+    [SerializeField] private int canvasSortingOrder = 7000;
+
+    private Canvas previewCanvas;
+    private RectTransform canvasRectTransform;
+    private RectTransform previewRectTransform;
+    private Image previewImage;
+    private void Awake()
+    {
+        EnsureVisuals();
+        Hide();
+    }
+
+    public void Show(TacticsCharacterController target, Vector2 screenPosition, bool isValidDrop)
+    {
+        if (!TrySyncFromTarget(target))
+        {
+            Hide();
+            return;
+        }
+
+        previewImage.color = isValidDrop ? previewColor : invalidPreviewColor;
+        if (RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                canvasRectTransform,
+                screenPosition,
+                null,
+                out Vector2 localPosition))
+        {
+            previewRectTransform.anchoredPosition = localPosition + screenOffset;
+        }
+
+        previewImage.gameObject.SetActive(true);
+    }
+
+    public void Hide()
+    {
+        if (previewImage != null)
+        {
+            previewImage.gameObject.SetActive(false);
+        }
+    }
+
+    private bool TrySyncFromTarget(TacticsCharacterController target)
+    {
+        EnsureVisuals();
+
+        if (target == null)
+        {
+            return false;
+        }
+
+        SpriteRenderer sourceRenderer = target.GetPreviewSpriteRenderer();
+        if (sourceRenderer == null || sourceRenderer.sprite == null)
+        {
+            return false;
+        }
+
+        previewImage.sprite = sourceRenderer.sprite;
+        previewImage.preserveAspect = true;
+        previewRectTransform.localScale = Vector3.one;
+        previewRectTransform.sizeDelta = ResolveScreenSize(sourceRenderer);
+        return true;
+    }
+
+    private static Vector2 ResolveScreenSize(SpriteRenderer sourceRenderer)
+    {
+        if (sourceRenderer == null)
+        {
+            return Vector2.zero;
+        }
+
+        Camera camera = Camera.main;
+        if (camera == null)
+        {
+            Sprite sprite = sourceRenderer.sprite;
+            return sprite != null ? sprite.bounds.size * sprite.pixelsPerUnit : Vector2.zero;
+        }
+
+        Bounds bounds = sourceRenderer.bounds;
+        Vector3 min = camera.WorldToScreenPoint(bounds.min);
+        Vector3 max = camera.WorldToScreenPoint(bounds.max);
+        float width = Mathf.Abs(max.x - min.x);
+        float height = Mathf.Abs(max.y - min.y);
+
+        if (width <= 0.01f || height <= 0.01f)
+        {
+            Sprite sprite = sourceRenderer.sprite;
+            return sprite != null ? sprite.bounds.size * sprite.pixelsPerUnit : Vector2.zero;
+        }
+
+        return new Vector2(width, height);
+    }
+
+    private void EnsureVisuals()
+    {
+        if (previewImage != null)
+        {
+            return;
+        }
+
+        GameObject canvasObject = new GameObject("Throw Target Preview Canvas");
+        canvasObject.transform.SetParent(transform, false);
+        previewCanvas = canvasObject.AddComponent<Canvas>();
+        previewCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        previewCanvas.sortingOrder = canvasSortingOrder;
+        canvasObject.AddComponent<CanvasScaler>();
+        GraphicRaycaster raycaster = canvasObject.AddComponent<GraphicRaycaster>();
+        raycaster.enabled = false;
+        canvasRectTransform = canvasObject.GetComponent<RectTransform>();
+
+        GameObject imageObject = new GameObject("Throw Target Preview Image");
+        imageObject.transform.SetParent(canvasObject.transform, false);
+        previewRectTransform = imageObject.AddComponent<RectTransform>();
+        previewImage = imageObject.AddComponent<Image>();
+        previewImage.raycastTarget = false;
+        previewImage.color = previewColor;
     }
 }

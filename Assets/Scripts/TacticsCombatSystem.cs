@@ -15,10 +15,13 @@ public sealed class TacticsCombatSystem : MonoBehaviour
     private readonly List<TacticsCharacterController> reusableAreaTargets = new();
     private readonly List<Vector2Int> reusableTargetTiles = new();
     private readonly List<Vector2Int> reusableTargetableTiles = new();
+    private readonly List<Vector2Int> reusableThrowCandidateTiles = new();
+    private readonly List<Vector2Int> reusableThrowDestinationTiles = new();
     private readonly List<Vector2Int> reusableAreaTiles = new();
     private readonly List<TacticsCharacterController> reusableCharacterBuffer = new();
     private readonly List<TacticsCharacterController> reusableTauntBuffer = new();
     private readonly List<TacticsKnockbackPlan> reusableKnockbackPlans = new();
+    private readonly List<TacticsThrowPlan> reusableThrowPlans = new();
     private Coroutine resolveRoutine;
 
     public event Action StateChanged;
@@ -111,14 +114,27 @@ public sealed class TacticsCombatSystem : MonoBehaviour
 
     public IReadOnlyList<Vector2Int> GetTargetableTiles(TacticsCharacterController source, TacticsAbilityDefinition ability)
     {
-        reusableTargetableTiles.Clear();
+        return GetTargetableTilesFromTile(source, source != null ? source.GridPosition : default, ability, reusableTargetableTiles);
+    }
+
+    private IReadOnlyList<Vector2Int> GetTargetableTilesFromTile(
+        TacticsCharacterController source,
+        Vector2Int sourceTile,
+        TacticsAbilityDefinition ability,
+        List<Vector2Int> results)
+    {
+        if (results == null)
+        {
+            throw new ArgumentNullException(nameof(results));
+        }
+
+        results.Clear();
 
         if (!CanUseAbility(source, ability) || mapGenerator == null || !mapGenerator.HasGeneratedMap)
         {
-            return reusableTargetableTiles;
+            return results;
         }
 
-        Vector2Int sourceTile = source.GridPosition;
         for (int x = 0; x < mapGenerator.Width; x++)
         {
             for (int y = 0; y < mapGenerator.Length; y++)
@@ -131,12 +147,12 @@ public sealed class TacticsCombatSystem : MonoBehaviour
                 Vector2Int targetTile = new Vector2Int(x, y);
                 if (CanTargetTile(source, sourceTile, ability, targetTile))
                 {
-                    reusableTargetableTiles.Add(targetTile);
+                    results.Add(targetTile);
                 }
             }
         }
 
-        return reusableTargetableTiles;
+        return results;
     }
 
     public bool TryExecuteTargetAt(Vector2Int targetTile)
@@ -150,6 +166,15 @@ public sealed class TacticsCombatSystem : MonoBehaviour
     }
 
     public bool TryUseAbility(TacticsCharacterController source, TacticsAbilityDefinition ability, Vector2Int targetTile)
+    {
+        return TryUseAbility(source, ability, targetTile, null);
+    }
+
+    public bool TryUseAbility(
+        TacticsCharacterController source,
+        TacticsAbilityDefinition ability,
+        Vector2Int targetTile,
+        Vector2Int? throwDestination)
     {
         if (State == TacticsCombatState.ResolvingAbility || resolveRoutine != null)
         {
@@ -188,7 +213,8 @@ public sealed class TacticsCombatSystem : MonoBehaviour
             ability,
             targetTile,
             new List<TacticsCharacterController>(affectedTargets),
-            payment);
+            payment,
+            throwDestination);
 
         if (!HasApplicableEffect(context))
         {
@@ -203,12 +229,21 @@ public sealed class TacticsCombatSystem : MonoBehaviour
 
     public bool ApplyReplicatedAbility(TacticsCharacterController source, TacticsAbilityDefinition ability, Vector2Int targetTile)
     {
+        return ApplyReplicatedAbility(source, ability, targetTile, null);
+    }
+
+    public bool ApplyReplicatedAbility(
+        TacticsCharacterController source,
+        TacticsAbilityDefinition ability,
+        Vector2Int targetTile,
+        Vector2Int? throwDestination)
+    {
         if (State == TacticsCombatState.ResolvingAbility || resolveRoutine != null)
         {
             return false;
         }
 
-        if (!CanResolveReplicatedAbility(source, ability, targetTile, out List<TacticsCharacterController> affectedTargets))
+        if (!CanResolveReplicatedAbility(source, ability, targetTile, throwDestination, out List<TacticsCharacterController> affectedTargets))
         {
             return false;
         }
@@ -218,7 +253,8 @@ public sealed class TacticsCombatSystem : MonoBehaviour
             ability,
             targetTile,
             new List<TacticsCharacterController>(affectedTargets),
-            ResolveReplicatedAbilityCostPayment(source, ability));
+            ResolveReplicatedAbilityCostPayment(source, ability),
+            throwDestination);
 
         if (!HasApplicableEffect(context))
         {
@@ -407,6 +443,57 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         return TryGetKnockbackDestination(source, sourceTile, target, ability, null, null, out destination);
     }
 
+    public IReadOnlyList<Vector2Int> GetValidThrowDestinations(
+        TacticsCharacterController source,
+        TacticsCharacterController target,
+        TacticsAbilityDefinition ability,
+        List<Vector2Int> results)
+    {
+        return GetValidThrowDestinationsFromTile(source, source != null ? source.GridPosition : default, target, ability, results);
+    }
+
+    public IReadOnlyList<Vector2Int> GetValidThrowDestinationsFromTile(
+        TacticsCharacterController source,
+        Vector2Int sourceTile,
+        TacticsCharacterController target,
+        TacticsAbilityDefinition ability,
+        List<Vector2Int> results)
+    {
+        if (results == null)
+        {
+            throw new ArgumentNullException(nameof(results));
+        }
+
+        results.Clear();
+        if (source == null ||
+            target == null ||
+            ability == null ||
+            !ability.AppliesThrowing ||
+            mapGenerator == null ||
+            !mapGenerator.HasGeneratedMap ||
+            !target.isActiveAndEnabled ||
+            !target.IsAlive ||
+            !IsValidTarget(source, sourceTile, ability, target))
+        {
+            return results;
+        }
+
+        GetTargetableTilesFromTile(source, sourceTile, ability, reusableThrowCandidateTiles);
+        for (int i = 0; i < reusableThrowCandidateTiles.Count; i++)
+        {
+            Vector2Int candidateTile = reusableThrowCandidateTiles[i];
+            if (candidateTile == target.GridPosition ||
+                !CanOccupyThrowDestination(source, target, candidateTile))
+            {
+                continue;
+            }
+
+            results.Add(candidateTile);
+        }
+
+        return results;
+    }
+
     private bool IsValidTarget(TacticsCharacterController source, TacticsAbilityDefinition ability, TacticsCharacterController target)
     {
         return IsValidTarget(source, source != null ? source.GridPosition : default, ability, target);
@@ -463,7 +550,19 @@ public sealed class TacticsCombatSystem : MonoBehaviour
             return false;
         }
 
-        return GetAffectedTargets(source, ability, targetTile, reusableAreaTargets).Count > 0;
+        List<TacticsCharacterController> affectedTargets = GetAffectedTargets(source, ability, targetTile, reusableAreaTargets);
+        if (affectedTargets.Count == 0)
+        {
+            return false;
+        }
+
+        if (!ability.AppliesThrowing)
+        {
+            return true;
+        }
+
+        TacticsCharacterController directTarget = FindCharacterAt(targetTile);
+        return GetValidThrowDestinations(source, directTarget, ability, reusableThrowDestinationTiles).Count > 0;
     }
 
     private List<TacticsCharacterController> GetAffectedTargets(
@@ -784,6 +883,11 @@ public sealed class TacticsCombatSystem : MonoBehaviour
 
     private bool HasApplicableEffect(TacticsAbilityExecutionContext context)
     {
+        if (TryBuildThrowPlans(context).Count > 0)
+        {
+            return true;
+        }
+
         IReadOnlyList<TacticsAbilityEffectDefinitionData> effects = context.Ability.Effects;
         for (int i = 0; i < effects.Count; i++)
         {
@@ -816,6 +920,7 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         reusableKnockbackPlans.Clear();
         if (context.Source == null ||
             context.Ability == null ||
+            context.Ability.AppliesThrowing ||
             !context.Ability.AppliesKnockback ||
             context.Targets == null ||
             context.Targets.Count == 0)
@@ -870,6 +975,40 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         }
 
         return reusableKnockbackPlans;
+    }
+
+    private List<TacticsThrowPlan> TryBuildThrowPlans(TacticsAbilityExecutionContext context)
+    {
+        reusableThrowPlans.Clear();
+        if (context.Source == null ||
+            context.Ability == null ||
+            !context.Ability.AppliesThrowing ||
+            context.Targets == null ||
+            context.Targets.Count == 0 ||
+            !context.ThrowDestination.HasValue)
+        {
+            return reusableThrowPlans;
+        }
+
+        TacticsCharacterController target = FindCharacterAt(context.TargetTile);
+        if (target == null || !ReferenceEquals(target, context.Targets[0]))
+        {
+            target = context.Targets[0];
+        }
+
+        if (!TryBuildThrowPlan(
+                context.Source,
+                context.Source.GridPosition,
+                target,
+                context.Ability,
+                context.ThrowDestination.Value,
+                out TacticsThrowPlan throwPlan))
+        {
+            return reusableThrowPlans;
+        }
+
+        reusableThrowPlans.Add(throwPlan);
+        return reusableThrowPlans;
     }
 
     private bool TryGetKnockbackDestination(
@@ -958,6 +1097,63 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         return displacedTargets != null && displacedTargets.Contains(occupant);
     }
 
+    private bool TryBuildThrowPlan(
+        TacticsCharacterController source,
+        Vector2Int sourceTile,
+        TacticsCharacterController target,
+        TacticsAbilityDefinition ability,
+        Vector2Int throwDestination,
+        out TacticsThrowPlan plan)
+    {
+        plan = default;
+        if (source == null ||
+            target == null ||
+            ability == null ||
+            !ability.AppliesThrowing ||
+            !IsValidTarget(source, sourceTile, ability, target) ||
+            throwDestination == target.GridPosition ||
+            !CanTargetTile(source, sourceTile, ability, throwDestination) ||
+            !CanOccupyThrowDestination(source, target, throwDestination) ||
+            !TacticsKnockbackUtility.TryGetStepDelta(target.GridPosition, throwDestination, out Vector2Int stepDelta))
+        {
+            return false;
+        }
+
+        TacticsMovementDirection travelDirection = TacticsKnockbackUtility.GetMovementDirection(stepDelta);
+        plan = new TacticsThrowPlan(
+            target,
+            throwDestination,
+            travelDirection,
+            TacticsKnockbackUtility.GetOppositeDirection(travelDirection),
+            ability.Throwing);
+        return true;
+    }
+
+    private bool CanOccupyThrowDestination(
+        TacticsCharacterController source,
+        TacticsCharacterController target,
+        Vector2Int destination)
+    {
+        if (mapGenerator == null ||
+            !mapGenerator.HasGeneratedMap ||
+            !mapGenerator.IsWithinBounds(destination.x, destination.y) ||
+            !mapGenerator.IsTraversable(destination.x, destination.y) ||
+            TacticsChestController.IsBlockingTile(destination) ||
+            target == null ||
+            !target.CanTraverseForcedMovementStep(target.GridPosition, destination))
+        {
+            return false;
+        }
+
+        if (characterRegistry == null ||
+            !characterRegistry.TryGetCharacterAtTile(destination, out TacticsCharacterController occupant, target))
+        {
+            return true;
+        }
+
+        return ReferenceEquals(occupant, source) && source.GridPosition == destination;
+    }
+
     private IEnumerator ResolveKnockbackRoutine(List<TacticsKnockbackPlan> plans, TacticsCharacterController damageSource)
     {
         if (plans == null || plans.Count == 0)
@@ -991,10 +1187,44 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         }
     }
 
+    private IEnumerator ResolveThrowRoutine(List<TacticsThrowPlan> plans, TacticsCharacterController damageSource)
+    {
+        if (plans == null || plans.Count == 0)
+        {
+            yield break;
+        }
+
+        for (int i = 0; i < plans.Count; i++)
+        {
+            TacticsThrowPlan plan = plans[i];
+            TacticsCharacterController target = plan.Target;
+            if (target == null ||
+                !target.isActiveAndEnabled ||
+                !target.IsAlive ||
+                target.GridPosition == plan.Destination ||
+                !target.TryBeginThrow(plan.Destination, plan.TravelDirection, plan.AnimationDirection, plan.Settings))
+            {
+                continue;
+            }
+
+            while (target != null && target.IsMoving)
+            {
+                yield return null;
+            }
+
+            if (target != null && target.isActiveAndEnabled && target.IsAlive)
+            {
+                Vector3? damageSourcePosition = damageSource != null ? damageSource.TurnFocusPoint : null;
+                target.PlayDamageImpact(damageSourcePosition);
+            }
+        }
+    }
+
     private bool CanResolveReplicatedAbility(
         TacticsCharacterController source,
         TacticsAbilityDefinition ability,
         Vector2Int targetTile,
+        Vector2Int? throwDestination,
         out List<TacticsCharacterController> affectedTargets)
     {
         affectedTargets = reusableAreaTargets;
@@ -1027,17 +1257,40 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         }
 
         affectedTargets = GetAffectedTargets(source, ability, targetTile, reusableAreaTargets);
-        return affectedTargets.Count > 0;
+        if (affectedTargets.Count == 0)
+        {
+            return false;
+        }
+
+        if (!ability.AppliesThrowing)
+        {
+            return true;
+        }
+
+        TacticsAbilityExecutionContext context = new TacticsAbilityExecutionContext(
+            source,
+            ability,
+            targetTile,
+            new List<TacticsCharacterController>(affectedTargets),
+            ResolveReplicatedAbilityCostPayment(source, ability),
+            throwDestination);
+        return TryBuildThrowPlans(context).Count > 0;
     }
 
     private IEnumerator ResolveAbilityRoutine(TacticsAbilityExecutionContext context)
     {
+        List<TacticsThrowPlan> throwPlans = TryBuildThrowPlans(context);
         List<TacticsKnockbackPlan> knockbackPlans = BuildKnockbackPlans(context);
-        HashSet<TacticsCharacterController> delayedImpactTargets = knockbackPlans.Count > 0
+        HashSet<TacticsCharacterController> delayedImpactTargets = throwPlans.Count > 0 || knockbackPlans.Count > 0
             ? new HashSet<TacticsCharacterController>()
             : null;
         if (delayedImpactTargets != null)
         {
+            for (int i = 0; i < throwPlans.Count; i++)
+            {
+                delayedImpactTargets.Add(throwPlans[i].Target);
+            }
+
             for (int i = 0; i < knockbackPlans.Count; i++)
             {
                 delayedImpactTargets.Add(knockbackPlans[i].Target);
@@ -1049,6 +1302,7 @@ public sealed class TacticsCombatSystem : MonoBehaviour
                 context.TargetTile,
                 context.Targets,
                 context.CostPayment,
+                context.ThrowDestination,
                 delayedImpactTargets);
         }
 
@@ -1095,6 +1349,12 @@ public sealed class TacticsCombatSystem : MonoBehaviour
 
             statusEffectProcessor.Apply(context, statusEffect);
             appliedAnyEffect = true;
+        }
+
+        if (throwPlans.Count > 0)
+        {
+            appliedAnyEffect = true;
+            yield return ResolveThrowRoutine(throwPlans, context.Source);
         }
 
         if (knockbackPlans.Count > 0)
@@ -1219,6 +1479,7 @@ public readonly struct TacticsAbilityExecutionContext
         Vector2Int targetTile,
         IReadOnlyList<TacticsCharacterController> targets,
         TacticsAbilityCostPayment costPayment,
+        Vector2Int? throwDestination = null,
         IReadOnlyCollection<TacticsCharacterController> delayedImpactTargets = null)
     {
         Source = source;
@@ -1226,6 +1487,7 @@ public readonly struct TacticsAbilityExecutionContext
         TargetTile = targetTile;
         Targets = targets;
         CostPayment = costPayment;
+        ThrowDestination = throwDestination;
         DelayedImpactTargets = delayedImpactTargets;
     }
 
@@ -1234,6 +1496,7 @@ public readonly struct TacticsAbilityExecutionContext
     public Vector2Int TargetTile { get; }
     public IReadOnlyList<TacticsCharacterController> Targets { get; }
     public TacticsAbilityCostPayment CostPayment { get; }
+    public Vector2Int? ThrowDestination { get; }
     public IReadOnlyCollection<TacticsCharacterController> DelayedImpactTargets { get; }
 
     public bool ShouldDelayImpactFor(TacticsCharacterController target)

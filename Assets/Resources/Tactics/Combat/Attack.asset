@@ -58,7 +58,11 @@ MonoBehaviour:
       scaling: []
   statusEffects: []
   knockback:
-    distanceInTiles: 1
+    distanceInTiles: 0
+    duration: 0.5
+    arcHeight: 0.5
+  throwing:
+    enabled: 1
     duration: 0.5
     arcHeight: 0.5
   costResourceType: 1

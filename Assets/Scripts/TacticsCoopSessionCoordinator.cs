@@ -266,6 +266,15 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
 
     public bool RequestUseAbility(TacticsCharacterController character, TacticsAbilityDefinition ability, Vector2Int targetTile)
     {
+        return RequestUseAbility(character, ability, targetTile, null);
+    }
+
+    public bool RequestUseAbility(
+        TacticsCharacterController character,
+        TacticsAbilityDefinition ability,
+        Vector2Int targetTile,
+        Vector2Int? throwDestination)
+    {
         if (character == null || ability == null || !CanInitiateCommandForCharacter(character))
         {
             return false;
@@ -277,6 +286,9 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
             abilityId = ability.AbilityId,
             targetX = targetTile.x,
             targetY = targetTile.y,
+            hasThrowDestination = throwDestination.HasValue,
+            throwTargetX = throwDestination.HasValue ? throwDestination.Value.x : 0,
+            throwTargetY = throwDestination.HasValue ? throwDestination.Value.y : 0,
             randomStateJson = SerializeRandomState(UnityEngine.Random.state)
         };
 
@@ -865,9 +877,12 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         }
 
         Vector2Int targetTile = new Vector2Int(message.targetX, message.targetY);
+        Vector2Int? throwDestination = message.hasThrowDestination
+            ? new Vector2Int(message.throwTargetX, message.throwTargetY)
+            : null;
         return requireLocalAuthorityState
-            ? combatSystem.TryUseAbility(character, ability, targetTile)
-            : combatSystem.ApplyReplicatedAbility(character, ability, targetTile);
+            ? combatSystem.TryUseAbility(character, ability, targetTile, throwDestination)
+            : combatSystem.ApplyReplicatedAbility(character, ability, targetTile, throwDestination);
     }
 
     private bool ExecuteEndTurnCommand(EndTurnCommandMessage message, bool requireLocalAuthorityState = true)
@@ -1543,6 +1558,9 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         public string abilityId;
         public int targetX;
         public int targetY;
+        public bool hasThrowDestination;
+        public int throwTargetX;
+        public int throwTargetY;
         public string randomStateJson;
     }
 

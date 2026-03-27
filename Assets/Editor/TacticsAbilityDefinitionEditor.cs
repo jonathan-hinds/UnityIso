@@ -18,6 +18,7 @@ public sealed class TacticsAbilityDefinitionEditor : Editor
     private SerializedProperty effectsProperty;
     private SerializedProperty statusEffectsProperty;
     private SerializedProperty knockbackProperty;
+    private SerializedProperty throwingProperty;
     private SerializedProperty costResourceTypeProperty;
     private SerializedProperty costAmountProperty;
     private SerializedProperty allowMovementAsAlternateCostProperty;
@@ -37,6 +38,7 @@ public sealed class TacticsAbilityDefinitionEditor : Editor
         effectsProperty = serializedObject.FindProperty("effects");
         statusEffectsProperty = serializedObject.FindProperty("statusEffects");
         knockbackProperty = serializedObject.FindProperty("knockback");
+        throwingProperty = serializedObject.FindProperty("throwing");
         costResourceTypeProperty = serializedObject.FindProperty("costResourceType");
         costAmountProperty = serializedObject.FindProperty("costAmount");
         allowMovementAsAlternateCostProperty = serializedObject.FindProperty("allowMovementAsAlternateCost");
@@ -102,6 +104,31 @@ public sealed class TacticsAbilityDefinitionEditor : Editor
                 EditorGUILayout.PropertyField(
                     arcHeightProperty,
                     new GUIContent("Knockback Arc Height", "Additional vertical arc applied while the target is thrown."));
+            }
+        }
+
+        if (throwingProperty != null)
+        {
+            EditorGUILayout.Space();
+            SerializedProperty enabledProperty = throwingProperty.FindPropertyRelative("enabled");
+            SerializedProperty durationProperty = throwingProperty.FindPropertyRelative("duration");
+            SerializedProperty arcHeightProperty = throwingProperty.FindPropertyRelative("arcHeight");
+            EditorGUILayout.PropertyField(
+                enabledProperty,
+                new GUIContent(
+                    "Enable Throwing",
+                    "Allows the attacker to reposition the chosen target onto another unoccupied tile that this ability could validly target."));
+            if (enabledProperty.boolValue)
+            {
+                EditorGUILayout.PropertyField(
+                    durationProperty,
+                    new GUIContent("Throw Fly Time", "Total time the target spends airborne while being thrown."));
+                EditorGUILayout.PropertyField(
+                    arcHeightProperty,
+                    new GUIContent("Throw Arc Height", "Additional vertical arc applied while the target is thrown."));
+                EditorGUILayout.HelpBox(
+                    "Throwing uses the ability's normal targetable tiles as landing choices, excluding occupied tiles and the target's current tile.",
+                    MessageType.Info);
             }
         }
 

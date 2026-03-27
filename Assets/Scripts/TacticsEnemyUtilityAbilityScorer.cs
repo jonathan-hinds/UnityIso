@@ -242,7 +242,7 @@ public static class TacticsEnemyUtilityAbilityScorer
             value += ability.AreaOfEffectSize * 0.5f;
         }
 
-        value += GetKnockbackStrategicValue(ability);
+        value += GetForcedMovementStrategicValue(ability);
 
         return value;
     }
@@ -275,11 +275,22 @@ public static class TacticsEnemyUtilityAbilityScorer
         return false;
     }
 
-    private static float GetKnockbackStrategicValue(TacticsAbilityDefinition ability)
+    private static float GetForcedMovementStrategicValue(TacticsAbilityDefinition ability)
     {
-        return ability != null && ability.AppliesKnockback
+        if (ability == null)
+        {
+            return 0f;
+        }
+
+        float value = ability.AppliesKnockback
             ? ability.Knockback.DistanceInTiles * 4.5f
             : 0f;
+        if (ability.AppliesThrowing)
+        {
+            value += 7.5f;
+        }
+
+        return value;
     }
 
     private static float GetUnitBaseThreat(TacticsCharacterController unit)
