@@ -282,16 +282,16 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             new Vector2(0f, 0f),
             new Vector2(0f, 0f),
             new Vector2(0f, 0f),
-            new Vector2(36f, 36f),
-            new Vector2(576f, 268f));
+            new Vector2(28f, 28f),
+            new Vector2(432f, 206f));
         TacticsSelectionPanelView selectedCharacterPanelView = EnsureSelectionPanelView(
             TacticsSelectionPanelRole.SelectedCharacter,
             "Selected Character",
             new Vector2(1f, 0f),
             new Vector2(1f, 0f),
             new Vector2(1f, 0f),
-            new Vector2(-36f, 36f),
-            new Vector2(576f, 268f));
+            new Vector2(-28f, 28f),
+            new Vector2(432f, 206f));
         IsometricMapLayerVisibilityController layerVisibilityController = EnsureLayerVisibilityController();
         TacticsElevationSliderView elevationSliderView = EnsureElevationSliderView();
         TacticsTopRightNavBarView topRightNavBarView = EnsureTopRightNavBarView();
@@ -466,8 +466,19 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         string hudName = role == TacticsSelectionPanelRole.ActiveCharacter
             ? "Tactics Active Character Panel HUD"
             : "Tactics Selected Character Panel HUD";
-        GameObject hudObject = new GameObject(hudName);
-        TacticsSelectionPanelView view = hudObject.AddComponent<TacticsSelectionPanelView>();
+        TacticsSelectionPanelView prefab = Resources.Load<TacticsSelectionPanelView>(TacticsSelectionPanelView.DefaultPrefabResourcePath);
+        TacticsSelectionPanelView view;
+        if (prefab != null)
+        {
+            view = Instantiate(prefab);
+            view.gameObject.name = hudName;
+        }
+        else
+        {
+            GameObject hudObject = new GameObject(hudName);
+            view = hudObject.AddComponent<TacticsSelectionPanelView>();
+        }
+
         view.Configure(role, title, anchorMin, anchorMax, pivot, position, size);
         return view;
     }

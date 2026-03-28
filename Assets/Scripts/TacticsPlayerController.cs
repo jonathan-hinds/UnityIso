@@ -612,7 +612,7 @@ public class TacticsPlayerController : MonoBehaviour
         TacticsCharacterController activePlayerCharacter = GetActiveOwnedPlayerCharacter();
         if (activeCharacter != null)
         {
-            activeCharacterPanelView?.Show(activeCharacter);
+            activeCharacterPanelView?.Show(BuildSelectionHudData(activeCharacter));
         }
         else
         {
@@ -621,7 +621,7 @@ public class TacticsPlayerController : MonoBehaviour
 
         if (selectedCharacter != null && selectedCharacter.isActiveAndEnabled && selectedCharacter.IsAlive)
         {
-            selectedCharacterPanelView?.Show(selectedCharacter);
+            selectedCharacterPanelView?.Show(BuildSelectionHudData(selectedCharacter));
         }
         else
         {
@@ -659,6 +659,18 @@ public class TacticsPlayerController : MonoBehaviour
         }
 
         RefreshTargetOverlay();
+    }
+
+    private TacticsSelectionHudData BuildSelectionHudData(TacticsCharacterController character)
+    {
+        TacticsSelectionHudData hudData = character.BuildSelectionHudData();
+        if (coopSessionCoordinator != null &&
+            coopSessionCoordinator.TryGetOwningUsername(character, out string username))
+        {
+            hudData = hudData.WithOwnerDisplayName(username);
+        }
+
+        return hudData;
     }
 
     private void HandleActiveParticipantChanged(ITacticsTurnParticipant participant)

@@ -1,0 +1,77 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="False">
+    <ui:Style src="project://database/Assets/Resources/UI/TacticsCombatSelectionPanel.uss" />
+    <ui:VisualElement name="hud-root" class="jrpg-panel-doc">
+        <ui:VisualElement name="panel-root" class="jrpg-panel">
+            <ui:VisualElement name="panel-glow" class="jrpg-panel__glow" />
+            <ui:VisualElement name="panel-frame" class="jrpg-panel__frame">
+                <ui:VisualElement class="jrpg-panel__header">
+                    <ui:VisualElement class="jrpg-panel__title-block">
+                        <ui:Label name="panel-title-label" class="jrpg-panel__title" text="ACTIVE" />
+                        <ui:Label name="owner-label" class="jrpg-panel__owner" text="Player" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="jrpg-panel__level-chip">
+                        <ui:Label class="jrpg-panel__level-prefix" text="Lv" />
+                        <ui:Label name="level-label" class="jrpg-panel__level-value" text="1" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+                <ui:VisualElement class="jrpg-panel__name-row">
+                    <ui:Label name="name-label" class="jrpg-panel__name" text="Character" />
+                </ui:VisualElement>
+                <ui:VisualElement class="jrpg-panel__bar-stack">
+                    <ui:VisualElement name="hp-row" class="jrpg-bar-row jrpg-bar-row--hp">
+                        <ui:Label name="hp-label" class="jrpg-bar-row__label" text="HP" />
+                        <ui:VisualElement class="jrpg-bar-row__track-shell">
+                            <ui:VisualElement class="jrpg-bar-row__track">
+                                <ui:VisualElement name="hp-fill" class="jrpg-bar-row__fill" />
+                                <ui:VisualElement class="jrpg-bar-row__shine" />
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+                        <ui:Label name="hp-value" class="jrpg-bar-row__value" text="0/0" />
+                    </ui:VisualElement>
+                    <ui:VisualElement name="mp-row" class="jrpg-bar-row jrpg-bar-row--mp">
+                        <ui:Label name="mp-label" class="jrpg-bar-row__label" text="MP" />
+                        <ui:VisualElement class="jrpg-bar-row__track-shell">
+                            <ui:VisualElement class="jrpg-bar-row__track">
+                                <ui:VisualElement name="mp-fill" class="jrpg-bar-row__fill" />
+                                <ui:VisualElement class="jrpg-bar-row__shine" />
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+                        <ui:Label name="mp-value" class="jrpg-bar-row__value" text="0/0" />
+                    </ui:VisualElement>
+                    <ui:VisualElement name="st-row" class="jrpg-bar-row jrpg-bar-row--st">
+                        <ui:Label name="st-label" class="jrpg-bar-row__label" text="ST" />
+                        <ui:VisualElement class="jrpg-bar-row__track-shell">
+                            <ui:VisualElement class="jrpg-bar-row__track">
+                                <ui:VisualElement name="st-fill" class="jrpg-bar-row__fill" />
+                                <ui:VisualElement class="jrpg-bar-row__shine" />
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+                        <ui:Label name="st-value" class="jrpg-bar-row__value" text="0/0" />
+                    </ui:VisualElement>
+                    <ui:VisualElement name="exp-row" class="jrpg-bar-row jrpg-bar-row--exp">
+                        <ui:Label name="exp-label" class="jrpg-bar-row__label" text="EXP" />
+                        <ui:VisualElement class="jrpg-bar-row__track-shell">
+                            <ui:VisualElement class="jrpg-bar-row__track">
+                                <ui:VisualElement name="exp-fill" class="jrpg-bar-row__fill" />
+                                <ui:VisualElement class="jrpg-bar-row__shine" />
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+                        <ui:Label name="exp-value" class="jrpg-bar-row__value" text="0/0" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+                <ui:VisualElement class="jrpg-panel__footer">
+                    <ui:VisualElement name="action-indicator" class="jrpg-indicator">
+                        <ui:Label name="action-label" class="jrpg-indicator__label" text="ACT" />
+                        <ui:VisualElement name="action-pip-strip" class="jrpg-indicator__pips" />
+                        <ui:Label name="action-value" class="jrpg-indicator__value" text="0/1" />
+                    </ui:VisualElement>
+                    <ui:VisualElement name="movement-indicator" class="jrpg-indicator">
+                        <ui:Label name="movement-label" class="jrpg-indicator__label" text="MOV" />
+                        <ui:VisualElement name="movement-pip-strip" class="jrpg-indicator__pips" />
+                        <ui:Label name="movement-value" class="jrpg-indicator__value" text="0/1" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

@@ -1218,6 +1218,38 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         return IsOnlineSession && CanLocalPlayerControlCharacter(character);
     }
 
+    public bool TryGetOwningUsername(TacticsCharacterController character, out string username)
+    {
+        username = string.Empty;
+        if (character == null || !character.IsPlayerControlled || !IsOnlineSession)
+        {
+            return false;
+        }
+
+        if (!TryGetPartyIndex(character.RuntimeCharacterId, out int partyIndex))
+        {
+            return false;
+        }
+
+        if (currentLobbyState?.players != null &&
+            partyIndex >= 0 &&
+            partyIndex < currentLobbyState.players.Count &&
+            currentLobbyState.players[partyIndex] != null)
+        {
+            TacticsCoopLobbyPlayerState playerState = currentLobbyState.players[partyIndex];
+            username = SanitizeUsername(playerState.username, playerState.clientId);
+            return !string.IsNullOrWhiteSpace(username);
+        }
+
+        if (!TryGetClientIdForPartyIndex(partyIndex, out ulong clientId))
+        {
+            return false;
+        }
+
+        username = ResolveUsername(clientId);
+        return !string.IsNullOrWhiteSpace(username);
+    }
+
     private bool CanInitiateCommandForCharacter(TacticsCharacterController character)
     {
         if (character == null)
@@ -1276,6 +1308,20 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         }
 
         return DefaultOfflinePartyIndex;
+    }
+
+    private bool TryGetClientIdForPartyIndex(int partyIndex, out ulong clientId)
+    {
+        clientId = 0;
+        if (networkManager == null ||
+            partyIndex < 0 ||
+            partyIndex >= networkManager.ConnectedClientsIds.Count)
+        {
+            return false;
+        }
+
+        clientId = networkManager.ConnectedClientsIds[partyIndex];
+        return true;
     }
 
     private string ResolveLocalUsername()

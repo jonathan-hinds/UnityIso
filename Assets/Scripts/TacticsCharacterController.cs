@@ -102,10 +102,14 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     {
         return new TacticsSelectionHudData(
             DisplayName,
+            string.Empty,
+            CurrentLevel,
             new TacticsSelectionHudResourceData("HP", CurrentHitPoints, MaxHitPoints, new Color(0.72f, 0.23f, 0.27f, 1f)),
             new TacticsSelectionHudResourceData("MP", CurrentMana, MaxMana, new Color(0.25f, 0.49f, 0.77f, 1f)),
             new TacticsSelectionHudResourceData("ST", CurrentStamina, MaxStamina, new Color(0.34f, 0.62f, 0.42f, 1f)),
             new TacticsSelectionHudResourceData("EXP", CurrentExperience, ExperienceToNextLevel, new Color(0.58f, 0.32f, 0.82f, 1f), SupportsExperience),
+            new TacticsSelectionHudCounterData("ACT", CanUseAbilitiesThisTurn ? 1 : 0, 1, true),
+            new TacticsSelectionHudCounterData("MOV", CanMoveThisTurn ? 1 : 0, 1, true),
             characterData != null ? characterData.SelectedColor : Color.white);
     }
 

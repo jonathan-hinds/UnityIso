@@ -1,0 +1,301 @@
+:root {
+    --jrpg-panel-width: 432px;
+    --jrpg-panel-bg: #0A121FCC;
+    --jrpg-panel-bg-strong: #0E192AEB;
+    --jrpg-panel-border: #FFE3AA5C;
+    --jrpg-panel-ink: #F5F0E5F5;
+    --jrpg-panel-soft-ink: #BDCae0D6;
+    --jrpg-panel-muted: #8B9DBAB8;
+    --jrpg-track-bg: #0D1420DB;
+    --jrpg-track-border: #D4E2FF29;
+    --jrpg-owner-bg: #547BB133;
+    --jrpg-indicator-bg: #121A29D1;
+}
+
+.jrpg-panel-doc {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.jrpg-panel {
+    width: var(--jrpg-panel-width);
+    min-height: 206px;
+    max-width: var(--jrpg-panel-width);
+    padding: 0;
+    position: absolute;
+    overflow: hidden;
+}
+
+.jrpg-panel__glow {
+    position: absolute;
+    left: 14px;
+    right: 14px;
+    top: 10px;
+    height: 56px;
+    background-color: #FFC67A14;
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+}
+
+.jrpg-panel__frame {
+    height: 100%;
+    flex-direction: column;
+    padding-left: 16px;
+    padding-right: 16px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+    background-color: var(--jrpg-panel-bg);
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-right-width: 1px;
+    border-top-color: #FFC67A8A;
+    border-bottom-color: #FFC67A4D;
+    border-left-color: #D3E0F82E;
+    border-right-color: #D3E0F82E;
+    border-top-left-radius: 14px;
+    border-top-right-radius: 14px;
+    border-bottom-left-radius: 14px;
+    border-bottom-right-radius: 14px;
+    overflow: hidden;
+}
+
+.jrpg-panel--active .jrpg-panel__frame {
+    background-color: #0A121FD1;
+}
+
+.jrpg-panel--selected .jrpg-panel__frame {
+    background-color: #0C1625C2;
+}
+
+.jrpg-panel__header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 6px;
+}
+
+.jrpg-panel__title-block {
+    flex-direction: column;
+    flex-shrink: 1;
+}
+
+.jrpg-panel__title {
+    color: #FFC67AF5;
+    font-size: 10px;
+    -unity-font-style: bold;
+    letter-spacing: 3px;
+    margin-bottom: 4px;
+}
+
+.jrpg-panel__owner {
+    max-width: 260px;
+    padding-left: 8px;
+    padding-right: 8px;
+    padding-top: 3px;
+    padding-bottom: 3px;
+    color: var(--jrpg-panel-soft-ink);
+    font-size: 10px;
+    letter-spacing: 1px;
+    background-color: var(--jrpg-owner-bg);
+    border-top-left-radius: 999px;
+    border-top-right-radius: 999px;
+    border-bottom-left-radius: 999px;
+    border-bottom-right-radius: 999px;
+}
+
+.jrpg-panel__owner--hidden {
+    display: none;
+}
+
+.jrpg-panel__level-chip {
+    flex-direction: row;
+    align-items: center;
+    padding-left: 10px;
+    padding-right: 10px;
+    padding-top: 6px;
+    padding-bottom: 5px;
+    background-color: #121B2DEB;
+    border-top-left-radius: 999px;
+    border-top-right-radius: 999px;
+    border-bottom-left-radius: 999px;
+    border-bottom-right-radius: 999px;
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-right-width: 1px;
+    border-top-color: #FFC67A66;
+    border-bottom-color: #FFC67A38;
+    border-left-color: #D3E0F824;
+    border-right-color: #D3E0F824;
+}
+
+.jrpg-panel__level-prefix {
+    color: var(--jrpg-panel-muted);
+    font-size: 10px;
+    -unity-font-style: bold;
+    letter-spacing: 1px;
+    margin-right: 4px;
+}
+
+.jrpg-panel__level-value {
+    color: var(--jrpg-panel-ink);
+    font-size: 15px;
+    -unity-font-style: bold;
+}
+
+.jrpg-panel__name-row {
+    margin-bottom: 10px;
+}
+
+.jrpg-panel__name {
+    color: var(--jrpg-panel-ink);
+    font-size: 20px;
+    -unity-font-style: bold;
+    letter-spacing: 1px;
+    white-space: normal;
+}
+
+.jrpg-panel__bar-stack {
+    flex-direction: column;
+    flex-grow: 1;
+    margin-bottom: 10px;
+}
+
+.jrpg-bar-row {
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.jrpg-bar-row__label {
+    width: 34px;
+    color: #FFC67AF0;
+    font-size: 11px;
+    -unity-font-style: bold;
+    letter-spacing: 2px;
+}
+
+.jrpg-bar-row__track-shell {
+    flex-grow: 1;
+    margin-right: 10px;
+    min-width: 0;
+}
+
+.jrpg-bar-row__track {
+    position: relative;
+    height: 10px;
+    background-color: var(--jrpg-track-bg);
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-right-width: 1px;
+    border-top-color: var(--jrpg-track-border);
+    border-bottom-color: #080D18EB;
+    border-left-color: var(--jrpg-track-border);
+    border-right-color: var(--jrpg-track-border);
+    border-top-left-radius: 999px;
+    border-top-right-radius: 999px;
+    border-bottom-left-radius: 999px;
+    border-bottom-right-radius: 999px;
+    overflow: hidden;
+}
+
+.jrpg-bar-row__fill {
+    height: 100%;
+    width: 100%;
+    min-width: 0;
+    background-color: #FFC67AE6;
+    border-top-left-radius: 999px;
+    border-bottom-left-radius: 999px;
+    border-top-right-radius: 999px;
+    border-bottom-right-radius: 999px;
+}
+
+.jrpg-bar-row__shine {
+    position: absolute;
+    left: 1px;
+    right: 1px;
+    top: 1px;
+    height: 3px;
+    background-color: #FFFFFF1A;
+    border-top-left-radius: 999px;
+    border-top-right-radius: 999px;
+}
+
+.jrpg-bar-row__value {
+    width: 66px;
+    color: var(--jrpg-panel-ink);
+    font-size: 11px;
+    -unity-font-style: bold;
+    -unity-text-align: middle-right;
+}
+
+.jrpg-panel__footer {
+    flex-direction: row;
+    align-items: stretch;
+    justify-content: flex-end;
+}
+
+.jrpg-indicator {
+    flex-direction: column;
+    min-width: 112px;
+    margin-left: 8px;
+    padding-left: 10px;
+    padding-right: 10px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+    background-color: var(--jrpg-indicator-bg);
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
+    border-bottom-left-radius: 12px;
+    border-bottom-right-radius: 12px;
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-right-width: 1px;
+    border-top-color: #D0E0FF24;
+    border-bottom-color: #080D18EB;
+    border-left-color: #D0E0FF1A;
+    border-right-color: #D0E0FF1A;
+}
+
+.jrpg-indicator__label {
+    color: #FFC67AEB;
+    font-size: 9px;
+    -unity-font-style: bold;
+    letter-spacing: 2px;
+    margin-bottom: 4px;
+}
+
+.jrpg-indicator__pips {
+    flex-direction: row;
+    margin-bottom: 4px;
+}
+
+.jrpg-indicator__pip {
+    width: 16px;
+    height: 6px;
+    margin-right: 4px;
+    background-color: #404C62B3;
+    border-top-left-radius: 999px;
+    border-top-right-radius: 999px;
+    border-bottom-left-radius: 999px;
+    border-bottom-right-radius: 999px;
+}
+
+.jrpg-indicator__pip--active {
+    background-color: #FFC67AE6;
+}
+
+.jrpg-indicator__value {
+    color: var(--jrpg-panel-ink);
+    font-size: 11px;
+    -unity-font-style: bold;
+    -unity-text-align: middle-right;
+}

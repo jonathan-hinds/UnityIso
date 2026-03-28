@@ -10,11 +10,11 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e7b9484a5008cb04fb02b3a3ce7d7f91, type: 3}
-  m_Name: Attack
+  m_Name: Push
   m_EditorClassIdentifier: 
-  abilityId: attack
-  displayName: Attack
-  description: A basic melee strike.
+  abilityId: push
+  displayName: Push
+  description: 'Assault the targeting, knocking them back. '
   rangeType: 0
   range: 1
   areaOfEffectSize: 1
@@ -56,11 +56,11 @@ MonoBehaviour:
       scaling: []
   statusEffects: []
   knockback:
-    distanceInTiles: 0
+    distanceInTiles: 1
     duration: 0.5
     arcHeight: 0.5
   throwing:
-    enabled: 1
+    enabled: 0
     duration: 0.5
     arcHeight: 0.5
   costResourceType: 1
