@@ -25,8 +25,33 @@ public static class TacticsAbilityPreviewCalculator
         return new TacticsAbilityTooltipContent(
             ability.DisplayName.ToUpperInvariant(),
             metaText,
-            bodyText,
+            BuildDescriptionText(ability),
+            BuildGeneratedDescriptionText(source, ability),
             footerText);
+    }
+
+    public static TacticsAbilityCardContent BuildCardContent(
+        TacticsCharacterController source,
+        TacticsAbilityDefinition ability,
+        string statusText = "")
+    {
+        if (ability == null)
+        {
+            return default;
+        }
+
+        string status = string.IsNullOrWhiteSpace(statusText) || statusText == "Ready"
+            ? string.Empty
+            : statusText.Trim();
+
+        return new TacticsAbilityCardContent(
+            ability.DisplayName.ToUpperInvariant(),
+            BuildHeaderCombatSummary(source, ability),
+            BuildCostLabel(ability),
+            BuildRangeLabel(ability),
+            BuildDescriptionText(ability),
+            BuildGeneratedDescriptionText(source, ability),
+            status);
     }
 
     public static string BuildCostLabel(TacticsAbilityDefinition ability)
@@ -79,9 +104,7 @@ public static class TacticsAbilityPreviewCalculator
     {
         StringBuilder builder = new();
 
-        string description = string.IsNullOrWhiteSpace(ability.Description)
-            ? "No description."
-            : ability.Description.Trim();
+        string description = BuildDescriptionText(ability);
         builder.Append(description);
 
         List<string> previewLines = BuildEffectPreviewLines(source, ability);
@@ -97,6 +120,35 @@ public static class TacticsAbilityPreviewCalculator
                     builder.AppendLine();
                 }
             }
+        }
+
+        return builder.ToString();
+    }
+
+    public static string BuildDescriptionText(TacticsAbilityDefinition ability)
+    {
+        return string.IsNullOrWhiteSpace(ability != null ? ability.Description : null)
+            ? "No description."
+            : ability.Description.Trim();
+    }
+
+    public static string BuildGeneratedDescriptionText(TacticsCharacterController source, TacticsAbilityDefinition ability)
+    {
+        List<string> previewLines = BuildEffectPreviewLines(source, ability);
+        if (previewLines.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        StringBuilder builder = new();
+        for (int i = 0; i < previewLines.Count; i++)
+        {
+            if (i > 0)
+            {
+                builder.AppendLine();
+            }
+
+            builder.Append(previewLines[i]);
         }
 
         return builder.ToString();
@@ -175,6 +227,37 @@ public static class TacticsAbilityPreviewCalculator
         }
 
         return builder.ToString();
+    }
+
+    public static string BuildHeaderCombatSummary(TacticsCharacterController source, TacticsAbilityDefinition ability)
+    {
+        if (source == null || ability == null)
+        {
+            return string.Empty;
+        }
+
+        IReadOnlyList<TacticsAbilityEffectDefinitionData> effects = ability.Effects;
+        for (int i = 0; i < effects.Count; i++)
+        {
+            TacticsAbilityEffectDefinitionData effect = effects[i];
+            if (effect.EffectKind != TacticsAbilityEffectKind.DealDamage)
+            {
+                continue;
+            }
+
+            string scalingSummary = BuildHeaderScalingSummary(effect.DealDamage.Scaling);
+            (int amountMin, int amountMax) = TacticsAbilityEffectMath.GetDamageAmountRange(source, ability, effect.DealDamage);
+            string damageRange = FormatRange(amountMin, amountMax);
+
+            if (string.IsNullOrWhiteSpace(scalingSummary))
+            {
+                return damageRange;
+            }
+
+            return $"{scalingSummary} {damageRange}";
+        }
+
+        return string.Empty;
     }
 
     private static string BuildHealingPreviewLine(
@@ -363,6 +446,17 @@ public static class TacticsAbilityPreviewCalculator
         return builder.ToString();
     }
 
+    private static string BuildHeaderScalingSummary(IReadOnlyList<TacticsAbilityScalingDefinitionData> scalingDefinitions)
+    {
+        if (scalingDefinitions == null || scalingDefinitions.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        TacticsAbilityScalingDefinitionData scaling = scalingDefinitions[0];
+        return $"{GetScalingStatLabel(scaling.Stat)} {scaling.Rank}";
+    }
+
     private static string GetScalingStatLabel(TacticsAbilityScalingStat stat)
     {
         return stat switch
@@ -400,4 +494,35 @@ public static class TacticsAbilityPreviewCalculator
     {
         return value >= 0 ? $"+{value}" : value.ToString();
     }
+}
+
+public readonly struct TacticsAbilityCardContent
+{
+    public TacticsAbilityCardContent(
+        string title,
+        string headerCombatSummary,
+        string cost,
+        string range,
+        string description,
+        string generatedDescription,
+        string status)
+    {
+        Title = string.IsNullOrWhiteSpace(title) ? string.Empty : title.Trim();
+        HeaderCombatSummary = string.IsNullOrWhiteSpace(headerCombatSummary) ? string.Empty : headerCombatSummary.Trim();
+        Cost = string.IsNullOrWhiteSpace(cost) ? string.Empty : cost.Trim();
+        Range = string.IsNullOrWhiteSpace(range) ? string.Empty : range.Trim();
+        Description = string.IsNullOrWhiteSpace(description) ? string.Empty : description.Trim();
+        GeneratedDescription = string.IsNullOrWhiteSpace(generatedDescription) ? string.Empty : generatedDescription.Trim();
+        Status = string.IsNullOrWhiteSpace(status) ? string.Empty : status.Trim();
+    }
+
+    public string Title { get; }
+    public string HeaderCombatSummary { get; }
+    public string Cost { get; }
+    public string Range { get; }
+    public string Description { get; }
+    public string GeneratedDescription { get; }
+    public string Status { get; }
+    public bool HasGeneratedDescription => !string.IsNullOrWhiteSpace(GeneratedDescription);
+    public bool HasStatus => !string.IsNullOrWhiteSpace(Status);
 }

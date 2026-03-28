@@ -20,6 +20,7 @@ public sealed class TacticsSelectionPanelView : MonoBehaviour
     [SerializeField] private Vector2 anchorMax = new Vector2(0f, 0f);
     [SerializeField] private Vector2 pivot = new Vector2(0f, 0f);
     [SerializeField] private Vector2 anchoredPosition = new Vector2(28f, 28f);
+    [SerializeField] private bool overrideSizeFromCode;
     [SerializeField] private Vector2 panelSize = new Vector2(432f, 206f);
 
     [Header("Theme")]
@@ -406,7 +407,10 @@ public sealed class TacticsSelectionPanelView : MonoBehaviour
         rect.anchorMax = anchorMax;
         rect.pivot = pivot;
         rect.anchoredPosition = anchoredPosition;
-        rect.sizeDelta = panelSize;
+        if (overrideSizeFromCode)
+        {
+            rect.sizeDelta = panelSize;
+        }
     }
 
     private void ApplyHeader()
@@ -429,13 +433,6 @@ public sealed class TacticsSelectionPanelView : MonoBehaviour
         if (glowImage != null)
         {
             glowImage.color = new Color(accentColor.r, accentColor.g, accentColor.b, 0.08f);
-        }
-
-        if (innerPanelImage != null)
-        {
-            innerPanelImage.color = panelRole == TacticsSelectionPanelRole.ActiveCharacter
-                ? new Color(0.07f, 0.12f, 0.19f, 0.36f)
-                : new Color(0.07f, 0.10f, 0.16f, 0.32f);
         }
 
         if (ownerPillImage != null)

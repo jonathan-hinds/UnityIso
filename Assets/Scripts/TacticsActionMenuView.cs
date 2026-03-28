@@ -8,6 +8,11 @@ using UnityEngine.UI;
 [DisallowMultipleComponent]
 public class TacticsActionMenuView : MonoBehaviour
 {
+    private const float FlyoutWidth = 1180f;
+    private const float FlyoutHeight = 760f;
+    private const float FlyoutCardHeight = 180f;
+    private const int FlyoutColumnCount = 2;
+
     [Header("Theme")]
     [SerializeField] private Color panelColor = new Color(0.08f, 0.09f, 0.11f, 0.96f);
     [SerializeField] private Color panelBorderColor = new Color(0.88f, 0.84f, 0.72f, 1f);
@@ -19,6 +24,17 @@ public class TacticsActionMenuView : MonoBehaviour
     [SerializeField] private Color flyoutShadowColor = new Color(0f, 0f, 0f, 0.24f);
     [SerializeField] private Color selectedAbilityColor = new Color(0.4f, 0.32f, 0.16f, 1f);
     [SerializeField] private Color disabledTextColor = new Color(0.45f, 0.46f, 0.5f, 1f);
+    [SerializeField] private Color flyoutBodyColor = new Color(0.07f, 0.08f, 0.1f, 0.985f);
+    [SerializeField] private Color flyoutChromeColor = new Color(1f, 1f, 1f, 0.035f);
+    [SerializeField] private Color cardColor = new Color(0.11f, 0.13f, 0.16f, 0.98f);
+    [SerializeField] private Color cardHoverColor = new Color(0.16f, 0.18f, 0.22f, 1f);
+    [SerializeField] private Color cardDisabledColor = new Color(0.12f, 0.13f, 0.15f, 0.72f);
+    [SerializeField] private Color cardDividerColor = new Color(0.76f, 0.69f, 0.5f, 0.34f);
+    [SerializeField] private Color cardMetaColor = new Color(0.86f, 0.80f, 0.68f, 0.92f);
+    [SerializeField] private Color cardDescriptionColor = new Color(0.96f, 0.94f, 0.89f, 1f);
+    [SerializeField] private Color cardGeneratedColor = new Color(0.72f, 0.75f, 0.8f, 0.92f);
+    [SerializeField] private Color cardStatusColor = new Color(0.98f, 0.83f, 0.58f, 1f);
+    [SerializeField] private Color viewportColor = new Color(1f, 1f, 1f, 0.025f);
 
     private Canvas rootCanvas;
     private GameObject panelRoot;
@@ -33,8 +49,10 @@ public class TacticsActionMenuView : MonoBehaviour
     private GameObject flyoutRoot;
     private Button flyoutDismissButton;
     private Text flyoutTitleText;
+    private Text flyoutSubtitleText;
     private Text emptyStateText;
     private RectTransform abilityContentRoot;
+    private GridLayoutGroup abilityGridLayout;
     private readonly List<AbilityEntryWidgets> abilityEntryPool = new();
     private TacticsCharacterController displayedCharacter;
     private IReadOnlyList<TacticsActionMenuAbilityOption> displayedAbilityOptions = Array.Empty<TacticsActionMenuAbilityOption>();
@@ -95,6 +113,7 @@ public class TacticsActionMenuView : MonoBehaviour
             tooltipView?.Hide();
         }
 
+        RefreshFlyoutHeader();
         RebuildAbilityEntries();
     }
 
@@ -292,6 +311,7 @@ public class TacticsActionMenuView : MonoBehaviour
 
         if (isFlyoutOpen)
         {
+            RefreshFlyoutHeader();
             RebuildAbilityEntries();
         }
         else
@@ -321,13 +341,14 @@ public class TacticsActionMenuView : MonoBehaviour
     {
         flyoutRoot = CreateUiObject("AbilitiesFlyout", transform);
         RectTransform flyoutRect = flyoutRoot.GetComponent<RectTransform>();
-        flyoutRect.anchorMin = new Vector2(0f, 1f);
-        flyoutRect.anchorMax = new Vector2(0f, 1f);
-        flyoutRect.pivot = new Vector2(0f, 1f);
-        flyoutRect.sizeDelta = new Vector2(320f, 228f);
+        flyoutRect.anchorMin = new Vector2(1f, 1f);
+        flyoutRect.anchorMax = new Vector2(1f, 1f);
+        flyoutRect.pivot = new Vector2(1f, 1f);
+        flyoutRect.anchoredPosition = new Vector2(-36f, -124f);
+        flyoutRect.sizeDelta = new Vector2(FlyoutWidth, FlyoutHeight);
 
         Image flyoutImage = flyoutRoot.AddComponent<Image>();
-        flyoutImage.color = panelColor;
+        flyoutImage.color = flyoutBodyColor;
 
         Outline flyoutOutline = flyoutRoot.AddComponent<Outline>();
         flyoutOutline.effectColor = panelBorderColor;
@@ -341,22 +362,45 @@ public class TacticsActionMenuView : MonoBehaviour
         flyoutDismissButton.transition = Selectable.Transition.None;
         flyoutDismissButton.onClick.AddListener(HandleFlyoutBackgroundClicked);
 
+        GameObject chromeObject = CreateUiObject("FlyoutChrome", flyoutRoot.transform);
+        RectTransform chromeRect = chromeObject.GetComponent<RectTransform>();
+        chromeRect.anchorMin = Vector2.zero;
+        chromeRect.anchorMax = Vector2.one;
+        chromeRect.offsetMin = new Vector2(12f, 12f);
+        chromeRect.offsetMax = new Vector2(-12f, -12f);
+
+        Image chromeImage = chromeObject.AddComponent<Image>();
+        chromeImage.color = flyoutChromeColor;
+        chromeImage.raycastTarget = false;
+
+        Outline chromeOutline = chromeObject.AddComponent<Outline>();
+        chromeOutline.effectColor = new Color(panelBorderColor.r, panelBorderColor.g, panelBorderColor.b, 0.16f);
+        chromeOutline.effectDistance = new Vector2(1f, -1f);
+
         flyoutTitleText = CreateText("FlyoutTitle", flyoutRoot.transform, 18, FontStyle.Bold, accentColor);
         RectTransform titleRect = flyoutTitleText.rectTransform;
         titleRect.anchorMin = new Vector2(0f, 1f);
         titleRect.anchorMax = new Vector2(1f, 1f);
         titleRect.pivot = new Vector2(0.5f, 1f);
-        titleRect.offsetMin = new Vector2(20f, -34f);
-        titleRect.offsetMax = new Vector2(-20f, -8f);
+        titleRect.offsetMin = new Vector2(32f, -42f);
+        titleRect.offsetMax = new Vector2(-32f, -16f);
         flyoutTitleText.text = "ABILITIES";
+
+        flyoutSubtitleText = CreateText("FlyoutSubtitle", flyoutRoot.transform, 34, FontStyle.Bold, primaryTextColor);
+        RectTransform subtitleRect = flyoutSubtitleText.rectTransform;
+        subtitleRect.anchorMin = new Vector2(0f, 1f);
+        subtitleRect.anchorMax = new Vector2(1f, 1f);
+        subtitleRect.pivot = new Vector2(0.5f, 1f);
+        subtitleRect.offsetMin = new Vector2(32f, -98f);
+        subtitleRect.offsetMax = new Vector2(-32f, -42f);
 
         GameObject divider = CreateUiObject("FlyoutDivider", flyoutRoot.transform);
         RectTransform dividerRect = divider.GetComponent<RectTransform>();
         dividerRect.anchorMin = new Vector2(0f, 1f);
         dividerRect.anchorMax = new Vector2(1f, 1f);
         dividerRect.pivot = new Vector2(0.5f, 1f);
-        dividerRect.offsetMin = new Vector2(20f, -48f);
-        dividerRect.offsetMax = new Vector2(-20f, -44f);
+        dividerRect.offsetMin = new Vector2(32f, -114f);
+        dividerRect.offsetMax = new Vector2(-32f, -110f);
 
         Image dividerImage = divider.AddComponent<Image>();
         dividerImage.color = accentColor;
@@ -365,13 +409,13 @@ public class TacticsActionMenuView : MonoBehaviour
         RectTransform scrollRectTransform = scrollRoot.GetComponent<RectTransform>();
         scrollRectTransform.anchorMin = new Vector2(0f, 0f);
         scrollRectTransform.anchorMax = new Vector2(1f, 1f);
-        scrollRectTransform.offsetMin = new Vector2(18f, 18f);
-        scrollRectTransform.offsetMax = new Vector2(-18f, -58f);
+        scrollRectTransform.offsetMin = new Vector2(32f, 32f);
+        scrollRectTransform.offsetMax = new Vector2(-32f, -130f);
 
         ScrollRect scrollRect = scrollRoot.AddComponent<ScrollRect>();
         scrollRect.horizontal = false;
         scrollRect.movementType = ScrollRect.MovementType.Clamped;
-        scrollRect.scrollSensitivity = 22f;
+        scrollRect.scrollSensitivity = 28f;
 
         GameObject viewport = CreateUiObject("Viewport", scrollRoot.transform);
         RectTransform viewportRect = viewport.GetComponent<RectTransform>();
@@ -381,7 +425,7 @@ public class TacticsActionMenuView : MonoBehaviour
         viewportRect.offsetMax = new Vector2(-18f, 0f);
 
         Image viewportImage = viewport.AddComponent<Image>();
-        viewportImage.color = new Color(buttonColor.r, buttonColor.g, buttonColor.b, 0.32f);
+        viewportImage.color = viewportColor;
         viewport.AddComponent<RectMask2D>();
 
         GameObject content = CreateUiObject("Content", viewport.transform);
@@ -392,14 +436,14 @@ public class TacticsActionMenuView : MonoBehaviour
         abilityContentRoot.offsetMin = Vector2.zero;
         abilityContentRoot.offsetMax = Vector2.zero;
 
-        VerticalLayoutGroup contentLayout = content.AddComponent<VerticalLayoutGroup>();
-        contentLayout.padding = new RectOffset(8, 8, 8, 8);
-        contentLayout.spacing = 8f;
-        contentLayout.childAlignment = TextAnchor.UpperLeft;
-        contentLayout.childControlHeight = true;
-        contentLayout.childControlWidth = true;
-        contentLayout.childForceExpandHeight = false;
-        contentLayout.childForceExpandWidth = true;
+        abilityGridLayout = content.AddComponent<GridLayoutGroup>();
+        abilityGridLayout.padding = new RectOffset(4, 4, 4, 4);
+        abilityGridLayout.spacing = new Vector2(20f, 20f);
+        abilityGridLayout.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+        abilityGridLayout.constraintCount = FlyoutColumnCount;
+        abilityGridLayout.startAxis = GridLayoutGroup.Axis.Horizontal;
+        abilityGridLayout.startCorner = GridLayoutGroup.Corner.UpperLeft;
+        abilityGridLayout.childAlignment = TextAnchor.UpperLeft;
 
         ContentSizeFitter contentFitter = content.AddComponent<ContentSizeFitter>();
         contentFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
@@ -468,6 +512,7 @@ public class TacticsActionMenuView : MonoBehaviour
 
         int optionCount = displayedAbilityOptions != null ? displayedAbilityOptions.Count : 0;
         EnsureAbilityEntryPool(optionCount);
+        RefreshAbilityGridLayout();
 
         for (int i = 0; i < abilityEntryPool.Count; i++)
         {
@@ -484,7 +529,6 @@ public class TacticsActionMenuView : MonoBehaviour
 
         bool hasOptions = optionCount > 0;
         emptyStateText.gameObject.SetActive(!hasOptions);
-        RefreshFlyoutPosition();
         LayoutRebuilder.ForceRebuildLayoutImmediate(abilityContentRoot);
     }
 
@@ -499,20 +543,17 @@ public class TacticsActionMenuView : MonoBehaviour
     private AbilityEntryWidgets CreateAbilityEntryWidget(int index)
     {
         GameObject entryRoot = CreateUiObject($"AbilityEntry_{index}", abilityContentRoot);
-        LayoutElement layoutElement = entryRoot.AddComponent<LayoutElement>();
-        layoutElement.preferredHeight = 58f;
-        layoutElement.minHeight = 58f;
 
         Image entryImage = entryRoot.AddComponent<Image>();
-        entryImage.color = buttonColor;
+        entryImage.color = cardColor;
 
         Button entryButton = entryRoot.AddComponent<Button>();
         ColorBlock colors = entryButton.colors;
-        colors.normalColor = buttonColor;
-        colors.highlightedColor = buttonHighlightedColor;
-        colors.selectedColor = buttonHighlightedColor;
+        colors.normalColor = cardColor;
+        colors.highlightedColor = cardHoverColor;
+        colors.selectedColor = cardHoverColor;
         colors.pressedColor = accentColor;
-        colors.disabledColor = new Color(buttonColor.r, buttonColor.g, buttonColor.b, 0.4f);
+        colors.disabledColor = cardDisabledColor;
         colors.colorMultiplier = 1f;
         colors.fadeDuration = 0.08f;
         entryButton.colors = colors;
@@ -524,39 +565,131 @@ public class TacticsActionMenuView : MonoBehaviour
 
         TacticsAbilityTooltipTrigger tooltipTrigger = entryRoot.AddComponent<TacticsAbilityTooltipTrigger>();
 
-        Text nameText = CreateText("Name", entryRoot.transform, 18, FontStyle.Bold, primaryTextColor);
+        VerticalLayoutGroup layout = entryRoot.AddComponent<VerticalLayoutGroup>();
+        layout.padding = new RectOffset(16, 16, 14, 14);
+        layout.spacing = 8f;
+        layout.childAlignment = TextAnchor.UpperLeft;
+        layout.childControlHeight = true;
+        layout.childControlWidth = true;
+        layout.childForceExpandHeight = false;
+        layout.childForceExpandWidth = true;
+
+        GameObject headerRow = CreateUiObject("HeaderRow", entryRoot.transform);
+        HorizontalLayoutGroup headerLayout = headerRow.AddComponent<HorizontalLayoutGroup>();
+        headerLayout.spacing = 0f;
+        headerLayout.childAlignment = TextAnchor.MiddleLeft;
+        headerLayout.childControlHeight = true;
+        headerLayout.childControlWidth = true;
+        headerLayout.childForceExpandHeight = false;
+        headerLayout.childForceExpandWidth = true;
+
+        LayoutElement headerRowLayout = headerRow.AddComponent<LayoutElement>();
+        headerRowLayout.preferredHeight = 28f;
+        headerRowLayout.minHeight = 28f;
+
+        GameObject nameRegion = CreateUiObject("NameRegion", headerRow.transform);
+        LayoutElement nameRegionLayout = nameRegion.AddComponent<LayoutElement>();
+        nameRegionLayout.flexibleWidth = 1f;
+        nameRegionLayout.minWidth = 0f;
+        nameRegionLayout.preferredHeight = 28f;
+        nameRegionLayout.minHeight = 28f;
+
+        Text nameText = CreateText("Name", nameRegion.transform, 18, FontStyle.Bold, primaryTextColor);
+        nameText.alignment = TextAnchor.MiddleLeft;
+        nameText.horizontalOverflow = HorizontalWrapMode.Overflow;
+        nameText.verticalOverflow = VerticalWrapMode.Truncate;
         RectTransform nameRect = nameText.rectTransform;
-        nameRect.anchorMin = new Vector2(0f, 1f);
-        nameRect.anchorMax = new Vector2(1f, 1f);
-        nameRect.pivot = new Vector2(0.5f, 1f);
-        nameRect.offsetMin = new Vector2(14f, -28f);
-        nameRect.offsetMax = new Vector2(-14f, -4f);
-        nameText.alignment = TextAnchor.UpperLeft;
+        nameRect.anchorMin = Vector2.zero;
+        nameRect.anchorMax = Vector2.one;
+        nameRect.offsetMin = Vector2.zero;
+        nameRect.offsetMax = Vector2.zero;
 
-        Text detailText = CreateText("Detail", entryRoot.transform, 13, FontStyle.Normal, secondaryTextColor);
-        RectTransform detailRect = detailText.rectTransform;
-        detailRect.anchorMin = new Vector2(0f, 0f);
-        detailRect.anchorMax = new Vector2(1f, 1f);
-        detailRect.offsetMin = new Vector2(14f, 8f);
-        detailRect.offsetMax = new Vector2(-14f, -28f);
-        detailText.alignment = TextAnchor.LowerLeft;
-        detailText.horizontalOverflow = HorizontalWrapMode.Overflow;
-        detailText.verticalOverflow = VerticalWrapMode.Truncate;
+        GameObject summaryRegion = CreateUiObject("SummaryRegion", headerRow.transform);
+        LayoutElement summaryRegionLayout = summaryRegion.AddComponent<LayoutElement>();
+        summaryRegionLayout.flexibleWidth = 1f;
+        summaryRegionLayout.minWidth = 0f;
+        summaryRegionLayout.preferredHeight = 28f;
+        summaryRegionLayout.minHeight = 28f;
 
-        return new AbilityEntryWidgets(entryRoot, entryButton, entryImage, nameText, detailText, tooltipTrigger);
+        Text headerSummaryText = CreateText("HeaderSummary", summaryRegion.transform, 18, FontStyle.Bold, cardMetaColor);
+        headerSummaryText.alignment = TextAnchor.MiddleRight;
+        headerSummaryText.horizontalOverflow = HorizontalWrapMode.Overflow;
+        headerSummaryText.verticalOverflow = VerticalWrapMode.Truncate;
+        RectTransform headerSummaryRect = headerSummaryText.rectTransform;
+        headerSummaryRect.anchorMin = Vector2.zero;
+        headerSummaryRect.anchorMax = Vector2.one;
+        headerSummaryRect.offsetMin = Vector2.zero;
+        headerSummaryRect.offsetMax = Vector2.zero;
+
+        GameObject topDivider = CreateDivider(entryRoot.transform, "TopDivider");
+
+        Text metaText = CreateText("Meta", entryRoot.transform, 12, FontStyle.Bold, cardMetaColor);
+        metaText.alignment = TextAnchor.MiddleLeft;
+
+        GameObject middleDivider = CreateDivider(entryRoot.transform, "MiddleDivider");
+
+        Text descriptionText = CreateText("Description", entryRoot.transform, 15, FontStyle.Normal, cardDescriptionColor);
+        descriptionText.alignment = TextAnchor.UpperLeft;
+
+        Text generatedText = CreateText("Generated", entryRoot.transform, 12, FontStyle.Italic, cardGeneratedColor);
+        generatedText.alignment = TextAnchor.UpperLeft;
+
+        Text statusText = CreateText("Status", entryRoot.transform, 11, FontStyle.Bold, cardStatusColor);
+        statusText.alignment = TextAnchor.LowerLeft;
+
+        LayoutElement descriptionLayout = descriptionText.gameObject.AddComponent<LayoutElement>();
+        descriptionLayout.flexibleHeight = 1f;
+        LayoutElement generatedLayout = generatedText.gameObject.AddComponent<LayoutElement>();
+        generatedLayout.flexibleHeight = 1f;
+
+        return new AbilityEntryWidgets(
+            entryRoot,
+            entryButton,
+            entryImage,
+            entryOutline,
+            nameText,
+            headerSummaryText,
+            metaText,
+            descriptionText,
+            generatedText,
+            statusText,
+            topDivider,
+            middleDivider,
+            tooltipTrigger);
     }
 
     private void ApplyAbilityEntry(AbilityEntryWidgets widgets, TacticsActionMenuAbilityOption option)
     {
         TacticsAbilityDefinition ability = option.Ability;
-        widgets.Name.text = ability != null ? ability.DisplayName.ToUpperInvariant() : "ABILITY";
-        widgets.Detail.text = BuildAbilitySummaryText(ability);
+        TacticsAbilityCardContent content = TacticsAbilityPreviewCalculator.BuildCardContent(displayedCharacter, ability, option.StatusText);
+        widgets.Name.text = ability != null ? content.Title : "ABILITY";
+        widgets.HeaderSummary.text = content.HeaderCombatSummary;
+        widgets.HeaderSummary.gameObject.SetActive(!string.IsNullOrWhiteSpace(content.HeaderCombatSummary));
+        widgets.Meta.text = ability != null ? $"{content.Cost}    |    {content.Range}" : "No data";
+        widgets.Description.text = ability != null ? content.Description : "No description.";
+        widgets.Generated.text = content.GeneratedDescription;
+        widgets.Generated.gameObject.SetActive(content.HasGeneratedDescription);
+        widgets.MiddleDivider.SetActive(content.HasGeneratedDescription);
+        widgets.Status.text = content.Status;
+        widgets.Status.gameObject.SetActive(content.HasStatus);
         widgets.Button.interactable = option.IsInteractable;
 
-        Color backgroundColor = option.IsSelected ? selectedAbilityColor : buttonColor;
+        Color backgroundColor = option.IsSelected ? selectedAbilityColor : cardColor;
+        if (!option.IsInteractable)
+        {
+            backgroundColor = cardDisabledColor;
+        }
+
         widgets.Background.color = backgroundColor;
+        widgets.Outline.effectColor = option.IsSelected
+            ? accentColor
+            : new Color(panelBorderColor.r, panelBorderColor.g, panelBorderColor.b, option.IsInteractable ? 0.9f : 0.3f);
         widgets.Name.color = option.IsInteractable ? primaryTextColor : disabledTextColor;
-        widgets.Detail.color = option.IsInteractable ? secondaryTextColor : disabledTextColor;
+        widgets.HeaderSummary.color = option.IsInteractable ? cardMetaColor : disabledTextColor;
+        widgets.Meta.color = option.IsInteractable ? cardMetaColor : disabledTextColor;
+        widgets.Description.color = option.IsInteractable ? cardDescriptionColor : disabledTextColor;
+        widgets.Generated.color = option.IsInteractable ? cardGeneratedColor : disabledTextColor;
+        widgets.Status.color = option.IsInteractable ? cardStatusColor : disabledTextColor;
 
         widgets.Button.onClick.RemoveAllListeners();
         widgets.TooltipTrigger.Initialize(null, null, null);
@@ -568,16 +701,6 @@ public class TacticsActionMenuView : MonoBehaviour
                 _ => tooltipView?.Hide(),
                 eventData => HandleAbilityPointerMove(eventData));
         }
-    }
-
-    private static string BuildAbilitySummaryText(TacticsAbilityDefinition ability)
-    {
-        if (ability == null)
-        {
-            return "No data";
-        }
-
-        return $"{TacticsAbilityPreviewCalculator.BuildCostLabel(ability)}  |  {TacticsAbilityPreviewCalculator.BuildRangeLabel(ability)}";
     }
 
     private void HandleFlyoutBackgroundClicked()
@@ -627,15 +750,57 @@ public class TacticsActionMenuView : MonoBehaviour
 
     private void RefreshFlyoutPosition()
     {
-        if (panelRect == null || flyoutRoot == null)
+        if (flyoutRoot == null)
         {
             return;
         }
 
         RectTransform flyoutRect = flyoutRoot.GetComponent<RectTransform>();
-        flyoutRect.anchoredPosition = new Vector2(
-            panelRect.anchoredPosition.x + panelRect.sizeDelta.x + 18f,
-            panelRect.anchoredPosition.y);
+        flyoutRect.anchoredPosition = new Vector2(-36f, -124f);
+    }
+
+    private void RefreshFlyoutHeader()
+    {
+        if (flyoutSubtitleText == null)
+        {
+            return;
+        }
+
+        flyoutSubtitleText.text = displayedCharacter != null
+            ? $"{displayedCharacter.DisplayName.ToUpperInvariant()} LOADOUT"
+            : "ABILITY LOADOUT";
+    }
+
+    private void RefreshAbilityGridLayout()
+    {
+        if (abilityGridLayout == null || abilityContentRoot == null)
+        {
+            return;
+        }
+
+        float contentWidth = abilityContentRoot.rect.width;
+        if (contentWidth <= 0f)
+        {
+            contentWidth = FlyoutWidth - 96f;
+        }
+
+        float spacing = abilityGridLayout.spacing.x;
+        float usableWidth = Mathf.Max(0f, contentWidth - abilityGridLayout.padding.left - abilityGridLayout.padding.right - spacing);
+        float cellWidth = usableWidth / FlyoutColumnCount;
+        abilityGridLayout.cellSize = new Vector2(Mathf.Max(320f, cellWidth), FlyoutCardHeight);
+    }
+
+    private GameObject CreateDivider(Transform parent, string objectName)
+    {
+        GameObject divider = CreateUiObject(objectName, parent);
+        LayoutElement layoutElement = divider.AddComponent<LayoutElement>();
+        layoutElement.preferredHeight = 1f;
+        layoutElement.minHeight = 1f;
+
+        Image dividerImage = divider.AddComponent<Image>();
+        dividerImage.color = cardDividerColor;
+        dividerImage.raycastTarget = false;
+        return divider;
     }
 
     private readonly struct AbilityEntryWidgets
@@ -644,23 +809,44 @@ public class TacticsActionMenuView : MonoBehaviour
             GameObject root,
             Button button,
             Image background,
+            Outline outline,
             Text name,
-            Text detail,
+            Text headerSummary,
+            Text meta,
+            Text description,
+            Text generated,
+            Text status,
+            GameObject topDivider,
+            GameObject middleDivider,
             TacticsAbilityTooltipTrigger tooltipTrigger)
         {
             Root = root;
             Button = button;
             Background = background;
+            Outline = outline;
             Name = name;
-            Detail = detail;
+            HeaderSummary = headerSummary;
+            Meta = meta;
+            Description = description;
+            Generated = generated;
+            Status = status;
+            TopDivider = topDivider;
+            MiddleDivider = middleDivider;
             TooltipTrigger = tooltipTrigger;
         }
 
         public GameObject Root { get; }
         public Button Button { get; }
         public Image Background { get; }
+        public Outline Outline { get; }
         public Text Name { get; }
-        public Text Detail { get; }
+        public Text HeaderSummary { get; }
+        public Text Meta { get; }
+        public Text Description { get; }
+        public Text Generated { get; }
+        public Text Status { get; }
+        public GameObject TopDivider { get; }
+        public GameObject MiddleDivider { get; }
         public TacticsAbilityTooltipTrigger TooltipTrigger { get; }
     }
 }

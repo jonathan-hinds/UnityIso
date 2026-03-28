@@ -25,7 +25,10 @@ public sealed class TacticsAbilityTooltipView : MonoBehaviour
     private RectTransform chromeRect;
     private Text titleText;
     private Text metaText;
-    private Text bodyText;
+    private GameObject topDivider;
+    private Text descriptionText;
+    private GameObject middleDivider;
+    private Text generatedBodyText;
     private Text footerText;
     private Font sharedFont;
 
@@ -48,8 +51,13 @@ public sealed class TacticsAbilityTooltipView : MonoBehaviour
 
         titleText.text = content.Title;
         metaText.text = content.Meta;
-        bodyText.text = content.Body;
+        descriptionText.text = content.Description;
+        generatedBodyText.text = content.GeneratedBody;
         metaText.gameObject.SetActive(!string.IsNullOrWhiteSpace(content.Meta));
+        topDivider.SetActive(!string.IsNullOrWhiteSpace(content.Meta));
+        descriptionText.gameObject.SetActive(!string.IsNullOrWhiteSpace(content.Description));
+        middleDivider.SetActive(!string.IsNullOrWhiteSpace(content.GeneratedBody));
+        generatedBodyText.gameObject.SetActive(!string.IsNullOrWhiteSpace(content.GeneratedBody));
         footerText.text = content.Footer;
         footerText.gameObject.SetActive(!string.IsNullOrWhiteSpace(content.Footer));
 
@@ -73,8 +81,13 @@ public sealed class TacticsAbilityTooltipView : MonoBehaviour
 
         titleText.text = content.Title;
         metaText.text = content.Meta;
-        bodyText.text = content.Body;
+        descriptionText.text = content.Description;
+        generatedBodyText.text = content.GeneratedBody;
         metaText.gameObject.SetActive(!string.IsNullOrWhiteSpace(content.Meta));
+        topDivider.SetActive(!string.IsNullOrWhiteSpace(content.Meta));
+        descriptionText.gameObject.SetActive(!string.IsNullOrWhiteSpace(content.Description));
+        middleDivider.SetActive(!string.IsNullOrWhiteSpace(content.GeneratedBody));
+        generatedBodyText.gameObject.SetActive(!string.IsNullOrWhiteSpace(content.GeneratedBody));
         footerText.text = content.Footer;
         footerText.gameObject.SetActive(!string.IsNullOrWhiteSpace(content.Footer));
 
@@ -118,7 +131,7 @@ public sealed class TacticsAbilityTooltipView : MonoBehaviour
             : panelRect.rect.size;
         if (preferredSize.x <= 0f || preferredSize.y <= 0f)
         {
-            preferredSize = new Vector2(420f, 180f);
+            preferredSize = new Vector2(520f, 220f);
         }
 
         float minX = screenBounds.xMin + EdgePadding;
@@ -154,7 +167,7 @@ public sealed class TacticsAbilityTooltipView : MonoBehaviour
             : panelRect.rect.size;
         if (preferredSize.x <= 0f || preferredSize.y <= 0f)
         {
-            preferredSize = new Vector2(420f, 180f);
+            preferredSize = new Vector2(520f, 220f);
         }
 
         Rect rect = canvasRect.rect;
@@ -194,11 +207,11 @@ public sealed class TacticsAbilityTooltipView : MonoBehaviour
         panelRect.anchorMin = new Vector2(0.5f, 0.5f);
         panelRect.anchorMax = new Vector2(0.5f, 0.5f);
         panelRect.pivot = new Vector2(0f, 1f);
-        panelRect.sizeDelta = new Vector2(420f, 0f);
+        panelRect.sizeDelta = new Vector2(520f, 0f);
 
         LayoutElement layoutElement = panelObject.AddComponent<LayoutElement>();
-        layoutElement.preferredWidth = 420f;
-        layoutElement.minWidth = 420f;
+        layoutElement.preferredWidth = 520f;
+        layoutElement.minWidth = 520f;
 
         Image panelImage = panelObject.AddComponent<Image>();
         panelImage.color = panelColor;
@@ -213,8 +226,8 @@ public sealed class TacticsAbilityTooltipView : MonoBehaviour
         shadow.effectDistance = new Vector2(0f, -6f);
 
         VerticalLayoutGroup layout = panelObject.AddComponent<VerticalLayoutGroup>();
-        layout.padding = new RectOffset(18, 18, 14, 16);
-        layout.spacing = 6f;
+        layout.padding = new RectOffset(20, 20, 16, 18);
+        layout.spacing = 8f;
         layout.childAlignment = TextAnchor.UpperLeft;
         layout.childControlWidth = true;
         layout.childControlHeight = true;
@@ -253,16 +266,23 @@ public sealed class TacticsAbilityTooltipView : MonoBehaviour
         titleText = CreateText("Title", panelObject.transform, 20, FontStyle.Bold, titleColor, TextAnchor.UpperLeft);
         metaText = CreateText("Meta", panelObject.transform, 14, FontStyle.Bold, metaColor, TextAnchor.UpperLeft);
 
-        GameObject dividerObject = CreateUiObject("Divider", panelObject.transform);
+        topDivider = CreateDivider("TopDivider", panelObject.transform);
+        descriptionText = CreateText("Description", panelObject.transform, 16, FontStyle.Normal, bodyColor, TextAnchor.UpperLeft);
+        middleDivider = CreateDivider("MiddleDivider", panelObject.transform);
+        generatedBodyText = CreateText("GeneratedBody", panelObject.transform, 13, FontStyle.Italic, footerColor, TextAnchor.UpperLeft);
+        footerText = CreateText("Footer", panelObject.transform, 13, FontStyle.Italic, footerColor, TextAnchor.UpperLeft);
+    }
+
+    private GameObject CreateDivider(string objectName, Transform parent)
+    {
+        GameObject dividerObject = CreateUiObject(objectName, parent);
         LayoutElement dividerLayout = dividerObject.AddComponent<LayoutElement>();
         dividerLayout.preferredHeight = 2f;
         dividerLayout.minHeight = 2f;
         Image dividerImage = dividerObject.AddComponent<Image>();
         dividerImage.color = dividerColor;
         dividerImage.raycastTarget = false;
-
-        bodyText = CreateText("Body", panelObject.transform, 15, FontStyle.Normal, bodyColor, TextAnchor.UpperLeft);
-        footerText = CreateText("Footer", panelObject.transform, 13, FontStyle.Italic, footerColor, TextAnchor.UpperLeft);
+        return dividerObject;
     }
 
     private void AssignCanvas(Canvas canvas)
@@ -309,16 +329,26 @@ public sealed class TacticsAbilityTooltipView : MonoBehaviour
 public readonly struct TacticsAbilityTooltipContent
 {
     public TacticsAbilityTooltipContent(string title, string meta, string body, string footer = "")
+        : this(title, meta, body, string.Empty, footer)
+    {
+    }
+
+    public TacticsAbilityTooltipContent(string title, string meta, string description, string generatedBody, string footer = "")
     {
         Title = string.IsNullOrWhiteSpace(title) ? string.Empty : title.Trim();
         Meta = string.IsNullOrWhiteSpace(meta) ? string.Empty : meta.Trim();
-        Body = string.IsNullOrWhiteSpace(body) ? string.Empty : body.Trim();
+        Description = string.IsNullOrWhiteSpace(description) ? string.Empty : description.Trim();
+        GeneratedBody = string.IsNullOrWhiteSpace(generatedBody) ? string.Empty : generatedBody.Trim();
         Footer = string.IsNullOrWhiteSpace(footer) ? string.Empty : footer.Trim();
     }
 
     public string Title { get; }
     public string Meta { get; }
-    public string Body { get; }
+    public string Description { get; }
+    public string GeneratedBody { get; }
     public string Footer { get; }
-    public bool IsValid => !string.IsNullOrWhiteSpace(Title) || !string.IsNullOrWhiteSpace(Body);
+    public bool IsValid =>
+        !string.IsNullOrWhiteSpace(Title) ||
+        !string.IsNullOrWhiteSpace(Description) ||
+        !string.IsNullOrWhiteSpace(GeneratedBody);
 }
