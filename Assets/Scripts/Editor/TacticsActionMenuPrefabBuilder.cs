@@ -280,15 +280,6 @@ public static class TacticsActionMenuPrefabBuilder
 
         TacticsAbilityTooltipTrigger tooltipTrigger = rootObject.AddComponent<TacticsAbilityTooltipTrigger>();
 
-        VerticalLayoutGroup layout = rootObject.AddComponent<VerticalLayoutGroup>();
-        layout.padding = new RectOffset(16, 16, 14, 14);
-        layout.spacing = 8f;
-        layout.childAlignment = TextAnchor.UpperLeft;
-        layout.childControlWidth = true;
-        layout.childControlHeight = true;
-        layout.childForceExpandHeight = false;
-        layout.childForceExpandWidth = true;
-
         GameObject selectedIndicator = CreateUiObject("Selected Indicator", rootObject.transform);
         RectTransform selectedRect = selectedIndicator.GetComponent<RectTransform>();
         selectedRect.anchorMin = Vector2.zero;
@@ -305,47 +296,91 @@ public static class TacticsActionMenuPrefabBuilder
         selectedIndicator.transform.SetAsFirstSibling();
 
         GameObject headerRow = CreateUiObject("Header Row", rootObject.transform);
-        HorizontalLayoutGroup headerLayout = headerRow.AddComponent<HorizontalLayoutGroup>();
-        headerLayout.childAlignment = TextAnchor.MiddleLeft;
-        headerLayout.childControlWidth = true;
-        headerLayout.childControlHeight = true;
-        headerLayout.childForceExpandWidth = true;
-        headerLayout.childForceExpandHeight = false;
-        LayoutElement headerLayoutElement = headerRow.AddComponent<LayoutElement>();
-        headerLayoutElement.preferredHeight = 28f;
+        RectTransform headerRowRect = headerRow.GetComponent<RectTransform>();
+        headerRowRect.anchorMin = new Vector2(0f, 1f);
+        headerRowRect.anchorMax = new Vector2(1f, 1f);
+        headerRowRect.pivot = new Vector2(0.5f, 1f);
+        headerRowRect.offsetMin = new Vector2(16f, -42f);
+        headerRowRect.offsetMax = new Vector2(-16f, -14f);
 
         Text nameText = CreateText("Name", headerRow.transform, 18, FontStyle.Bold, TextAnchor.MiddleLeft);
-        LayoutElement nameLayout = nameText.gameObject.AddComponent<LayoutElement>();
-        nameLayout.flexibleWidth = 1f;
+        RectTransform nameRect = nameText.rectTransform;
+        nameRect.anchorMin = new Vector2(0f, 0f);
+        nameRect.anchorMax = new Vector2(0.62f, 1f);
+        nameRect.offsetMin = Vector2.zero;
+        nameRect.offsetMax = Vector2.zero;
         nameText.text = "Spell Name";
 
         Text headerSummaryText = CreateText("Header Summary", headerRow.transform, 18, FontStyle.Bold, TextAnchor.MiddleRight);
-        LayoutElement summaryLayout = headerSummaryText.gameObject.AddComponent<LayoutElement>();
-        summaryLayout.flexibleWidth = 1f;
+        RectTransform summaryRect = headerSummaryText.rectTransform;
+        summaryRect.anchorMin = new Vector2(0.62f, 0f);
+        summaryRect.anchorMax = new Vector2(1f, 1f);
+        summaryRect.offsetMin = Vector2.zero;
+        summaryRect.offsetMax = Vector2.zero;
         headerSummaryText.text = "12 DMG";
 
-        CreateDivider(rootObject.transform, "Top Divider");
+        GameObject topDivider = CreateDivider(rootObject.transform, "Top Divider");
+        RectTransform topDividerRect = topDivider.GetComponent<RectTransform>();
+        topDividerRect.anchorMin = new Vector2(0f, 1f);
+        topDividerRect.anchorMax = new Vector2(1f, 1f);
+        topDividerRect.pivot = new Vector2(0.5f, 1f);
+        topDividerRect.offsetMin = new Vector2(16f, -50f);
+        topDividerRect.offsetMax = new Vector2(-16f, -49f);
+
         Text metaText = CreateText("Meta", rootObject.transform, 12, FontStyle.Bold, TextAnchor.MiddleLeft);
+        RectTransform metaRect = metaText.rectTransform;
+        metaRect.anchorMin = new Vector2(0f, 1f);
+        metaRect.anchorMax = new Vector2(1f, 1f);
+        metaRect.pivot = new Vector2(0.5f, 1f);
+        metaRect.offsetMin = new Vector2(16f, -68f);
+        metaRect.offsetMax = new Vector2(-16f, -50f);
         metaText.text = "5 MP    |    3 Tiles";
 
         GameObject middleDivider = CreateDivider(rootObject.transform, "Middle Divider");
+        RectTransform middleDividerRect = middleDivider.GetComponent<RectTransform>();
+        middleDividerRect.anchorMin = new Vector2(0f, 1f);
+        middleDividerRect.anchorMax = new Vector2(1f, 1f);
+        middleDividerRect.pivot = new Vector2(0.5f, 1f);
+        middleDividerRect.offsetMin = new Vector2(16f, -78f);
+        middleDividerRect.offsetMax = new Vector2(-16f, -77f);
+
         Text descriptionText = CreateText("Description", rootObject.transform, 15, FontStyle.Normal, TextAnchor.UpperLeft);
+        RectTransform descriptionRect = descriptionText.rectTransform;
+        descriptionRect.anchorMin = new Vector2(0f, 0f);
+        descriptionRect.anchorMax = new Vector2(1f, 1f);
+        descriptionRect.offsetMin = new Vector2(16f, 30f);
+        descriptionRect.offsetMax = new Vector2(-16f, -80f);
         descriptionText.text = "Description";
-        descriptionText.gameObject.AddComponent<LayoutElement>().flexibleHeight = 1f;
 
         GameObject generatedGroup = CreateUiObject("Generated Group", rootObject.transform);
-        VerticalLayoutGroup generatedLayout = generatedGroup.AddComponent<VerticalLayoutGroup>();
-        generatedLayout.spacing = 4f;
-        generatedLayout.childControlHeight = true;
-        generatedLayout.childControlWidth = true;
-        generatedLayout.childForceExpandHeight = false;
-        generatedLayout.childForceExpandWidth = true;
+        RectTransform generatedGroupRect = generatedGroup.GetComponent<RectTransform>();
+        generatedGroupRect.anchorMin = new Vector2(0f, 0f);
+        generatedGroupRect.anchorMax = new Vector2(1f, 0f);
+        generatedGroupRect.pivot = new Vector2(0.5f, 0f);
+        generatedGroupRect.offsetMin = new Vector2(16f, 18f);
+        generatedGroupRect.offsetMax = new Vector2(-16f, 40f);
         Text generatedText = CreateText("Generated", generatedGroup.transform, 12, FontStyle.Italic, TextAnchor.UpperLeft);
+        RectTransform generatedRect = generatedText.rectTransform;
+        generatedRect.anchorMin = Vector2.zero;
+        generatedRect.anchorMax = Vector2.one;
+        generatedRect.offsetMin = Vector2.zero;
+        generatedRect.offsetMax = Vector2.zero;
         generatedText.text = "Generated details";
         generatedGroup.SetActive(false);
 
         GameObject statusGroup = CreateUiObject("Status Group", rootObject.transform);
+        RectTransform statusGroupRect = statusGroup.GetComponent<RectTransform>();
+        statusGroupRect.anchorMin = new Vector2(0f, 0f);
+        statusGroupRect.anchorMax = new Vector2(1f, 0f);
+        statusGroupRect.pivot = new Vector2(0.5f, 0f);
+        statusGroupRect.offsetMin = new Vector2(16f, 6f);
+        statusGroupRect.offsetMax = new Vector2(-16f, 22f);
         Text statusText = CreateText("Status", statusGroup.transform, 11, FontStyle.Bold, TextAnchor.LowerLeft);
+        RectTransform statusRect = statusText.rectTransform;
+        statusRect.anchorMin = Vector2.zero;
+        statusRect.anchorMax = Vector2.one;
+        statusRect.offsetMin = Vector2.zero;
+        statusRect.offsetMax = Vector2.zero;
         statusText.text = "Unavailable";
         statusGroup.SetActive(false);
 
