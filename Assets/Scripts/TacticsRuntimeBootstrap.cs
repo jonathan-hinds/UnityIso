@@ -41,10 +41,13 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
     private TacticsPlayerCurrencyService currencyService;
     private ITacticsAccountSessionService accountSessionService;
     private TacticsCoopSessionCoordinator coopSessionCoordinator;
+    private TacticsRoundProgressionService roundProgressionService;
     private TacticsEnemyTable enemyTable;
     private TacticsCoopBattleSetup pendingCoopBattleSetup;
     private bool sceneSetupComplete;
     private bool gameplayStartInProgress;
+
+    public bool IsSceneSetupComplete => sceneSetupComplete;
 
     private async void Start()
     {
@@ -306,6 +309,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         TacticsCombatSystem combatSystem = EnsureCombatSystem();
         combatSystem?.AssignCharacterRegistry(characterRegistry);
         EnsureChestEncounterService(turnManager);
+        roundProgressionService = EnsureRoundProgressionService();
         EnsurePlayerController();
         EnsureChests();
         if (!EnsureCharacters())
@@ -313,6 +317,14 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             AbortGameplayStartup("Failed to spawn the full party for this match. Check the console for the missing character.");
             return;
         }
+
+        roundProgressionService?.AssignDependencies(
+            this,
+            mapGenerator,
+            characterRegistry,
+            turnManager,
+            coopSessionCoordinator,
+            EnsureScreenFadeView());
 
         BindHud(
             actionMenuView,
@@ -695,10 +707,141 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         hitEffectObject.AddComponent<TacticsAbilityHitEffectSystem>();
     }
 
+    private TacticsScreenFadeView EnsureScreenFadeView()
+    {
+        TacticsScreenFadeView existingView = FindFirstObjectByType<TacticsScreenFadeView>();
+        if (existingView != null)
+        {
+            return existingView;
+        }
+
+        GameObject fadeObject = new GameObject("Tactics Screen Fade");
+        return fadeObject.AddComponent<TacticsScreenFadeView>();
+    }
+
+    private TacticsRoundProgressionService EnsureRoundProgressionService()
+    {
+        TacticsRoundProgressionService existingService = FindFirstObjectByType<TacticsRoundProgressionService>();
+        if (existingService != null)
+        {
+            return existingService;
+        }
+
+        GameObject serviceObject = new GameObject("Tactics Round Progression Service");
+        return serviceObject.AddComponent<TacticsRoundProgressionService>();
+    }
+
     private static void SetCameraInputEnabled(bool enabled)
     {
         MouseCameraController cameraController = FindFirstObjectByType<MouseCameraController>();
         cameraController?.SetInputEnabled(enabled);
+    }
+
+    public TacticsMatchGenerationSettings CreateNextRoundMatchSettings()
+    {
+        if (mapGenerator == null)
+        {
+            return null;
+        }
+
+        TacticsMatchGenerationSettings nextSettings = mapGenerator.CreateMatchGenerationSettings();
+        nextSettings.seed = GenerateNextSeed(nextSettings.seed);
+        nextSettings.Sanitize();
+        return nextSettings;
+    }
+
+    public TacticsCoopBattleSetup CreateNextRoundBattleSetup()
+    {
+        if (pendingCoopBattleSetup == null)
+        {
+            return null;
+        }
+
+        TacticsCoopBattleSetup nextSetup = pendingCoopBattleSetup.Clone();
+        nextSetup.matchSettings = CreateNextRoundMatchSettings();
+        SyncCurrentPlayerProgressionIntoBattleSetup(nextSetup);
+        return nextSetup;
+    }
+
+    public System.Collections.IEnumerator RestartBattleRoutine(
+        TacticsMatchGenerationSettings singlePlayerSettings,
+        TacticsCoopBattleSetup coopBattleSetup)
+    {
+        TacticsMatchGenerationSettings nextSettings = coopBattleSetup?.matchSettings?.Clone() ?? singlePlayerSettings?.Clone();
+        if (nextSettings == null)
+        {
+            yield break;
+        }
+
+        nextSettings.Sanitize();
+        pendingCoopBattleSetup = coopBattleSetup?.Clone();
+        sceneSetupComplete = false;
+        gameplayStartInProgress = false;
+        CleanupGameplayObjects();
+
+        if (mapGenerator != null)
+        {
+            mapGenerator.ApplyMatchGenerationSettings(nextSettings);
+        }
+
+        yield return null;
+        BeginGameplayStartup("Descending...");
+
+        while (gameplayStartInProgress && !sceneSetupComplete)
+        {
+            yield return null;
+        }
+    }
+
+    private void SyncCurrentPlayerProgressionIntoBattleSetup(TacticsCoopBattleSetup battleSetup)
+    {
+        if (battleSetup?.players == null)
+        {
+            return;
+        }
+
+        TacticsCharacterController[] liveCharacters = FindObjectsByType<TacticsCharacterController>(FindObjectsSortMode.None);
+        for (int i = 0; i < liveCharacters.Length; i++)
+        {
+            TacticsCharacterController character = liveCharacters[i];
+            if (character == null ||
+                !character.IsPlayerControlled ||
+                !TryParsePartySlot(character.RuntimeCharacterId, out int partyIndex, out int slotIndex) ||
+                partyIndex < 0 ||
+                partyIndex >= battleSetup.players.Count ||
+                battleSetup.players[partyIndex] == null ||
+                slotIndex < 0 ||
+                slotIndex >= battleSetup.players[partyIndex].partyMembers.Count ||
+                battleSetup.players[partyIndex].partyMembers[slotIndex] == null)
+            {
+                continue;
+            }
+
+            string characterId = character.CharacterData != null ? character.CharacterData.CharacterId : string.Empty;
+            battleSetup.players[partyIndex].partyMembers[slotIndex].progression = character.Progression.WithCharacterId(characterId).Sanitize();
+        }
+    }
+
+    private static bool TryParsePartySlot(string runtimeCharacterId, out int partyIndex, out int slotIndex)
+    {
+        partyIndex = -1;
+        slotIndex = -1;
+        if (string.IsNullOrWhiteSpace(runtimeCharacterId))
+        {
+            return false;
+        }
+
+        string[] tokens = runtimeCharacterId.Split('_');
+        return tokens.Length >= 4 &&
+               string.Equals(tokens[0], "party", StringComparison.OrdinalIgnoreCase) &&
+               int.TryParse(tokens[1], out partyIndex) &&
+               string.Equals(tokens[2], "slot", StringComparison.OrdinalIgnoreCase) &&
+               int.TryParse(tokens[3], out slotIndex);
+    }
+
+    private static int GenerateNextSeed(int previousSeed)
+    {
+        return previousSeed ^ Guid.NewGuid().GetHashCode();
     }
 
     private void HandleQuitRequested()
@@ -870,6 +1013,16 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             if (chest != null)
             {
                 occupiedTiles.Add(chest.GridPosition);
+            }
+        }
+
+        TacticsStairsController[] existingStairs = FindObjectsByType<TacticsStairsController>(FindObjectsSortMode.None);
+        for (int i = 0; i < existingStairs.Length; i++)
+        {
+            TacticsStairsController stairs = existingStairs[i];
+            if (stairs != null)
+            {
+                occupiedTiles.Add(stairs.GridPosition);
             }
         }
 
@@ -1191,7 +1344,8 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             return false;
         }
 
-        if (occupiedTiles != null && occupiedTiles.Contains(tile))
+        if ((occupiedTiles != null && occupiedTiles.Contains(tile)) ||
+            TacticsTileBlockerUtility.IsBlockingTile(tile))
         {
             return false;
         }

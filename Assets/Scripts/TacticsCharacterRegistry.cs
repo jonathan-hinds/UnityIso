@@ -202,6 +202,26 @@ public sealed class TacticsCharacterRegistry : MonoBehaviour
         return true;
     }
 
+    public bool HasLivingCharacters(TacticsUnitTeam team)
+    {
+        for (int i = characters.Count - 1; i >= 0; i--)
+        {
+            TacticsCharacterController candidate = characters[i];
+            if (candidate == null)
+            {
+                RemoveAt(i);
+                continue;
+            }
+
+            if (IsCharacterQueryable(candidate) && candidate.Team == team)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private bool CanIndexTile(TacticsCharacterController character)
     {
         return IsCharacterQueryable(character);

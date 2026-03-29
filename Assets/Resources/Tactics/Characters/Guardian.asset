@@ -15,7 +15,7 @@ MonoBehaviour:
   characterId: gaurdian
   displayName: Guardian
   team: 0
-  spriteSheetResourcePath: Characters/guy7
+  spriteSheetResourcePath: Characters/Player/Character10
   walkFramesPerSecond: 5
   baseColor: {r: 1, g: 1, b: 1, a: 1}
   selectedColor: {r: 1, g: 0.95, b: 0.65, a: 1}

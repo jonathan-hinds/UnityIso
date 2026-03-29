@@ -22,14 +22,14 @@ MonoBehaviour:
   damageType: 0
   projectilePrefab: {fileID: 0}
   hitEffect:
-    sourceTexture: {fileID: 2800000, guid: bed7e0044d956b3438a47396bb2fa0fe, type: 3}
+    sourceTexture: {fileID: 2800000, guid: cf1da6504118189438373b6817568221, type: 3}
     frames:
-    - {fileID: 9195339178586855736, guid: bed7e0044d956b3438a47396bb2fa0fe, type: 3}
-    - {fileID: -8916462741642943312, guid: bed7e0044d956b3438a47396bb2fa0fe, type: 3}
-    - {fileID: -642250516793536865, guid: bed7e0044d956b3438a47396bb2fa0fe, type: 3}
-    - {fileID: -2696747344480536269, guid: bed7e0044d956b3438a47396bb2fa0fe, type: 3}
-    - {fileID: 876077250008989347, guid: bed7e0044d956b3438a47396bb2fa0fe, type: 3}
-    - {fileID: -8451307879057019884, guid: bed7e0044d956b3438a47396bb2fa0fe, type: 3}
+    - {fileID: -1639060289181687516, guid: cf1da6504118189438373b6817568221, type: 3}
+    - {fileID: -5432853813698710219, guid: cf1da6504118189438373b6817568221, type: 3}
+    - {fileID: -7715413182165440758, guid: cf1da6504118189438373b6817568221, type: 3}
+    - {fileID: -8179239689575650172, guid: cf1da6504118189438373b6817568221, type: 3}
+    - {fileID: 3886591009367577698, guid: cf1da6504118189438373b6817568221, type: 3}
+    - {fileID: 6645839316767113497, guid: cf1da6504118189438373b6817568221, type: 3}
     framesPerSecond: 12
     duration: 0.5
     scale: 2
@@ -59,6 +59,14 @@ MonoBehaviour:
       - stat: 1
         rank: 3
   statusEffects: []
+  knockback:
+    distanceInTiles: 0
+    duration: 0.18
+    arcHeight: 0
+  throwing:
+    enabled: 0
+    duration: 0.22
+    arcHeight: 0
   costResourceType: 3
   costAmount: 1
   allowMovementAsAlternateCost: 0

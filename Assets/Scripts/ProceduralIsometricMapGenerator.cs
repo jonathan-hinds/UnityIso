@@ -80,6 +80,18 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         public bool ContainsMimic { get; }
     }
 
+    public readonly struct StairsSpawnPlan
+    {
+        public StairsSpawnPlan(string runtimeStairsId, Vector2Int tile)
+        {
+            RuntimeStairsId = runtimeStairsId;
+            Tile = tile;
+        }
+
+        public string RuntimeStairsId { get; }
+        public Vector2Int Tile { get; }
+    }
+
     public event Action MapGenerated;
 
     [Header("Generation")]
@@ -139,10 +151,18 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
     private const string GeneratedAttachmentRootPrefix = "Generated Runtime - ";
     private const int DefaultSpritePixels = 128;
     private const float DefaultPixelsPerUnit = 128f;
+    private static readonly Vector2Int[] NeighborOffsets =
+    {
+        new Vector2Int(-1, 0),
+        new Vector2Int(1, 0),
+        new Vector2Int(0, -1),
+        new Vector2Int(0, 1)
+    };
 
     private static Sprite cachedDefaultTopSprite;
     private static Sprite cachedDefaultLeftSideSprite;
     private static Sprite cachedDefaultRightSideSprite;
+    private static Sprite cachedStairsTopSprite;
     private Sprite cachedTopLeftEdgeShadowSprite;
     private Sprite cachedTopRightEdgeShadowSprite;
     private Sprite cachedBottomLeftEdgeShadowSprite;
@@ -153,6 +173,8 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
     private int[,] currentHeights;
     private int maximumGeneratedElevation;
     private System.Random spawnPlacementRandom;
+    private Vector2Int? currentStairsTile;
+    private string currentStairsRuntimeId = string.Empty;
 
     public int Length => length;
     public int Width => width;
@@ -320,6 +342,9 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         currentHeights = GenerateHeights();
         maximumGeneratedElevation = GetMaximumHeight(currentHeights);
         spawnPlacementRandom = CreateSpawnPlacementRandom();
+        bool hasStairsSpawnPlan = TryCreateStairsSpawnPlan(out StairsSpawnPlan stairsSpawnPlan);
+        currentStairsTile = hasStairsSpawnPlan ? stairsSpawnPlan.Tile : null;
+        currentStairsRuntimeId = hasStairsSpawnPlan ? stairsSpawnPlan.RuntimeStairsId : string.Empty;
         Transform generatedRoot = CreateGeneratedRoot();
 
         for (int x = 0; x < width; x++)
@@ -335,11 +360,15 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                 Bounds? tileOcclusionBounds = null;
                 int tileOcclusionSortingOrder = int.MinValue;
                 int tileOcclusionSortingLayerId = 0;
+                bool isStairsTile = currentStairsTile.HasValue && currentStairsTile.Value.x == x && currentStairsTile.Value.y == y;
+                Sprite resolvedTopSprite = isStairsTile
+                    ? GetResolvedStairsTopSprite()
+                    : (topSprite != null ? topSprite : cachedDefaultTopSprite);
 
                 Vector3 topPosition = GridToWorld(x, y, height);
                 CreateTilePart(
                     generatedRoot,
-                    topSprite != null ? topSprite : cachedDefaultTopSprite,
+                    resolvedTopSprite,
                     topPosition,
                     $"Top_{x}_{y}_{height}",
                     x,
@@ -350,7 +379,14 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                     ref tileOcclusionBounds,
                     ref tileOcclusionSortingOrder,
                     ref tileOcclusionSortingLayerId);
-                ConfigureTopTile(partName: $"Top_{x}_{y}_{height}", generatedRoot: generatedRoot, gridX: x, gridY: y, height: height);
+                ConfigureTopTile(
+                    partName: $"Top_{x}_{y}_{height}",
+                    generatedRoot: generatedRoot,
+                    gridX: x,
+                    gridY: y,
+                    height: height,
+                    isStairsTile: isStairsTile,
+                    runtimeStairsId: isStairsTile ? currentStairsRuntimeId : string.Empty);
 
                 // Treat the terrain as stacked isometric columns. The vertical side faces
                 // are still only visible on the two screen-facing edges, but the top-edge
@@ -754,6 +790,10 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         HashSet<Vector2Int> blocked = blockedTiles != null
             ? new HashSet<Vector2Int>(blockedTiles)
             : new HashSet<Vector2Int>();
+        if (currentStairsTile.HasValue)
+        {
+            blocked.Add(currentStairsTile.Value);
+        }
 
         List<Vector2Int> candidates = new List<Vector2Int>();
         for (int x = 0; x < width; x++)
@@ -831,6 +871,49 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         }
 
         return results;
+    }
+
+    public bool TryCreateStairsSpawnPlan(
+        out StairsSpawnPlan spawnPlan,
+        IReadOnlyCollection<Vector2Int> blockedTiles = null)
+    {
+        spawnPlan = default;
+        if (!HasGeneratedMap)
+        {
+            return false;
+        }
+
+        HashSet<Vector2Int> blocked = blockedTiles != null
+            ? new HashSet<Vector2Int>(blockedTiles)
+            : new HashSet<Vector2Int>();
+        List<Vector2Int> candidates = new List<Vector2Int>();
+
+        for (int x = 0; x < width; x++)
+        {
+            for (int y = 0; y < length; y++)
+            {
+                Vector2Int tile = new Vector2Int(x, y);
+                if (!IsTraversable(x, y) ||
+                    blocked.Contains(tile) ||
+                    !HasAdjacentInteractionTile(tile, blocked))
+                {
+                    continue;
+                }
+
+                candidates.Add(tile);
+            }
+        }
+
+        if (candidates.Count == 0)
+        {
+            return false;
+        }
+
+        System.Random random = CreateStairsPlacementRandom();
+        ShuffleCandidates(candidates, random);
+        Vector2Int selectedTile = candidates[0];
+        spawnPlan = new StairsSpawnPlan($"stairs_{selectedTile.x}_{selectedTile.y}", selectedTile);
+        return true;
     }
 
     public int RollChestGoldReward()
@@ -992,7 +1075,14 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         return new Vector3(targetCenterX - localCenterX, targetCenterY - localCenterY, 0f);
     }
 
-    private void ConfigureTopTile(string partName, Transform generatedRoot, int gridX, int gridY, int height)
+    private void ConfigureTopTile(
+        string partName,
+        Transform generatedRoot,
+        int gridX,
+        int gridY,
+        int height,
+        bool isStairsTile,
+        string runtimeStairsId)
     {
         Transform topTransform = generatedRoot.Find(partName);
         if (topTransform == null)
@@ -1016,6 +1106,12 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         if (elevationElement != null)
         {
             elevationElement.AttachInteraction(collider, hoverInfo);
+        }
+
+        if (isStairsTile)
+        {
+            TacticsStairsController stairs = topTransform.gameObject.AddComponent<TacticsStairsController>();
+            stairs.Initialize(this, runtimeStairsId, new Vector2Int(gridX, gridY));
         }
     }
 
@@ -1078,6 +1174,14 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         cachedTopRightEdgeShadowSprite = CreateTopEdgeShadowSprite(TopShadowEdge.TopRight);
         cachedBottomLeftEdgeShadowSprite = CreateTopEdgeShadowSprite(TopShadowEdge.BottomLeft);
         cachedBottomRightEdgeShadowSprite = CreateTopEdgeShadowSprite(TopShadowEdge.BottomRight);
+        cachedStairsTopSprite = cachedStairsTopSprite != null
+            ? cachedStairsTopSprite
+            : Resources.Load<Sprite>("Sprites/stairs");
+    }
+
+    private Sprite GetResolvedStairsTopSprite()
+    {
+        return cachedStairsTopSprite != null ? cachedStairsTopSprite : (topSprite != null ? topSprite : cachedDefaultTopSprite);
     }
 
 
@@ -1354,6 +1458,60 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         chestHash = (chestHash * 397) ^ settings.minGoldReward;
         chestHash = (chestHash * 397) ^ settings.maxGoldReward;
         return new System.Random(chestHash);
+    }
+
+    private System.Random CreateStairsPlacementRandom()
+    {
+        int stairsHash = seed;
+        stairsHash = (stairsHash * 397) ^ width;
+        stairsHash = (stairsHash * 397) ^ length;
+        stairsHash = (stairsHash * 397) ^ minElevation;
+        stairsHash = (stairsHash * 397) ^ maxElevation;
+        stairsHash = (stairsHash * 397) ^ 1789;
+        return new System.Random(stairsHash);
+    }
+
+    private bool HasAdjacentInteractionTile(Vector2Int tile, IReadOnlyCollection<Vector2Int> blockedTiles)
+    {
+        int sourceElevation = GetTileElevation(tile.x, tile.y);
+        if (sourceElevation <= 0)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < NeighborOffsets.Length; i++)
+        {
+            Vector2Int neighbor = tile + NeighborOffsets[i];
+            if (!IsWithinBounds(neighbor.x, neighbor.y) ||
+                !IsTraversable(neighbor.x, neighbor.y) ||
+                GetTileElevation(neighbor.x, neighbor.y) != sourceElevation ||
+                IsTileReserved(neighbor, blockedTiles))
+            {
+                continue;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsTileReserved(Vector2Int tile, IReadOnlyCollection<Vector2Int> blockedTiles)
+    {
+        if (blockedTiles == null)
+        {
+            return false;
+        }
+
+        foreach (Vector2Int blockedTile in blockedTiles)
+        {
+            if (blockedTile == tile)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void ShuffleCandidates(List<Vector2Int> candidates, System.Random random)

@@ -789,7 +789,7 @@ public sealed class TacticsCombatSystem : MonoBehaviour
                 return false;
             }
 
-            if (TacticsChestController.IsBlockingTile(tile))
+            if (TacticsTileBlockerUtility.IsBlockingTile(tile))
             {
                 return false;
             }
@@ -1076,7 +1076,7 @@ public sealed class TacticsCombatSystem : MonoBehaviour
     {
         if (!mapGenerator.IsWithinBounds(nextTile.x, nextTile.y) ||
             !mapGenerator.IsTraversable(nextTile.x, nextTile.y) ||
-            TacticsChestController.IsBlockingTile(nextTile) ||
+            TacticsTileBlockerUtility.IsBlockingTile(nextTile) ||
             !target.CanTraverseForcedMovementStep(fromTile, nextTile) ||
             (reservedDestinations != null && reservedDestinations.Contains(nextTile)))
         {
@@ -1138,7 +1138,7 @@ public sealed class TacticsCombatSystem : MonoBehaviour
             !mapGenerator.HasGeneratedMap ||
             !mapGenerator.IsWithinBounds(destination.x, destination.y) ||
             !mapGenerator.IsTraversable(destination.x, destination.y) ||
-            TacticsChestController.IsBlockingTile(destination) ||
+            TacticsTileBlockerUtility.IsBlockingTile(destination) ||
             target == null ||
             !target.CanTraverseForcedMovementStep(target.GridPosition, destination))
         {

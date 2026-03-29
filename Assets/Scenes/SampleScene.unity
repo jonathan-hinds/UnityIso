@@ -539,9 +539,9 @@ MonoBehaviour:
   persistence: 0.5
   lacunarity: 2
   smoothingPasses: 1
-  topSprite: {fileID: -5643105228771564274, guid: ff09a196802070443b0f84d14af980f2, type: 3}
-  leftSideSprite: {fileID: 1768679433190182986, guid: de1566b21c44e154eb1824dacd06cba6, type: 3}
-  rightSideSprite: {fileID: -4885373251318296212, guid: 85857d529cd3b7242b022f0a43c630b7, type: 3}
+  topSprite: {fileID: -6123437543760675800, guid: 9b3f4fb8aa945da40b4feda80a1942ee, type: 3}
+  leftSideSprite: {fileID: -7200597591167980499, guid: 9e836f3331d91224d85d025de863d62b, type: 3}
+  rightSideSprite: {fileID: 1130251324839254383, guid: f065ba690d39406468fb7407fdae01c2, type: 3}
   defaultTopColor: {r: 0.4, g: 0.74, b: 0.33, a: 1}
   defaultLeftSideColor: {r: 0.26, g: 0.49, b: 0.22, a: 1}
   defaultRightSideColor: {r: 0.2, g: 0.38, b: 0.17, a: 1}

@@ -4,7 +4,7 @@ using UnityEngine;
 using UnityEngine.Rendering;
 
 [DisallowMultipleComponent]
-public sealed class TacticsChestController : MonoBehaviour, ITacticsCombatTextAnchor
+public sealed class TacticsChestController : MonoBehaviour, ITacticsCombatTextAnchor, ITacticsTileBlocker
 {
     public enum ChestFacing
     {

@@ -15,7 +15,7 @@ MonoBehaviour:
   characterId: shaman
   displayName: Shaman
   team: 1
-  spriteSheetResourcePath: Characters/guy4
+  spriteSheetResourcePath: Characters/Player/Character9
   walkFramesPerSecond: 5
   baseColor: {r: 1, g: 0.82, b: 0.82, a: 1}
   selectedColor: {r: 1, g: 0.58, b: 0.58, a: 1}

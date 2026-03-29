@@ -15,7 +15,7 @@ MonoBehaviour:
   characterId: barbarian
   displayName: Barbarian
   team: 0
-  spriteSheetResourcePath: Characters/guy11
+  spriteSheetResourcePath: Characters/Player/Character4
   walkFramesPerSecond: 5
   baseColor: {r: 1, g: 1, b: 1, a: 1}
   selectedColor: {r: 1, g: 0.95, b: 0.65, a: 1}

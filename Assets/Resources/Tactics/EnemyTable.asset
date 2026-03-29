@@ -15,7 +15,7 @@ MonoBehaviour:
   enemies:
   - enemyId: bandit
     displayName: Bandit
-    spriteSheetResourcePath: Characters/guy3
+    spriteSheetResourcePath: Characters/Enemy/Enemy1
     walkFramesPerSecond: 5
     baseColor: {r: 1, g: 0.82, b: 0.82, a: 1}
     selectedColor: {r: 1, g: 0.58, b: 0.58, a: 1}
@@ -43,7 +43,7 @@ MonoBehaviour:
     maxExperienceReward: 40
   - enemyId: shaman
     displayName: Shaman
-    spriteSheetResourcePath: Characters/guy4
+    spriteSheetResourcePath: Characters/Enemy/Enemy4
     walkFramesPerSecond: 5
     baseColor: {r: 1, g: 0.82, b: 0.82, a: 1}
     selectedColor: {r: 1, g: 0.58, b: 0.58, a: 1}
@@ -97,7 +97,7 @@ MonoBehaviour:
     maxExperienceReward: 100
   - enemyId: hobgoblin
     displayName: Hobgoblin
-    spriteSheetResourcePath: Characters/guy17
+    spriteSheetResourcePath: Characters/Enemy/Enemy3
     walkFramesPerSecond: 5
     baseColor: {r: 1, g: 0.82, b: 0.82, a: 1}
     selectedColor: {r: 1, g: 0.58, b: 0.58, a: 1}
@@ -124,7 +124,7 @@ MonoBehaviour:
     maxExperienceReward: 100
   - enemyId: trickster
     displayName: Trickster
-    spriteSheetResourcePath: Characters/guy18
+    spriteSheetResourcePath: Characters/Enemy/Enemy2
     walkFramesPerSecond: 5
     baseColor: {r: 1, g: 0.82, b: 0.82, a: 1}
     selectedColor: {r: 1, g: 0.58, b: 0.58, a: 1}

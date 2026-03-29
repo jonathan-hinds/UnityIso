@@ -36,6 +36,8 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
     private const string CommitProgressionCommandMessageName = "tactics.command.progression.execute";
     private const string OpenChestRequestMessageName = "tactics.command.chest.request";
     private const string OpenChestCommandMessageName = "tactics.command.chest.execute";
+    private const string DescendRequestMessageName = "tactics.command.descend.request";
+    private const string DescendCommandMessageName = "tactics.command.descend.execute";
     private const string ExitSessionRequestMessageName = "tactics.session.exit.request";
     private const string ExitSessionCommandMessageName = "tactics.session.exit.command";
 
@@ -48,6 +50,7 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
     private UnityTransport transport;
     private TacticsCharacterRegistry characterRegistry;
     private TacticsCombatSystem combatSystem;
+    private TacticsRoundProgressionService roundProgressionService;
     private TacticsPartySelectionService partySelectionService;
     private TacticsCharacterProgressionService progressionService;
     private TacticsPlayerCurrencyService currencyService;
@@ -406,6 +409,38 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         return true;
     }
 
+    public bool RequestDescend(TacticsCharacterController character, TacticsStairsController stairs)
+    {
+        if (character == null || stairs == null || !CanInitiateCommandForCharacter(character))
+        {
+            return false;
+        }
+
+        if (!IsOnlineSession)
+        {
+            return false;
+        }
+
+        if (IsHostAuthority)
+        {
+            DescendCommandMessage message = BuildDescendCommandMessage(character, stairs);
+            if (!ExecuteDescendCommand(message))
+            {
+                return false;
+            }
+
+            BroadcastMessage(DescendCommandMessageName, JsonUtility.ToJson(message), includeHost: false);
+            return true;
+        }
+
+        SendMessageToServer(DescendRequestMessageName, JsonUtility.ToJson(new DescendRequestMessage
+        {
+            runtimeCharacterId = character.RuntimeCharacterId,
+            runtimeStairsId = stairs.RuntimeStairsId
+        }));
+        return true;
+    }
+
     public bool RequestReturnToHome()
     {
         if (!IsOnlineSession)
@@ -506,6 +541,8 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         messaging.RegisterNamedMessageHandler(CommitProgressionCommandMessageName, HandleCommitProgressionCommandMessage);
         messaging.RegisterNamedMessageHandler(OpenChestRequestMessageName, HandleOpenChestRequestMessage);
         messaging.RegisterNamedMessageHandler(OpenChestCommandMessageName, HandleOpenChestCommandMessage);
+        messaging.RegisterNamedMessageHandler(DescendRequestMessageName, HandleDescendRequestMessage);
+        messaging.RegisterNamedMessageHandler(DescendCommandMessageName, HandleDescendCommandMessage);
         messaging.RegisterNamedMessageHandler(ExitSessionRequestMessageName, HandleExitSessionRequestMessage);
         messaging.RegisterNamedMessageHandler(ExitSessionCommandMessageName, HandleExitSessionCommandMessage);
         handlersRegistered = true;
@@ -539,6 +576,8 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
             messaging.UnregisterNamedMessageHandler(CommitProgressionCommandMessageName);
             messaging.UnregisterNamedMessageHandler(OpenChestRequestMessageName);
             messaging.UnregisterNamedMessageHandler(OpenChestCommandMessageName);
+            messaging.UnregisterNamedMessageHandler(DescendRequestMessageName);
+            messaging.UnregisterNamedMessageHandler(DescendCommandMessageName);
             messaging.UnregisterNamedMessageHandler(ExitSessionRequestMessageName);
             messaging.UnregisterNamedMessageHandler(ExitSessionCommandMessageName);
         }
@@ -824,6 +863,45 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         EnqueueReplicatedCommand(ReplicatedCommandType.OpenChest, ReadPayload(ref reader));
     }
 
+    private void HandleDescendRequestMessage(ulong senderClientId, FastBufferReader reader)
+    {
+        if (!IsHostAuthority)
+        {
+            return;
+        }
+
+        string payload = ReadPayload(ref reader);
+        DescendRequestMessage request = JsonUtility.FromJson<DescendRequestMessage>(payload);
+        if (request == null || !CanClientControlCharacter(senderClientId, request.runtimeCharacterId))
+        {
+            return;
+        }
+
+        TacticsCharacterController character = FindCharacterByRuntimeId(request.runtimeCharacterId);
+        TacticsStairsController stairs = TacticsStairsController.FindByRuntimeId(request.runtimeStairsId);
+        if (character == null || stairs == null)
+        {
+            return;
+        }
+
+        DescendCommandMessage command = BuildDescendCommandMessage(character, stairs);
+        string resolvedPayload = JsonUtility.ToJson(command);
+        if (ExecuteDescendCommand(command))
+        {
+            BroadcastMessage(DescendCommandMessageName, resolvedPayload, includeHost: false);
+        }
+    }
+
+    private void HandleDescendCommandMessage(ulong senderClientId, FastBufferReader reader)
+    {
+        if (IsHostAuthority)
+        {
+            return;
+        }
+
+        EnqueueReplicatedCommand(ReplicatedCommandType.Descend, ReadPayload(ref reader));
+    }
+
     private void HandleExitSessionRequestMessage(ulong senderClientId, FastBufferReader reader)
     {
         if (!IsHostAuthority)
@@ -960,6 +1038,48 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
             containsMimic = containsMimic,
             mimicRuntimeCharacterId = containsMimic ? BuildMimicRuntimeCharacterId(chest.RuntimeChestId) : string.Empty
         };
+    }
+
+    private DescendCommandMessage BuildDescendCommandMessage(
+        TacticsCharacterController character,
+        TacticsStairsController stairs)
+    {
+        return new DescendCommandMessage
+        {
+            runtimeCharacterId = character != null ? character.RuntimeCharacterId : string.Empty,
+            runtimeStairsId = stairs != null ? stairs.RuntimeStairsId : string.Empty,
+            fadeDuration = 0.45f,
+            nextBattleSetup = roundProgressionService != null
+                ? roundProgressionService.CreateNextRoundBattleSetup()
+                : null
+        };
+    }
+
+    private bool ExecuteDescendCommand(DescendCommandMessage message, bool requireLocalAuthorityState = true)
+    {
+        roundProgressionService ??= FindFirstObjectByType<TacticsRoundProgressionService>();
+        if (roundProgressionService == null)
+        {
+            return false;
+        }
+
+        if (requireLocalAuthorityState)
+        {
+            TacticsCharacterController character = FindCharacterByRuntimeId(message.runtimeCharacterId);
+            TacticsStairsController stairs = TacticsStairsController.FindByRuntimeId(message.runtimeStairsId);
+            if (character == null ||
+                stairs == null ||
+                !roundProgressionService.TryGetAvailableStairs(character, out TacticsStairsController availableStairs) ||
+                !ReferenceEquals(availableStairs, stairs))
+            {
+                return false;
+            }
+        }
+
+        return roundProgressionService.BeginRoundTransition(
+            null,
+            message.nextBattleSetup,
+            message.fadeDuration);
     }
 
     private bool TryStartBattleIfReady()
@@ -1424,6 +1544,11 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         {
             combatSystem = FindFirstObjectByType<TacticsCombatSystem>();
         }
+
+        if (roundProgressionService == null)
+        {
+            roundProgressionService = FindFirstObjectByType<TacticsRoundProgressionService>();
+        }
     }
 
     private TacticsCharacterController FindCharacterByRuntimeId(string runtimeCharacterId)
@@ -1540,6 +1665,9 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
             ReplicatedCommandType.OpenChest => ExecuteOpenChestCommand(
                 JsonUtility.FromJson<OpenChestCommandMessage>(command.Payload),
                 requireLocalAuthorityState: false),
+            ReplicatedCommandType.Descend => ExecuteDescendCommand(
+                JsonUtility.FromJson<DescendCommandMessage>(command.Payload),
+                requireLocalAuthorityState: false),
             _ => false
         };
     }
@@ -1634,6 +1762,22 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
     }
 
     [Serializable]
+    private sealed class DescendRequestMessage
+    {
+        public string runtimeCharacterId;
+        public string runtimeStairsId;
+    }
+
+    [Serializable]
+    private sealed class DescendCommandMessage
+    {
+        public string runtimeCharacterId;
+        public string runtimeStairsId;
+        public float fadeDuration;
+        public TacticsCoopBattleSetup nextBattleSetup;
+    }
+
+    [Serializable]
     private struct RandomStatePayload
     {
         public UnityEngine.Random.State state;
@@ -1657,6 +1801,7 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         Ability = 1,
         EndTurn = 2,
         CommitProgression = 3,
-        OpenChest = 4
+        OpenChest = 4,
+        Descend = 5
     }
 }

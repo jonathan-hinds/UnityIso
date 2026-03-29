@@ -26,6 +26,7 @@ public class TacticsPlayerController : MonoBehaviour
     [SerializeField] private TacticsTileTargetOverlay tileTargetOverlay;
     [SerializeField] private TacticsCursorMovementCostView cursorMovementCostView;
     [SerializeField] private TacticsCoopSessionCoordinator coopSessionCoordinator;
+    [SerializeField] private TacticsRoundProgressionService roundProgressionService;
     [SerializeField] private TacticsThrowTargetPreview throwTargetPreview;
 
     private TacticsCharacterController selectedCharacter;
@@ -35,6 +36,7 @@ public class TacticsPlayerController : MonoBehaviour
     private readonly List<Vector2Int> reusableOverlayTiles = new();
     private readonly List<Vector2Int> reusableThrowDestinationTiles = new();
     private bool? lastCanOpenChest;
+    private bool? lastCanDescend;
     private TacticsCharacterController pendingThrowTarget;
     private Vector2Int? hoveredThrowDestination;
 
@@ -82,6 +84,11 @@ public class TacticsPlayerController : MonoBehaviour
             coopSessionCoordinator = FindFirstObjectByType<TacticsCoopSessionCoordinator>();
         }
 
+        if (roundProgressionService == null)
+        {
+            roundProgressionService = FindFirstObjectByType<TacticsRoundProgressionService>();
+        }
+
         EnsureCursorMovementCostView();
         EnsureThrowTargetPreview();
     }
@@ -123,6 +130,11 @@ public class TacticsPlayerController : MonoBehaviour
         if (coopSessionCoordinator == null)
         {
             coopSessionCoordinator = FindFirstObjectByType<TacticsCoopSessionCoordinator>();
+        }
+
+        if (roundProgressionService == null)
+        {
+            roundProgressionService = FindFirstObjectByType<TacticsRoundProgressionService>();
         }
 
         EnsureCursorMovementCostView();
@@ -537,6 +549,15 @@ public class TacticsPlayerController : MonoBehaviour
                 }
 
                 break;
+            case TacticsHudActionType.Descend:
+                combatSystem?.CancelTargeting();
+                if (RequestDescend(activePlayerCharacter))
+                {
+                    selectionState = SelectionState.CharacterSelected;
+                    RefreshHud();
+                }
+
+                break;
             case TacticsHudActionType.Attack:
                 break;
             case TacticsHudActionType.EndTurn:
@@ -638,7 +659,9 @@ public class TacticsPlayerController : MonoBehaviour
             {
                 BuildAbilityOptions(activePlayerCharacter, reusableAbilityOptions);
                 bool canOpenChest = FindAdjacentOpenableChest(activePlayerCharacter) != null;
+                bool canDescend = roundProgressionService != null && roundProgressionService.CanDescend(activePlayerCharacter);
                 lastCanOpenChest = canOpenChest;
+                lastCanDescend = canDescend;
 
                 actionMenuView.ShowForCharacter(
                     activePlayerCharacter,
@@ -647,6 +670,7 @@ public class TacticsPlayerController : MonoBehaviour
                     selectionState == SelectionState.AwaitingAbilityTarget ||
                     selectionState == SelectionState.AwaitingThrowDestination,
                     canOpenChest,
+                    canDescend,
                     turnManager != null ? turnManager.RoundNumber : 1,
                     turnManager != null ? turnManager.TurnNumber : 1,
                     turnManager != null ? turnManager.ParticipantCount : 1);
@@ -654,6 +678,7 @@ public class TacticsPlayerController : MonoBehaviour
             else
             {
                 lastCanOpenChest = null;
+                lastCanDescend = null;
                 actionMenuView.Hide();
             }
         }
@@ -1355,11 +1380,14 @@ public class TacticsPlayerController : MonoBehaviour
         if (activePlayerCharacter == null || !activePlayerCharacter.IsTurnActive)
         {
             lastCanOpenChest = null;
+            lastCanDescend = null;
             return;
         }
 
         bool canOpenChest = FindAdjacentOpenableChest(activePlayerCharacter) != null;
-        if (!lastCanOpenChest.HasValue || lastCanOpenChest.Value == canOpenChest)
+        bool canDescend = roundProgressionService != null && roundProgressionService.CanDescend(activePlayerCharacter);
+        if ((!lastCanOpenChest.HasValue || lastCanOpenChest.Value == canOpenChest) &&
+            (!lastCanDescend.HasValue || lastCanDescend.Value == canDescend))
         {
             return;
         }
@@ -1431,6 +1459,11 @@ public class TacticsPlayerController : MonoBehaviour
         return coopSessionCoordinator != null
             ? coopSessionCoordinator.RequestOpenChest(character, chest)
             : false;
+    }
+
+    private bool RequestDescend(TacticsCharacterController character)
+    {
+        return roundProgressionService != null && roundProgressionService.RequestDescend(character);
     }
 
     private static TacticsChestController FindAdjacentOpenableChest(TacticsCharacterController character)

@@ -29,6 +29,7 @@ public sealed class TacticsActionMenuView : MonoBehaviour
     private IReadOnlyList<TacticsActionMenuAbilityOption> displayedAbilityOptions = Array.Empty<TacticsActionMenuAbilityOption>();
     private bool isSpellMenuOpen;
     private bool loggedMissingPrefabWarning;
+    private Button descendButton;
 
     public event Action<TacticsHudActionType> ActionSelected;
     public event Action<TacticsAbilityDefinition> AbilitySelected;
@@ -45,6 +46,7 @@ public sealed class TacticsActionMenuView : MonoBehaviour
         bool awaitingMoveTarget,
         bool awaitingAbilityTarget,
         bool canOpenChest,
+        bool canDescend,
         int roundNumber,
         int turnNumber,
         int participantCount)
@@ -76,6 +78,8 @@ public sealed class TacticsActionMenuView : MonoBehaviour
         actionMenuPanel.MoveButton.interactable = character.CanMoveThisTurn && !awaitingMoveTarget && !awaitingAbilityTarget;
         actionMenuPanel.OpenChestButton.gameObject.SetActive(canOpenChest);
         actionMenuPanel.OpenChestButton.interactable = canOpenChest && character.CanInteractThisTurn && !awaitingMoveTarget && !awaitingAbilityTarget;
+        descendButton.gameObject.SetActive(canDescend);
+        descendButton.interactable = canDescend && character.CanInteractThisTurn && !awaitingMoveTarget && !awaitingAbilityTarget;
         actionMenuPanel.AbilitiesButton.interactable = displayedAbilityOptions.Count > 0 &&
                                                        character.CanUseAbilitiesThisTurn &&
                                                        !awaitingMoveTarget;
@@ -168,6 +172,7 @@ public sealed class TacticsActionMenuView : MonoBehaviour
         }
 
         BindStaticEvents();
+        EnsureDescendButton();
     }
 
     private bool HasRequiredBindings()
@@ -193,6 +198,7 @@ public sealed class TacticsActionMenuView : MonoBehaviour
         {
             RebindButton(actionMenuPanel.MoveButton, HandleMoveClicked);
             RebindButton(actionMenuPanel.OpenChestButton, HandleOpenChestClicked);
+            RebindButton(descendButton, HandleDescendClicked);
             RebindButton(actionMenuPanel.AbilitiesButton, HandleAbilitiesClicked);
             RebindButton(actionMenuPanel.EndTurnButton, HandleEndTurnClicked);
         }
@@ -235,6 +241,11 @@ public sealed class TacticsActionMenuView : MonoBehaviour
     private void HandleOpenChestClicked()
     {
         ActionSelected?.Invoke(TacticsHudActionType.OpenChest);
+    }
+
+    private void HandleDescendClicked()
+    {
+        ActionSelected?.Invoke(TacticsHudActionType.Descend);
     }
 
     private void HandleEndTurnClicked()
@@ -409,6 +420,42 @@ public sealed class TacticsActionMenuView : MonoBehaviour
 
         Vector2 pointerPosition = eventData != null ? eventData.position : Input.mousePosition;
         tooltipView.UpdatePosition(pointerPosition);
+    }
+
+    private void EnsureDescendButton()
+    {
+        if (actionMenuPanel == null || actionMenuPanel.OpenChestButton == null)
+        {
+            return;
+        }
+
+        if (descendButton == null)
+        {
+            Transform existing = actionMenuPanel.Root != null
+                ? actionMenuPanel.Root.Find("DescendButton")
+                : null;
+            if (existing != null)
+            {
+                descendButton = existing.GetComponent<Button>();
+            }
+        }
+
+        if (descendButton == null)
+        {
+            descendButton = Instantiate(actionMenuPanel.OpenChestButton, actionMenuPanel.OpenChestButton.transform.parent);
+            descendButton.gameObject.name = "DescendButton";
+        }
+
+        descendButton.transform.SetSiblingIndex(actionMenuPanel.OpenChestButton.transform.GetSiblingIndex() + 1);
+
+        Text label = descendButton.GetComponentInChildren<Text>(true);
+        if (label != null)
+        {
+            label.text = "Descend";
+        }
+
+        RebindButton(descendButton, HandleDescendClicked);
+        descendButton.gameObject.SetActive(false);
     }
 }
 

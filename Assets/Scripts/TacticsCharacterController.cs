@@ -838,7 +838,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
             return false;
         }
 
-        if (TacticsChestController.IsBlockingTile(destination))
+        if (TacticsTileBlockerUtility.IsBlockingTile(destination))
         {
             return false;
         }
@@ -1118,7 +1118,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
 
     private bool IsTileBlockedForMovement(Vector2Int tile)
     {
-        if (TacticsChestController.IsBlockingTile(tile))
+        if (TacticsTileBlockerUtility.IsBlockingTile(tile))
         {
             return true;
         }

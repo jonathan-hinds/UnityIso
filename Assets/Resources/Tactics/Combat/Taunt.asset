@@ -23,14 +23,14 @@ MonoBehaviour:
   damageType: 0
   projectilePrefab: {fileID: 0}
   hitEffect:
-    sourceTexture: {fileID: 2800000, guid: e23df6350c732e140a5682d68949b150, type: 3}
+    sourceTexture: {fileID: 2800000, guid: 394c60f907fc09b4fad223794a219d28, type: 3}
     frames:
-    - {fileID: 1505722187724781760, guid: e23df6350c732e140a5682d68949b150, type: 3}
-    - {fileID: -1296957694667232424, guid: e23df6350c732e140a5682d68949b150, type: 3}
-    - {fileID: 6271026001932261562, guid: e23df6350c732e140a5682d68949b150, type: 3}
-    - {fileID: 5387141249611449715, guid: e23df6350c732e140a5682d68949b150, type: 3}
-    - {fileID: -9065579135672007347, guid: e23df6350c732e140a5682d68949b150, type: 3}
-    - {fileID: 7944167025139519249, guid: e23df6350c732e140a5682d68949b150, type: 3}
+    - {fileID: -2608879423290627857, guid: 394c60f907fc09b4fad223794a219d28, type: 3}
+    - {fileID: -3009302157492300770, guid: 394c60f907fc09b4fad223794a219d28, type: 3}
+    - {fileID: 7476949221991953500, guid: 394c60f907fc09b4fad223794a219d28, type: 3}
+    - {fileID: -8296723396773897915, guid: 394c60f907fc09b4fad223794a219d28, type: 3}
+    - {fileID: -8923061072355287162, guid: 394c60f907fc09b4fad223794a219d28, type: 3}
+    - {fileID: 6992987764750738405, guid: 394c60f907fc09b4fad223794a219d28, type: 3}
     framesPerSecond: 12
     duration: 0.5
     scale: 2
@@ -45,6 +45,18 @@ MonoBehaviour:
     flatPotency: 0
     potencyMultiplier: 1
     scaling: []
+    customDisplayName: 
+    customShortLabel: 
+    statModifier:
+      statType: 0
+  knockback:
+    distanceInTiles: 0
+    duration: 0.18
+    arcHeight: 0
+  throwing:
+    enabled: 0
+    duration: 0.22
+    arcHeight: 0
   costResourceType: 1
   costAmount: 6
   allowMovementAsAlternateCost: 0
