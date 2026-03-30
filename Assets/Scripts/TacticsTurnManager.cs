@@ -52,7 +52,6 @@ public sealed class TacticsTurnManager : MonoBehaviour
         }
 
         participants.Add(participant);
-        participants.Sort(CompareParticipants);
         participant.TurnEnded += HandleParticipantTurnEnded;
         participant.TurnStateChanged += HandleParticipantTurnStateChanged;
         NotifyTurnStateChanged();
@@ -95,7 +94,7 @@ public sealed class TacticsTurnManager : MonoBehaviour
         NotifyTurnStateChanged();
     }
 
-    public void RefreshParticipantsAndStartBattle()
+    public void RefreshParticipantsAndStartBattle(int? turnOrderSeed = null)
     {
         if (cameraDirector == null)
         {
@@ -114,6 +113,13 @@ public sealed class TacticsTurnManager : MonoBehaviour
             {
                 RegisterParticipant(reusableCharacters[i]);
             }
+        }
+
+        if (turnOrderSeed.HasValue)
+        {
+            ReshuffleParticipants(turnOrderSeed.Value, preserveActiveParticipant: false);
+            RoundNumber = 0;
+            activeTurnIndex = -1;
         }
 
         if (ActiveParticipant == null && !IsTransitioningTurns && participants.Count > 0)
@@ -142,6 +148,62 @@ public sealed class TacticsTurnManager : MonoBehaviour
         queuedPriorityParticipant = participant;
         NotifyTurnStateChanged();
         return true;
+    }
+
+    public void ReshuffleParticipants(int seed, bool preserveActiveParticipant)
+    {
+        CleanupParticipants();
+        if (participants.Count <= 1)
+        {
+            return;
+        }
+
+        ITacticsTurnParticipant preservedParticipant = preserveActiveParticipant &&
+                                                      ActiveParticipant != null &&
+                                                      participants.Contains(ActiveParticipant)
+            ? ActiveParticipant
+            : null;
+        int preservedIndex = preserveActiveParticipant && preservedParticipant != null
+            ? Mathf.Clamp(activeTurnIndex, 0, participants.Count - 1)
+            : -1;
+
+        List<ITacticsTurnParticipant> reorderedParticipants = new(participants.Count);
+        for (int i = 0; i < participants.Count; i++)
+        {
+            ITacticsTurnParticipant participant = participants[i];
+            if (!ReferenceEquals(participant, preservedParticipant))
+            {
+                reorderedParticipants.Add(participant);
+            }
+        }
+
+        reorderedParticipants.Sort(CompareParticipantsForShuffle);
+        ShuffleParticipants(reorderedParticipants, seed);
+
+        participants.Clear();
+        if (preservedParticipant != null)
+        {
+            int insertIndex = Mathf.Clamp(preservedIndex, 0, reorderedParticipants.Count);
+            for (int i = 0; i < insertIndex; i++)
+            {
+                participants.Add(reorderedParticipants[i]);
+            }
+
+            participants.Add(preservedParticipant);
+
+            for (int i = insertIndex; i < reorderedParticipants.Count; i++)
+            {
+                participants.Add(reorderedParticipants[i]);
+            }
+
+            activeTurnIndex = insertIndex;
+        }
+        else
+        {
+            participants.AddRange(reorderedParticipants);
+        }
+
+        NotifyTurnStateChanged();
     }
 
     public bool TryEndActiveTurn()
@@ -284,8 +346,6 @@ public sealed class TacticsTurnManager : MonoBehaviour
             participants.RemoveAt(i);
         }
 
-        participants.Sort(CompareParticipants);
-
         if (activeTurnIndex >= participants.Count)
         {
             activeTurnIndex = participants.Count - 1;
@@ -308,7 +368,17 @@ public sealed class TacticsTurnManager : MonoBehaviour
         automatedTurnController?.BeginAutomatedTurn();
     }
 
-    private static int CompareParticipants(ITacticsTurnParticipant left, ITacticsTurnParticipant right)
+    private static void ShuffleParticipants(List<ITacticsTurnParticipant> orderedParticipants, int seed)
+    {
+        System.Random random = new System.Random(seed);
+        for (int i = orderedParticipants.Count - 1; i > 0; i--)
+        {
+            int swapIndex = random.Next(i + 1);
+            (orderedParticipants[i], orderedParticipants[swapIndex]) = (orderedParticipants[swapIndex], orderedParticipants[i]);
+        }
+    }
+
+    private static int CompareParticipantsForShuffle(ITacticsTurnParticipant left, ITacticsTurnParticipant right)
     {
         if (ReferenceEquals(left, right))
         {
@@ -323,18 +393,6 @@ public sealed class TacticsTurnManager : MonoBehaviour
         if (right == null)
         {
             return -1;
-        }
-
-        int playerPriorityComparison = GetParticipantPriority(left).CompareTo(GetParticipantPriority(right));
-        if (playerPriorityComparison != 0)
-        {
-            return playerPriorityComparison;
-        }
-
-        int teamComparison = left.Team.CompareTo(right.Team);
-        if (teamComparison != 0)
-        {
-            return teamComparison;
         }
 
         int keyComparison = string.Compare(
@@ -366,15 +424,5 @@ public sealed class TacticsTurnManager : MonoBehaviour
             leftBehaviour.gameObject.name,
             rightBehaviour.gameObject.name,
             StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static int GetParticipantPriority(ITacticsTurnParticipant participant)
-    {
-        if (participant == null)
-        {
-            return int.MaxValue;
-        }
-
-        return participant.IsPlayerControlled ? 0 : 1;
     }
 }

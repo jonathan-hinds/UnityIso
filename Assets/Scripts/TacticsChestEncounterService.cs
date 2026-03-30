@@ -54,7 +54,6 @@ public sealed class TacticsChestEncounterService : MonoBehaviour
             if (turnManager != null)
             {
                 turnManager.RegisterParticipant(mimic);
-                turnManager.QueuePriorityTurn(mimic);
             }
 
             result = new TacticsChestResolutionResult(true, 0, mimic);

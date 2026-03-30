@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.Serialization;
 
 [DisallowMultipleComponent]
 public class ProceduralIsometricMapGenerator : MonoBehaviour
@@ -37,6 +38,61 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         public Bounds Bounds { get; }
         public int SortingOrder { get; }
         public int SortingLayerId { get; }
+    }
+
+    [Serializable]
+    public sealed class DebrisSettings
+    {
+        [FormerlySerializedAs("intensity")]
+        [Range(0f, 1f)]
+        public float amount = 0.18f;
+
+        [FormerlySerializedAs("noiseScale")]
+        [Range(0f, 1f)]
+        public float dispersion = 0.5f;
+
+        public List<Sprite> topSprites = new();
+
+        public bool HasSprites => topSprites != null && topSprites.Count > 0;
+        public bool IsEnabled => amount > 0f && HasSprites;
+
+        public DebrisSettings Clone()
+        {
+            DebrisSettings clone = new DebrisSettings
+            {
+                amount = amount,
+                dispersion = dispersion,
+                topSprites = new List<Sprite>()
+            };
+
+            if (topSprites != null)
+            {
+                for (int i = 0; i < topSprites.Count; i++)
+                {
+                    if (topSprites[i] != null)
+                    {
+                        clone.topSprites.Add(topSprites[i]);
+                    }
+                }
+            }
+
+            return clone;
+        }
+
+        public void Sanitize()
+        {
+            amount = Mathf.Clamp01(amount);
+            dispersion = Mathf.Clamp01(dispersion);
+            topSprites ??= new List<Sprite>();
+
+            for (int i = topSprites.Count - 1; i >= 0; i--)
+            {
+                if (topSprites[i] == null)
+                {
+                    topSprites.RemoveAt(i);
+                }
+            }
+        }
     }
 
     [Serializable]
@@ -109,6 +165,9 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
     [SerializeField, Min(1f)] private float lacunarity = 2f;
     [SerializeField, Range(0, 4)] private int smoothingPasses = 1;
 
+    [Header("Debris")]
+    [SerializeField] private DebrisSettings debrisSettings = new DebrisSettings();
+
     [Header("Tile Art")]
     [SerializeField] private Sprite topSprite;
     [SerializeField] private Sprite leftSideSprite;
@@ -151,6 +210,10 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
     private const string GeneratedAttachmentRootPrefix = "Generated Runtime - ";
     private const int DefaultSpritePixels = 128;
     private const float DefaultPixelsPerUnit = 128f;
+    private const int TopFaceSortBias = 2;
+    private const int DebrisSortBias = 3;
+    private const int CharacterSortBias = 8;
+    private const int DebrisSeedOffset = 8191;
     private static readonly Vector2Int[] NeighborOffsets =
     {
         new Vector2Int(-1, 0),
@@ -163,6 +226,8 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
     private static Sprite cachedDefaultLeftSideSprite;
     private static Sprite cachedDefaultRightSideSprite;
     private static Sprite cachedStairsTopSprite;
+    private Sprite cachedLeftVisibleDebrisMaskSprite;
+    private Sprite cachedRightVisibleDebrisMaskSprite;
     private Sprite cachedTopLeftEdgeShadowSprite;
     private Sprite cachedTopRightEdgeShadowSprite;
     private Sprite cachedBottomLeftEdgeShadowSprite;
@@ -170,6 +235,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
 
     private readonly List<SpriteRenderer> spawnedRenderers = new List<SpriteRenderer>();
     private readonly List<OcclusionVolume> occlusionVolumes = new List<OcclusionVolume>();
+    private readonly HashSet<Vector2Int> currentDebrisTiles = new HashSet<Vector2Int>();
     private int[,] currentHeights;
     private int maximumGeneratedElevation;
     private System.Random spawnPlacementRandom;
@@ -198,6 +264,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
             noiseOctaves = noiseOctaves,
             minElevation = minElevation,
             maxElevation = maxElevation,
+            debris = debrisSettings != null ? debrisSettings.Clone() : new DebrisSettings(),
             chestSpawns = chestSpawnSettings,
             enemies = new List<TacticsMatchEnemySettings>(enemySpawnEntries.Count)
         };
@@ -238,6 +305,8 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         noiseOctaves = sanitized.noiseOctaves;
         minElevation = sanitized.minElevation;
         maxElevation = sanitized.maxElevation;
+        debrisSettings = sanitized.debris != null ? sanitized.debris.Clone() : new DebrisSettings();
+        debrisSettings.Sanitize();
         chestSpawnSettings = sanitized.chestSpawns;
         chestSpawnSettings.Sanitize();
 
@@ -317,6 +386,9 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         mapOffset = Vector3.zero;
         renderSideFaces = false;
         enemySpawnEntries.Clear();
+        debrisSettings = new DebrisSettings();
+        debrisSettings.topSprites.Clear();
+        debrisSettings.amount = 0f;
         chestSpawnSettings = new ChestSpawnSettings();
     }
 
@@ -345,6 +417,8 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         bool hasStairsSpawnPlan = TryCreateStairsSpawnPlan(out StairsSpawnPlan stairsSpawnPlan);
         currentStairsTile = hasStairsSpawnPlan ? stairsSpawnPlan.Tile : null;
         currentStairsRuntimeId = hasStairsSpawnPlan ? stairsSpawnPlan.RuntimeStairsId : string.Empty;
+        currentDebrisTiles.Clear();
+        CreateDebrisPlacementSet(currentDebrisTiles);
         Transform generatedRoot = CreateGeneratedRoot();
 
         for (int x = 0; x < width; x++)
@@ -374,7 +448,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                     x,
                     y,
                     height,
-                    2,
+                    TopFaceSortBias,
                     IsometricMapElevationElementType.TopFace,
                     ref tileOcclusionBounds,
                     ref tileOcclusionSortingOrder,
@@ -387,6 +461,42 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                     height: height,
                     isStairsTile: isStairsTile,
                     runtimeStairsId: isStairsTile ? currentStairsRuntimeId : string.Empty);
+                CreateCutawaySideFaces(
+                    generatedRoot,
+                    topPosition,
+                    x,
+                    y,
+                    height);
+
+                int lowerLeftNeighborHeight = GetHeight(currentHeights, x - 1, y);
+                int lowerRightNeighborHeight = GetHeight(currentHeights, x, y - 1);
+                int upperLeftNeighborHeight = GetHeight(currentHeights, x, y + 1);
+                int upperRightNeighborHeight = GetHeight(currentHeights, x + 1, y);
+
+                if (!isStairsTile &&
+                    currentDebrisTiles.Contains(new Vector2Int(x, y)) &&
+                    TryGetDebrisSpriteForTile(x, y, height, out Sprite debrisSprite))
+                {
+                    // Debris sits one tie-break step above its own top face so the overlay
+                    // is visible on the tile, but it still remains far below the next
+                    // screen-depth bucket, so nearer columns continue to occlude it.
+                    CreateTilePart(
+                        generatedRoot,
+                        debrisSprite,
+                        topPosition,
+                        $"Debris_{x}_{y}_{height}",
+                        x,
+                        y,
+                        height,
+                        DebrisSortBias,
+                        IsometricMapElevationElementType.TopOverlay);
+                    ConfigureDebrisOverlay(
+                        partName: $"Debris_{x}_{y}_{height}",
+                        generatedRoot: generatedRoot,
+                        elevation: height,
+                        leftBlockingElevation: lowerLeftNeighborHeight,
+                        rightBlockingElevation: lowerRightNeighborHeight);
+                }
 
                 // Treat the terrain as stacked isometric columns. The vertical side faces
                 // are still only visible on the two screen-facing edges, but the top-edge
@@ -396,11 +506,6 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                 // heights therefore merge into one platform with no shadow seam between
                 // tiles, while lower surrounding tiles get a continuous border around the
                 // raised area.
-                int lowerLeftNeighborHeight = GetHeight(currentHeights, x - 1, y);
-                int lowerRightNeighborHeight = GetHeight(currentHeights, x, y - 1);
-                int upperLeftNeighborHeight = GetHeight(currentHeights, x, y + 1);
-                int upperRightNeighborHeight = GetHeight(currentHeights, x + 1, y);
-
                 if (renderSideFaces)
                 {
                     CreateTilePart(
@@ -494,15 +599,16 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                 for (int layer = 1; layer < height; layer++)
                 {
                     Vector3 sidePosition = GridToWorld(x, y, layer);
+                    string sliceCapName = $"SliceCap_{x}_{y}_{layer}";
                     CreateTilePart(
                         generatedRoot,
                         topSprite != null ? topSprite : cachedDefaultTopSprite,
                         sidePosition,
-                        $"SliceCap_{x}_{y}_{layer}",
+                        sliceCapName,
                         x,
                         y,
                         layer,
-                        2,
+                        TopFaceSortBias,
                         IsometricMapElevationElementType.SliceCap);
 
                     if (renderSideFaces && lowerLeftNeighborHeight < layer)
@@ -565,6 +671,8 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
             maxElevation = minElevation;
         }
 
+        debrisSettings ??= new DebrisSettings();
+        debrisSettings.Sanitize();
         chestSpawnSettings.Sanitize();
     }
 
@@ -628,27 +736,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         {
             for (int y = 0; y < length; y++)
             {
-                float amplitude = 1f;
-                float frequency = 1f;
-                float sample = 0f;
-                float amplitudeSum = 0f;
-
-                for (int octave = 0; octave < noiseOctaves; octave++)
-                {
-                    float sampleX = ((x + seedOffset.x) / noiseScale) * frequency;
-                    float sampleY = ((y + seedOffset.y) / noiseScale) * frequency;
-                    float perlin = Mathf.PerlinNoise(sampleX, sampleY);
-                    sample += perlin * amplitude;
-                    amplitudeSum += amplitude;
-                    amplitude *= persistence;
-                    frequency *= lacunarity;
-                }
-
-                if (amplitudeSum > 0f)
-                {
-                    sample /= amplitudeSum;
-                }
-
+                float sample = SampleFractalNoise(x, y, seedOffset, noiseScale, noiseOctaves, persistence, lacunarity);
                 samples[x, y] = sample;
                 minSample = Mathf.Min(minSample, sample);
                 maxSample = Mathf.Max(maxSample, sample);
@@ -769,7 +857,122 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
     {
         // Keep characters just above the top face of their current tile while still
         // allowing nearer columns to occlude them.
-        return CalculateSortingOrder(x, y, elevation, 3);
+        return CalculateSortingOrder(x, y, elevation, CharacterSortBias);
+    }
+
+    private bool TryGetDebrisSpriteForTile(int x, int y, int elevation, out Sprite debrisSprite)
+    {
+        debrisSprite = null;
+        if (debrisSettings == null)
+        {
+            return false;
+        }
+
+        debrisSettings.Sanitize();
+        if (!debrisSettings.IsEnabled)
+        {
+            return false;
+        }
+
+        int spriteIndex = GetDeterministicTileHash(seed + DebrisSeedOffset, x, y, elevation);
+        spriteIndex = Mathf.Abs(spriteIndex) % debrisSettings.topSprites.Count;
+        debrisSprite = debrisSettings.topSprites[spriteIndex];
+        return debrisSprite != null;
+    }
+
+    private void CreateDebrisPlacementSet(HashSet<Vector2Int> placementSet)
+    {
+        if (placementSet == null)
+        {
+            return;
+        }
+
+        placementSet.Clear();
+        if (currentHeights == null || debrisSettings == null)
+        {
+            return;
+        }
+
+        debrisSettings.Sanitize();
+        if (!debrisSettings.IsEnabled)
+        {
+            return;
+        }
+
+        List<Vector2Int> candidates = new List<Vector2Int>();
+        for (int x = 0; x < width; x++)
+        {
+            for (int y = 0; y < length; y++)
+            {
+                if (currentHeights[x, y] <= 0)
+                {
+                    continue;
+                }
+
+                Vector2Int tile = new Vector2Int(x, y);
+                if (currentStairsTile.HasValue && currentStairsTile.Value == tile)
+                {
+                    continue;
+                }
+
+                candidates.Add(tile);
+            }
+        }
+
+        int targetCount = Mathf.Clamp(
+            Mathf.RoundToInt(candidates.Count * debrisSettings.amount),
+            0,
+            candidates.Count);
+        if (targetCount <= 0)
+        {
+            return;
+        }
+
+        Vector2 seedOffset = CreateNoiseSeedOffset(seed + DebrisSeedOffset);
+        float clumpScale = ResolveDebrisClumpScale();
+        List<Vector2Int> chosenTiles = new List<Vector2Int>(targetCount);
+
+        while (chosenTiles.Count < targetCount)
+        {
+            int bestIndex = -1;
+            float bestScore = float.MinValue;
+
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                Vector2Int tile = candidates[i];
+                if (placementSet.Contains(tile))
+                {
+                    continue;
+                }
+
+                float clumpScore = SampleFractalNoise(
+                    tile.x,
+                    tile.y,
+                    seedOffset,
+                    clumpScale,
+                    octaves: 1,
+                    persistenceValue: 0.5f,
+                    lacunarityValue: 2f);
+                float spreadScore = CalculateDebrisSpreadScore(tile, chosenTiles);
+                float tieBreaker = GetDeterministicTileValue(seed + DebrisSeedOffset, tile.x, tile.y, currentHeights[tile.x, tile.y]) * 0.001f;
+                float score = Mathf.Lerp(clumpScore, spreadScore, debrisSettings.dispersion) + tieBreaker;
+
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestIndex = i;
+                }
+            }
+
+            if (bestIndex < 0)
+            {
+                break;
+            }
+
+            Vector2Int selectedTile = candidates[bestIndex];
+            placementSet.Add(selectedTile);
+            chosenTiles.Add(selectedTile);
+        }
     }
 
     public Vector2Int GetCenterTile()
@@ -1115,6 +1318,83 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         }
     }
 
+    private void ConfigureDebrisOverlay(
+        string partName,
+        Transform generatedRoot,
+        int elevation,
+        int leftBlockingElevation,
+        int rightBlockingElevation)
+    {
+        Transform debrisTransform = generatedRoot.Find(partName);
+        if (debrisTransform == null)
+        {
+            return;
+        }
+
+        SpriteRenderer renderer = debrisTransform.GetComponent<SpriteRenderer>();
+        if (renderer == null)
+        {
+            return;
+        }
+
+        GameObject maskObject = new GameObject("DebrisMask");
+        maskObject.transform.SetParent(debrisTransform, false);
+        maskObject.transform.localPosition = Vector3.zero;
+
+        SpriteMask spriteMask = maskObject.AddComponent<SpriteMask>();
+        spriteMask.isCustomRangeActive = true;
+        spriteMask.frontSortingLayerID = renderer.sortingLayerID;
+        spriteMask.backSortingLayerID = renderer.sortingLayerID;
+        spriteMask.frontSortingOrder = renderer.sortingOrder;
+        spriteMask.backSortingOrder = renderer.sortingOrder;
+
+        IsometricDebrisOverlayController controller = debrisTransform.gameObject.AddComponent<IsometricDebrisOverlayController>();
+        controller.Initialize(
+            elevation,
+            leftBlockingElevation,
+            rightBlockingElevation,
+            renderer,
+            spriteMask,
+            cachedLeftVisibleDebrisMaskSprite,
+            cachedRightVisibleDebrisMaskSprite);
+        controller.ApplyVisibleElevation(maximumGeneratedElevation);
+    }
+
+    private void CreateCutawaySideFaces(
+        Transform generatedRoot,
+        Vector3 topPosition,
+        int gridX,
+        int gridY,
+        int height)
+    {
+        if (!renderSideFaces)
+        {
+            return;
+        }
+
+        CreateTilePart(
+            generatedRoot,
+            leftSideSprite != null ? leftSideSprite : cachedDefaultLeftSideSprite,
+            topPosition,
+            $"CutLeft_{gridX}_{gridY}_{height}",
+            gridX,
+            gridY,
+            height,
+            0,
+            IsometricMapElevationElementType.CutawaySideFace);
+
+        CreateTilePart(
+            generatedRoot,
+            rightSideSprite != null ? rightSideSprite : cachedDefaultRightSideSprite,
+            topPosition,
+            $"CutRight_{gridX}_{gridY}_{height}",
+            gridX,
+            gridY,
+            height,
+            1,
+            IsometricMapElevationElementType.CutawaySideFace);
+    }
+
     private int CalculateSortingOrder(int gridX, int gridY, int layer, int sortBias)
     {
         // Keep the depth bucket stride much larger than any tie-break contribution so
@@ -1126,6 +1406,90 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         int rowTieBreak = (length - gridY) * 10;
         int columnTieBreak = (width - gridX) * 2;
         return backToFrontOrder + rowTieBreak + columnTieBreak + sortBias;
+    }
+
+    private static Vector2 CreateNoiseSeedOffset(int sourceSeed)
+    {
+        System.Random random = new System.Random(sourceSeed);
+        return new Vector2(random.Next(-100000, 100000), random.Next(-100000, 100000));
+    }
+
+    private static float SampleFractalNoise(
+        int x,
+        int y,
+        Vector2 seedOffset,
+        float scale,
+        int octaves,
+        float persistenceValue,
+        float lacunarityValue)
+    {
+        float amplitude = 1f;
+        float frequency = 1f;
+        float sample = 0f;
+        float amplitudeSum = 0f;
+
+        for (int octave = 0; octave < octaves; octave++)
+        {
+            float sampleX = ((x + seedOffset.x) / scale) * frequency;
+            float sampleY = ((y + seedOffset.y) / scale) * frequency;
+            float perlin = Mathf.PerlinNoise(sampleX, sampleY);
+            sample += perlin * amplitude;
+            amplitudeSum += amplitude;
+            amplitude *= persistenceValue;
+            frequency *= lacunarityValue;
+        }
+
+        return amplitudeSum > 0f ? sample / amplitudeSum : 0f;
+    }
+
+    private float ResolveDebrisClumpScale()
+    {
+        float mapSpan = Mathf.Max(width, length);
+        return Mathf.Max(2f, mapSpan * 0.85f);
+    }
+
+    private float CalculateDebrisSpreadScore(Vector2Int tile, IReadOnlyList<Vector2Int> chosenTiles)
+    {
+        if (chosenTiles == null || chosenTiles.Count == 0)
+        {
+            return GetDeterministicTileValue(seed + DebrisSeedOffset, tile.x, tile.y, currentHeights[tile.x, tile.y]);
+        }
+
+        float nearestDistanceSquared = float.MaxValue;
+        for (int i = 0; i < chosenTiles.Count; i++)
+        {
+            Vector2Int chosenTile = chosenTiles[i];
+            int dx = tile.x - chosenTile.x;
+            int dy = tile.y - chosenTile.y;
+            float distanceSquared = (dx * dx) + (dy * dy);
+            if (distanceSquared < nearestDistanceSquared)
+            {
+                nearestDistanceSquared = distanceSquared;
+            }
+        }
+
+        float maxDx = Mathf.Max(1, width - 1);
+        float maxDy = Mathf.Max(1, length - 1);
+        float maxDistanceSquared = (maxDx * maxDx) + (maxDy * maxDy);
+        return Mathf.Clamp01(nearestDistanceSquared / maxDistanceSquared);
+    }
+
+    private static int GetDeterministicTileHash(int sourceSeed, int x, int y, int elevation)
+    {
+        unchecked
+        {
+            int hash = sourceSeed;
+            hash = (hash * 397) ^ x;
+            hash = (hash * 397) ^ y;
+            hash = (hash * 397) ^ elevation;
+            return hash;
+        }
+    }
+
+    private static float GetDeterministicTileValue(int sourceSeed, int x, int y, int elevation)
+    {
+        uint hash = unchecked((uint)GetDeterministicTileHash(sourceSeed, x, y, elevation));
+        return hash / (float)uint.MaxValue;
     }
 
     private void FrameMainCamera()
@@ -1174,6 +1538,8 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         cachedTopRightEdgeShadowSprite = CreateTopEdgeShadowSprite(TopShadowEdge.TopRight);
         cachedBottomLeftEdgeShadowSprite = CreateTopEdgeShadowSprite(TopShadowEdge.BottomLeft);
         cachedBottomRightEdgeShadowSprite = CreateTopEdgeShadowSprite(TopShadowEdge.BottomRight);
+        cachedLeftVisibleDebrisMaskSprite = CreateTopHalfMaskSprite(TopHalf.Left);
+        cachedRightVisibleDebrisMaskSprite = CreateTopHalfMaskSprite(TopHalf.Right);
         cachedStairsTopSprite = cachedStairsTopSprite != null
             ? cachedStairsTopSprite
             : Resources.Load<Sprite>("Sprites/stairs");
@@ -1191,6 +1557,12 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         TopRight,
         BottomLeft,
         BottomRight
+    }
+
+    private enum TopHalf
+    {
+        Left,
+        Right
     }
 
     private Sprite CreateTopSprite()
@@ -1287,6 +1659,27 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
 
         FillPolygon(texture, shadowBand, cliffShadowColor);
         return FinalizeSprite(texture, spriteName);
+    }
+
+    private Sprite CreateTopHalfMaskSprite(TopHalf half)
+    {
+        Texture2D texture = CreateTransparentTexture();
+        Vector2[] polygon = half == TopHalf.Left
+            ? new[]
+            {
+                new Vector2(64f, 96f),
+                new Vector2(64f, 32f),
+                new Vector2(0f, 64f)
+            }
+            : new[]
+            {
+                new Vector2(64f, 96f),
+                new Vector2(127f, 64f),
+                new Vector2(64f, 32f)
+            };
+
+        FillPolygon(texture, polygon, Color.white);
+        return FinalizeSprite(texture, half == TopHalf.Left ? "DebrisMask_LeftVisible" : "DebrisMask_RightVisible");
     }
 
     private Texture2D CreateTransparentTexture()

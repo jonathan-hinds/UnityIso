@@ -5,7 +5,9 @@ public enum IsometricMapElevationElementType
     TopFace = 0,
     SideFace = 1,
     Shadow = 2,
-    SliceCap = 3
+    SliceCap = 3,
+    TopOverlay = 4,
+    CutawaySideFace = 5
 }
 
 [DisallowMultipleComponent]

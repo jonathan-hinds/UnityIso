@@ -539,9 +539,18 @@ MonoBehaviour:
   persistence: 0.5
   lacunarity: 2
   smoothingPasses: 1
-  topSprite: {fileID: -6123437543760675800, guid: 9b3f4fb8aa945da40b4feda80a1942ee, type: 3}
-  leftSideSprite: {fileID: -7200597591167980499, guid: 9e836f3331d91224d85d025de863d62b, type: 3}
-  rightSideSprite: {fileID: 1130251324839254383, guid: f065ba690d39406468fb7407fdae01c2, type: 3}
+  debrisSettings:
+    amount: 1
+    dispersion: 1
+    topSprites:
+    - {fileID: 8360180821258374603, guid: 9a2ad01d87256b64e898a1099c5ea729, type: 3}
+    - {fileID: 707801329844314369, guid: 61eaed8bbc11d3a4582fec7242203857, type: 3}
+    - {fileID: 1422643545741406941, guid: eb73724702f263c48836a93b7fe65b48, type: 3}
+    - {fileID: -6824496992133585110, guid: 6073fdbeab9fc374489250458855af42, type: 3}
+    - {fileID: -6824496992133585110, guid: 6073fdbeab9fc374489250458855af42, type: 3}
+  topSprite: {fileID: -6604813425078035268, guid: 1c638775180d05f49ab911cd2b819f75, type: 3}
+  leftSideSprite: {fileID: 7815905029833085646, guid: 0a0799699720a65499307a44f46d153e, type: 3}
+  rightSideSprite: {fileID: 3395857702183338941, guid: d921013c838dfaf4fbf4c46dc95ff563, type: 3}
   defaultTopColor: {r: 0.4, g: 0.74, b: 0.33, a: 1}
   defaultLeftSideColor: {r: 0.26, g: 0.49, b: 0.22, a: 1}
   defaultRightSideColor: {r: 0.2, g: 0.38, b: 0.17, a: 1}

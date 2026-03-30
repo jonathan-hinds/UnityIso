@@ -987,6 +987,7 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         TacticsCharacterController character = FindCharacterByRuntimeId(message.runtimeCharacterId);
         TacticsChestController chest = TacticsChestController.FindByRuntimeId(message.runtimeChestId);
         TacticsChestEncounterService chestEncounterService = FindFirstObjectByType<TacticsChestEncounterService>();
+        TacticsTurnManager turnManager = FindFirstObjectByType<TacticsTurnManager>();
         if (character == null ||
             chest == null ||
             chestEncounterService == null ||
@@ -1004,6 +1005,12 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
                 out TacticsChestResolutionResult result))
         {
             return false;
+        }
+
+        if (result.RevealedMimic && turnManager != null)
+        {
+            turnManager.ReshuffleParticipants(message.turnOrderSeed, preserveActiveParticipant: true);
+            turnManager.QueuePriorityTurn(result.SpawnedMimic);
         }
 
         bool consumed = result.RevealedMimic
@@ -1036,7 +1043,8 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
             runtimeChestId = chest != null ? chest.RuntimeChestId : string.Empty,
             goldReward = containsMimic ? 0 : RollChestReward(),
             containsMimic = containsMimic,
-            mimicRuntimeCharacterId = containsMimic ? BuildMimicRuntimeCharacterId(chest.RuntimeChestId) : string.Empty
+            mimicRuntimeCharacterId = containsMimic ? BuildMimicRuntimeCharacterId(chest.RuntimeChestId) : string.Empty,
+            turnOrderSeed = containsMimic ? GenerateTurnOrderSeed() : 0
         };
     }
 
@@ -1114,7 +1122,8 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
 
         TacticsCoopBattleSetup battleSetup = new TacticsCoopBattleSetup
         {
-            matchSettings = pendingHostMatchSettings?.Clone()
+            matchSettings = pendingHostMatchSettings?.Clone(),
+            turnOrderSeed = GenerateTurnOrderSeed()
         };
 
         for (int i = 0; i < networkManager.ConnectedClientsIds.Count; i++)
@@ -1593,6 +1602,11 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         return $"enemy_mimic_{normalizedChestId}";
     }
 
+    private static int GenerateTurnOrderSeed()
+    {
+        return UnityEngine.Random.Range(int.MinValue, int.MaxValue);
+    }
+
     private static string SerializeRandomState(UnityEngine.Random.State state)
     {
         return JsonUtility.ToJson(new RandomStatePayload
@@ -1759,6 +1773,7 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         public int goldReward;
         public bool containsMimic;
         public string mimicRuntimeCharacterId;
+        public int turnOrderSeed;
     }
 
     [Serializable]

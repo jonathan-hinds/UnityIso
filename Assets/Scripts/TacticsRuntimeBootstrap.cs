@@ -297,6 +297,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             new Vector2(432f, 206f));
         IsometricMapLayerVisibilityController layerVisibilityController = EnsureLayerVisibilityController();
         TacticsElevationSliderView elevationSliderView = EnsureElevationSliderView();
+        TacticsElevationSliderInputController elevationSliderInputController = EnsureElevationSliderInputController();
         TacticsTopRightNavBarView topRightNavBarView = EnsureTopRightNavBarView();
         TacticsCharacterMenuView characterMenuView = EnsureCharacterMenuView();
         TacticsTileTargetOverlay tileTargetOverlay = EnsureTileTargetOverlay();
@@ -332,12 +333,14 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             selectedCharacterPanelView,
             layerVisibilityController,
             elevationSliderView,
+            elevationSliderInputController,
             topRightNavBarView,
             characterMenuView,
             tileTargetOverlay,
             turnManager,
             combatSystem);
-        turnManager?.RefreshParticipantsAndStartBattle();
+        int turnOrderSeed = pendingCoopBattleSetup?.turnOrderSeed ?? GenerateTurnOrderSeed();
+        turnManager?.RefreshParticipantsAndStartBattle(turnOrderSeed);
         gameplayStartInProgress = false;
 
         if (mainMenuView != null)
@@ -501,6 +504,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         TacticsSelectionPanelView selectedCharacterPanelView,
         IsometricMapLayerVisibilityController layerVisibilityController,
         TacticsElevationSliderView elevationSliderView,
+        TacticsElevationSliderInputController elevationSliderInputController,
         TacticsTopRightNavBarView topRightNavBarView,
         TacticsCharacterMenuView characterMenuView,
         TacticsTileTargetOverlay tileTargetOverlay,
@@ -515,6 +519,11 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         if (elevationSliderView != null)
         {
             elevationSliderView.AssignVisibilityController(layerVisibilityController);
+        }
+
+        if (elevationSliderInputController != null)
+        {
+            elevationSliderInputController.AssignVisibilityController(layerVisibilityController);
         }
 
         EnsureCharacterElevationVisibility();
@@ -593,6 +602,18 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
         GameObject hudObject = new GameObject("Tactics Elevation Slider HUD");
         return hudObject.AddComponent<TacticsElevationSliderView>();
+    }
+
+    private TacticsElevationSliderInputController EnsureElevationSliderInputController()
+    {
+        TacticsElevationSliderInputController existingController = FindFirstObjectByType<TacticsElevationSliderInputController>();
+        if (existingController != null)
+        {
+            return existingController;
+        }
+
+        GameObject controllerObject = new GameObject("Tactics Elevation Slider Input Controller");
+        return controllerObject.AddComponent<TacticsElevationSliderInputController>();
     }
 
     private TacticsTopRightNavBarView EnsureTopRightNavBarView()
@@ -759,8 +780,14 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
         TacticsCoopBattleSetup nextSetup = pendingCoopBattleSetup.Clone();
         nextSetup.matchSettings = CreateNextRoundMatchSettings();
+        nextSetup.turnOrderSeed = GenerateTurnOrderSeed();
         SyncCurrentPlayerProgressionIntoBattleSetup(nextSetup);
         return nextSetup;
+    }
+
+    private static int GenerateTurnOrderSeed()
+    {
+        return UnityEngine.Random.Range(int.MinValue, int.MaxValue);
     }
 
     public System.Collections.IEnumerator RestartBattleRoutine(

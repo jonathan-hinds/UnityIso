@@ -28,12 +28,14 @@ public sealed class TacticsCoopBattleSetup
 {
     public List<TacticsCoopBattlePlayer> players = new();
     public TacticsMatchGenerationSettings matchSettings;
+    public int turnOrderSeed;
 
     public TacticsCoopBattleSetup Clone()
     {
         TacticsCoopBattleSetup clone = new TacticsCoopBattleSetup
         {
-            matchSettings = matchSettings?.Clone()
+            matchSettings = matchSettings?.Clone(),
+            turnOrderSeed = turnOrderSeed
         };
 
         for (int i = 0; i < players.Count; i++)

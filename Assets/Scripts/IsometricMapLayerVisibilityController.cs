@@ -6,10 +6,10 @@ using UnityEngine;
 public sealed class IsometricMapLayerVisibilityController : MonoBehaviour
 {
     [SerializeField] private ProceduralIsometricMapGenerator mapGenerator;
-    [SerializeField, Range(0f, 1f)] private float obscuredLayerAlpha = 0.12f;
-    [SerializeField, Range(0f, 1f)] private float sliceCapAlpha = 0.32f;
+    [SerializeField, Range(0f, 1f)] private float sliceCapAlpha = 0f;
 
     private readonly List<IsometricMapElevationElement> elevationElements = new();
+    private readonly List<IsometricDebrisOverlayController> debrisOverlayControllers = new();
     private int maximumElevation = 1;
     private int visibleElevation = 0;
 
@@ -73,6 +73,23 @@ public sealed class IsometricMapLayerVisibilityController : MonoBehaviour
         VisibilityChanged?.Invoke(visibleElevation, maximumElevation);
     }
 
+    public bool TryAdjustVisibleElevation(int delta)
+    {
+        if (delta == 0)
+        {
+            return false;
+        }
+
+        int nextElevation = Mathf.Clamp(visibleElevation + delta, 1, maximumElevation);
+        if (nextElevation == visibleElevation)
+        {
+            return false;
+        }
+
+        SetVisibleElevation(nextElevation);
+        return true;
+    }
+
     private void HandleMapGenerated()
     {
         RefreshFromMap();
@@ -81,6 +98,7 @@ public sealed class IsometricMapLayerVisibilityController : MonoBehaviour
     private void RefreshFromMap()
     {
         elevationElements.Clear();
+        debrisOverlayControllers.Clear();
 
         if (mapGenerator == null)
         {
@@ -99,6 +117,15 @@ public sealed class IsometricMapLayerVisibilityController : MonoBehaviour
             if (foundElements[i] != null)
             {
                 elevationElements.Add(foundElements[i]);
+            }
+        }
+
+        IsometricDebrisOverlayController[] foundDebrisControllers = mapGenerator.GetComponentsInChildren<IsometricDebrisOverlayController>(true);
+        for (int i = 0; i < foundDebrisControllers.Length; i++)
+        {
+            if (foundDebrisControllers[i] != null)
+            {
+                debrisOverlayControllers.Add(foundDebrisControllers[i]);
             }
         }
 
@@ -124,12 +151,29 @@ public sealed class IsometricMapLayerVisibilityController : MonoBehaviour
                     break;
                 case IsometricMapElevationElementType.TopFace:
                     bool topFaceVisible = element.Elevation <= visibleElevation;
-                    element.SetPresentation(topFaceVisible ? 1f : obscuredLayerAlpha, topFaceVisible);
+                    element.SetPresentation(topFaceVisible ? 1f : 0f, topFaceVisible);
+                    break;
+                case IsometricMapElevationElementType.TopOverlay:
+                    bool topOverlayVisible = element.Elevation <= visibleElevation;
+                    element.SetPresentation(topOverlayVisible ? 1f : 0f, false);
+                    break;
+                case IsometricMapElevationElementType.CutawaySideFace:
+                    bool shouldShowCutawaySideFace = visibleElevation < maximumElevation && element.Elevation == visibleElevation;
+                    element.SetPresentation(shouldShowCutawaySideFace ? 1f : 0f, false);
                     break;
                 default:
                     bool layerVisible = element.Elevation <= visibleElevation;
-                    element.SetPresentation(layerVisible ? 1f : obscuredLayerAlpha, false);
+                    element.SetPresentation(layerVisible ? 1f : 0f, false);
                     break;
+            }
+        }
+
+        for (int i = 0; i < debrisOverlayControllers.Count; i++)
+        {
+            IsometricDebrisOverlayController controller = debrisOverlayControllers[i];
+            if (controller != null)
+            {
+                controller.ApplyVisibleElevation(visibleElevation);
             }
         }
     }
