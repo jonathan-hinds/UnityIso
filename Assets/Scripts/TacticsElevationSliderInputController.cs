@@ -65,3 +65,135 @@ public sealed class TacticsElevationSliderInputController : MonoBehaviour
         return selectedObject.GetComponent<InputField>() != null;
     }
 }
+
+[DisallowMultipleComponent]
+public sealed class TacticsElevationFocusTracker : MonoBehaviour
+{
+    [SerializeField] private IsometricMapLayerVisibilityController visibilityController;
+    [SerializeField] private TacticsTurnManager turnManager;
+
+    private TacticsCharacterController focusedCharacter;
+    private int lastAppliedElevation = int.MinValue;
+
+    private void OnEnable()
+    {
+        ResolveDependencies();
+        SubscribeToTurnManager();
+        RefreshFocusedCharacter();
+        ApplyFocusElevation(force: true);
+    }
+
+    private void OnDisable()
+    {
+        if (turnManager != null)
+        {
+            turnManager.ActiveParticipantChanged -= HandleActiveParticipantChanged;
+        }
+    }
+
+    private void Update()
+    {
+        ResolveDependencies();
+        RefreshFocusedCharacter();
+        ApplyFocusElevation(force: false);
+    }
+
+    public void AssignVisibilityController(IsometricMapLayerVisibilityController controller)
+    {
+        visibilityController = controller;
+        ApplyFocusElevation(force: true);
+    }
+
+    public void AssignTurnManager(TacticsTurnManager manager)
+    {
+        if (turnManager != null)
+        {
+            turnManager.ActiveParticipantChanged -= HandleActiveParticipantChanged;
+        }
+
+        turnManager = manager;
+        SubscribeToTurnManager();
+        RefreshFocusedCharacter();
+        ApplyFocusElevation(force: true);
+    }
+
+    private void HandleActiveParticipantChanged(ITacticsTurnParticipant participant)
+    {
+        focusedCharacter = participant as TacticsCharacterController;
+        if (focusedCharacter != null && !focusedCharacter.IsPlayerControlled)
+        {
+            focusedCharacter = null;
+        }
+
+        ApplyFocusElevation(force: true);
+    }
+
+    private void ResolveDependencies()
+    {
+        visibilityController ??= FindFirstObjectByType<IsometricMapLayerVisibilityController>();
+        if (turnManager == null)
+        {
+            AssignTurnManager(FindFirstObjectByType<TacticsTurnManager>());
+        }
+    }
+
+    private void SubscribeToTurnManager()
+    {
+        if (turnManager == null)
+        {
+            return;
+        }
+
+        turnManager.ActiveParticipantChanged -= HandleActiveParticipantChanged;
+        turnManager.ActiveParticipantChanged += HandleActiveParticipantChanged;
+    }
+
+    private void RefreshFocusedCharacter()
+    {
+        if (turnManager != null &&
+            turnManager.ActiveCharacter != null &&
+            turnManager.ActiveCharacter.IsPlayerControlled)
+        {
+            focusedCharacter = turnManager.ActiveCharacter;
+            return;
+        }
+
+        if (focusedCharacter != null && focusedCharacter.IsPlayerControlled)
+        {
+            return;
+        }
+
+        TacticsCharacterController[] characters = FindObjectsByType<TacticsCharacterController>(FindObjectsSortMode.None);
+        for (int i = 0; i < characters.Length; i++)
+        {
+            TacticsCharacterController character = characters[i];
+            if (character != null && character.IsPlayerControlled)
+            {
+                focusedCharacter = character;
+                return;
+            }
+        }
+
+        focusedCharacter = null;
+    }
+
+    private void ApplyFocusElevation(bool force)
+    {
+        if (visibilityController == null)
+        {
+            return;
+        }
+
+        int nextElevation = focusedCharacter != null
+            ? Mathf.Max(1, focusedCharacter.CurrentElevation)
+            : visibilityController.VisibleElevation;
+
+        if (!force && nextElevation == lastAppliedElevation)
+        {
+            return;
+        }
+
+        lastAppliedElevation = nextElevation;
+        visibilityController.SetFocusElevation(nextElevation);
+    }
+}

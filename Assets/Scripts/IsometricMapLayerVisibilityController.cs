@@ -10,13 +10,16 @@ public sealed class IsometricMapLayerVisibilityController : MonoBehaviour
 
     private readonly List<IsometricMapElevationElement> elevationElements = new();
     private readonly List<IsometricDebrisOverlayController> debrisOverlayControllers = new();
+    private readonly List<IsometricFakeShadowOverlayController> fakeShadowOverlayControllers = new();
     private int maximumElevation = 1;
     private int visibleElevation = 0;
+    private int focusElevation = 1;
 
     public event Action<int, int> VisibilityChanged;
 
     public int MaximumElevation => maximumElevation;
     public int VisibleElevation => visibleElevation;
+    public int FocusElevation => focusElevation;
 
     private void OnEnable()
     {
@@ -90,6 +93,18 @@ public sealed class IsometricMapLayerVisibilityController : MonoBehaviour
         return true;
     }
 
+    public void SetFocusElevation(int elevation)
+    {
+        int clampedElevation = Mathf.Clamp(elevation, 1, maximumElevation);
+        if (focusElevation == clampedElevation && fakeShadowOverlayControllers.Count > 0)
+        {
+            return;
+        }
+
+        focusElevation = clampedElevation;
+        ApplyVisibility();
+    }
+
     private void HandleMapGenerated()
     {
         RefreshFromMap();
@@ -99,17 +114,20 @@ public sealed class IsometricMapLayerVisibilityController : MonoBehaviour
     {
         elevationElements.Clear();
         debrisOverlayControllers.Clear();
+        fakeShadowOverlayControllers.Clear();
 
         if (mapGenerator == null)
         {
             maximumElevation = 1;
             visibleElevation = 1;
+            focusElevation = 1;
             VisibilityChanged?.Invoke(visibleElevation, maximumElevation);
             return;
         }
 
         maximumElevation = Mathf.Max(1, mapGenerator.MaximumElevation);
         visibleElevation = maximumElevation;
+        focusElevation = visibleElevation;
 
         IsometricMapElevationElement[] foundElements = mapGenerator.GetComponentsInChildren<IsometricMapElevationElement>(true);
         for (int i = 0; i < foundElements.Length; i++)
@@ -126,6 +144,15 @@ public sealed class IsometricMapLayerVisibilityController : MonoBehaviour
             if (foundDebrisControllers[i] != null)
             {
                 debrisOverlayControllers.Add(foundDebrisControllers[i]);
+            }
+        }
+
+        IsometricFakeShadowOverlayController[] foundFakeShadowControllers = mapGenerator.GetComponentsInChildren<IsometricFakeShadowOverlayController>(true);
+        for (int i = 0; i < foundFakeShadowControllers.Length; i++)
+        {
+            if (foundFakeShadowControllers[i] != null)
+            {
+                fakeShadowOverlayControllers.Add(foundFakeShadowControllers[i]);
             }
         }
 
@@ -174,6 +201,15 @@ public sealed class IsometricMapLayerVisibilityController : MonoBehaviour
             if (controller != null)
             {
                 controller.ApplyVisibleElevation(visibleElevation);
+            }
+        }
+
+        for (int i = 0; i < fakeShadowOverlayControllers.Count; i++)
+        {
+            IsometricFakeShadowOverlayController controller = fakeShadowOverlayControllers[i];
+            if (controller != null)
+            {
+                controller.ApplyVisibilityContext(visibleElevation, focusElevation);
             }
         }
     }

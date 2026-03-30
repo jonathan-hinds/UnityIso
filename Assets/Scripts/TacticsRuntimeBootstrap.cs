@@ -296,6 +296,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             new Vector2(-28f, 28f),
             new Vector2(432f, 206f));
         IsometricMapLayerVisibilityController layerVisibilityController = EnsureLayerVisibilityController();
+        TacticsElevationFocusTracker elevationFocusTracker = EnsureElevationFocusTracker();
         TacticsElevationSliderView elevationSliderView = EnsureElevationSliderView();
         TacticsElevationSliderInputController elevationSliderInputController = EnsureElevationSliderInputController();
         TacticsTopRightNavBarView topRightNavBarView = EnsureTopRightNavBarView();
@@ -332,6 +333,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             activeCharacterPanelView,
             selectedCharacterPanelView,
             layerVisibilityController,
+            elevationFocusTracker,
             elevationSliderView,
             elevationSliderInputController,
             topRightNavBarView,
@@ -503,6 +505,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         TacticsSelectionPanelView activeCharacterPanelView,
         TacticsSelectionPanelView selectedCharacterPanelView,
         IsometricMapLayerVisibilityController layerVisibilityController,
+        TacticsElevationFocusTracker elevationFocusTracker,
         TacticsElevationSliderView elevationSliderView,
         TacticsElevationSliderInputController elevationSliderInputController,
         TacticsTopRightNavBarView topRightNavBarView,
@@ -524,6 +527,12 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         if (elevationSliderInputController != null)
         {
             elevationSliderInputController.AssignVisibilityController(layerVisibilityController);
+        }
+
+        if (elevationFocusTracker != null)
+        {
+            elevationFocusTracker.AssignVisibilityController(layerVisibilityController);
+            elevationFocusTracker.AssignTurnManager(turnManager);
         }
 
         EnsureCharacterElevationVisibility();
@@ -602,6 +611,18 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
         GameObject hudObject = new GameObject("Tactics Elevation Slider HUD");
         return hudObject.AddComponent<TacticsElevationSliderView>();
+    }
+
+    private TacticsElevationFocusTracker EnsureElevationFocusTracker()
+    {
+        TacticsElevationFocusTracker existingTracker = FindFirstObjectByType<TacticsElevationFocusTracker>();
+        if (existingTracker != null)
+        {
+            return existingTracker;
+        }
+
+        GameObject trackerObject = new GameObject("Tactics Elevation Focus Tracker");
+        return trackerObject.AddComponent<TacticsElevationFocusTracker>();
     }
 
     private TacticsElevationSliderInputController EnsureElevationSliderInputController()
@@ -910,6 +931,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         DestroyAllOfType<TacticsActionMenuView>();
         DestroyAllOfType<TacticsSelectionPanelView>();
         DestroyAllOfType<IsometricMapLayerVisibilityController>();
+        DestroyAllOfType<TacticsElevationFocusTracker>();
         DestroyAllOfType<TacticsElevationSliderView>();
         DestroyAllOfType<TacticsTopRightNavBarView>();
         DestroyAllOfType<TacticsCharacterMenuView>();

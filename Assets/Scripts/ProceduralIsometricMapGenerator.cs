@@ -24,6 +24,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         public float tileHeight;
         public float elevationStep;
         public bool renderSideFaces;
+        public FakeShadowSettings fakeShadowSettings;
     }
 
     public readonly struct OcclusionVolume
@@ -92,6 +93,77 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                     topSprites.RemoveAt(i);
                 }
             }
+        }
+    }
+
+    [Serializable]
+    public sealed class FakeShadowSettings
+    {
+        public bool enabled = true;
+
+        [Range(0f, 1f)]
+        public float elevationOpacityPerLevel = 0.04f;
+
+        [Range(0f, 1f)]
+        public float adjacentBlockerOpacityPerLevel = 0.08f;
+
+        [Range(0f, 1f)]
+        public float diagonalBlockerOpacityPerLevel = 0.04f;
+
+        [Range(0f, 1f)]
+        public float frontExposureReductionPerLevel = 0.08f;
+
+        [Range(0f, 1f)]
+        public float maxOpacity = 1f;
+
+        [FormerlySerializedAs("frontGradientOpacity")]
+        [Range(0f, 1f)]
+        public float nearDepthOpacity = 0f;
+
+        [FormerlySerializedAs("backGradientOpacity")]
+        [Range(0f, 1f)]
+        public float farDepthOpacity = 1f;
+
+        [Range(0.5f, 4f)]
+        public float depthFalloffExponent = 1f;
+
+        [Range(2, 16)]
+        public int opacityBandCount = 10;
+
+        public Color tint = new Color(0f, 0f, 0f, 1f);
+
+        public bool IsEnabled => enabled && maxOpacity > 0f && tint.a > 0f;
+
+        public FakeShadowSettings Clone()
+        {
+            return new FakeShadowSettings
+            {
+                enabled = enabled,
+                elevationOpacityPerLevel = elevationOpacityPerLevel,
+                adjacentBlockerOpacityPerLevel = adjacentBlockerOpacityPerLevel,
+                diagonalBlockerOpacityPerLevel = diagonalBlockerOpacityPerLevel,
+                frontExposureReductionPerLevel = frontExposureReductionPerLevel,
+                maxOpacity = maxOpacity,
+                nearDepthOpacity = nearDepthOpacity,
+                farDepthOpacity = farDepthOpacity,
+                depthFalloffExponent = depthFalloffExponent,
+                opacityBandCount = opacityBandCount,
+                tint = tint
+            };
+        }
+
+        public void Sanitize()
+        {
+            elevationOpacityPerLevel = Mathf.Clamp01(elevationOpacityPerLevel);
+            adjacentBlockerOpacityPerLevel = Mathf.Clamp01(adjacentBlockerOpacityPerLevel);
+            diagonalBlockerOpacityPerLevel = Mathf.Clamp01(diagonalBlockerOpacityPerLevel);
+            frontExposureReductionPerLevel = Mathf.Clamp01(frontExposureReductionPerLevel);
+            maxOpacity = Mathf.Clamp01(maxOpacity);
+            nearDepthOpacity = Mathf.Clamp01(nearDepthOpacity);
+            farDepthOpacity = Mathf.Clamp01(farDepthOpacity);
+            farDepthOpacity = Mathf.Max(nearDepthOpacity, farDepthOpacity);
+            depthFalloffExponent = Mathf.Clamp(depthFalloffExponent, 0.5f, 4f);
+            opacityBandCount = Mathf.Clamp(opacityBandCount, 2, 16);
         }
     }
 
@@ -168,6 +240,9 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
     [Header("Debris")]
     [SerializeField] private DebrisSettings debrisSettings = new DebrisSettings();
 
+    [Header("Fake Shadows")]
+    [SerializeField] private FakeShadowSettings fakeShadowSettings = new FakeShadowSettings();
+
     [Header("Tile Art")]
     [SerializeField] private Sprite topSprite;
     [SerializeField] private Sprite leftSideSprite;
@@ -211,7 +286,8 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
     private const int DefaultSpritePixels = 128;
     private const float DefaultPixelsPerUnit = 128f;
     private const int TopFaceSortBias = 2;
-    private const int DebrisSortBias = 3;
+    private const int FakeShadowSortBias = 3;
+    private const int DebrisSortBias = 4;
     private const int CharacterSortBias = 8;
     private const int DebrisSeedOffset = 8191;
     private static readonly Vector2Int[] NeighborOffsets =
@@ -232,6 +308,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
     private Sprite cachedTopRightEdgeShadowSprite;
     private Sprite cachedBottomLeftEdgeShadowSprite;
     private Sprite cachedBottomRightEdgeShadowSprite;
+    private Sprite cachedFakeShadowFillSprite;
 
     private readonly List<SpriteRenderer> spawnedRenderers = new List<SpriteRenderer>();
     private readonly List<OcclusionVolume> occlusionVolumes = new List<OcclusionVolume>();
@@ -265,6 +342,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
             minElevation = minElevation,
             maxElevation = maxElevation,
             debris = debrisSettings != null ? debrisSettings.Clone() : new DebrisSettings(),
+            fakeShadows = fakeShadowSettings != null ? fakeShadowSettings.Clone() : new FakeShadowSettings(),
             chestSpawns = chestSpawnSettings,
             enemies = new List<TacticsMatchEnemySettings>(enemySpawnEntries.Count)
         };
@@ -307,6 +385,8 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         maxElevation = sanitized.maxElevation;
         debrisSettings = sanitized.debris != null ? sanitized.debris.Clone() : new DebrisSettings();
         debrisSettings.Sanitize();
+        fakeShadowSettings = sanitized.fakeShadows != null ? sanitized.fakeShadows.Clone() : new FakeShadowSettings();
+        fakeShadowSettings.Sanitize();
         chestSpawnSettings = sanitized.chestSpawns;
         chestSpawnSettings.Sanitize();
 
@@ -340,7 +420,8 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
             tileWidth = tileWidth,
             tileHeight = tileHeight,
             elevationStep = elevationStep,
-            renderSideFaces = renderSideFaces
+            renderSideFaces = renderSideFaces,
+            fakeShadowSettings = fakeShadowSettings != null ? fakeShadowSettings.Clone() : new FakeShadowSettings()
         };
     }
 
@@ -360,6 +441,8 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         tileHeight = Mathf.Max(0.1f, profile.tileHeight);
         elevationStep = Mathf.Max(0.05f, profile.elevationStep);
         renderSideFaces = profile.renderSideFaces;
+        fakeShadowSettings = profile.fakeShadowSettings != null ? profile.fakeShadowSettings.Clone() : new FakeShadowSettings();
+        fakeShadowSettings.Sanitize();
     }
 
     public void ConfigureSingleTilePreview(TileVisualProfile profile)
@@ -389,6 +472,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         debrisSettings = new DebrisSettings();
         debrisSettings.topSprites.Clear();
         debrisSettings.amount = 0f;
+        fakeShadowSettings = new FakeShadowSettings { enabled = false };
         chestSpawnSettings = new ChestSpawnSettings();
     }
 
@@ -461,17 +545,42 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
                     height: height,
                     isStairsTile: isStairsTile,
                     runtimeStairsId: isStairsTile ? currentStairsRuntimeId : string.Empty);
+
+                int lowerLeftNeighborHeight = GetHeight(currentHeights, x - 1, y);
+                int lowerRightNeighborHeight = GetHeight(currentHeights, x, y - 1);
+                int upperLeftNeighborHeight = GetHeight(currentHeights, x, y + 1);
+                int upperRightNeighborHeight = GetHeight(currentHeights, x + 1, y);
+
+                if (fakeShadowSettings != null && fakeShadowSettings.IsEnabled)
+                {
+                    CreateTilePart(
+                        generatedRoot,
+                        cachedFakeShadowFillSprite,
+                        topPosition,
+                        $"FakeShadow_{x}_{y}_{height}",
+                        x,
+                        y,
+                        height,
+                        FakeShadowSortBias,
+                        IsometricMapElevationElementType.TopOverlay);
+                    ConfigureFakeShadowOverlay(
+                        partName: $"FakeShadow_{x}_{y}_{height}",
+                        generatedRoot: generatedRoot,
+                        gridX: x,
+                        gridY: y,
+                        elevation: height,
+                        leftBlockingElevation: lowerLeftNeighborHeight,
+                        rightBlockingElevation: lowerRightNeighborHeight,
+                        upperLeftBlockingElevation: upperLeftNeighborHeight,
+                        upperRightBlockingElevation: upperRightNeighborHeight);
+                }
+
                 CreateCutawaySideFaces(
                     generatedRoot,
                     topPosition,
                     x,
                     y,
                     height);
-
-                int lowerLeftNeighborHeight = GetHeight(currentHeights, x - 1, y);
-                int lowerRightNeighborHeight = GetHeight(currentHeights, x, y - 1);
-                int upperLeftNeighborHeight = GetHeight(currentHeights, x, y + 1);
-                int upperRightNeighborHeight = GetHeight(currentHeights, x + 1, y);
 
                 if (!isStairsTile &&
                     currentDebrisTiles.Contains(new Vector2Int(x, y)) &&
@@ -673,6 +782,8 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
 
         debrisSettings ??= new DebrisSettings();
         debrisSettings.Sanitize();
+        fakeShadowSettings ??= new FakeShadowSettings();
+        fakeShadowSettings.Sanitize();
         chestSpawnSettings.Sanitize();
     }
 
@@ -1360,6 +1471,44 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         controller.ApplyVisibleElevation(maximumGeneratedElevation);
     }
 
+    private void ConfigureFakeShadowOverlay(
+        string partName,
+        Transform generatedRoot,
+        int gridX,
+        int gridY,
+        int elevation,
+        int leftBlockingElevation,
+        int rightBlockingElevation,
+        int upperLeftBlockingElevation,
+        int upperRightBlockingElevation)
+    {
+        Transform shadowTransform = generatedRoot.Find(partName);
+        if (shadowTransform == null)
+        {
+            return;
+        }
+
+        SpriteRenderer renderer = shadowTransform.GetComponent<SpriteRenderer>();
+        if (renderer == null)
+        {
+            return;
+        }
+
+        IsometricFakeShadowOverlayController controller = shadowTransform.gameObject.AddComponent<IsometricFakeShadowOverlayController>();
+        int maxDepth = Mathf.Max(1, (width - 1) + (length - 1) + maximumGeneratedElevation);
+        float normalizedDepth = Mathf.Clamp01((gridX + gridY + Mathf.Max(0, elevation - 1)) / (float)maxDepth);
+        controller.Initialize(
+            normalizedDepth,
+            elevation,
+            leftBlockingElevation,
+            rightBlockingElevation,
+            upperLeftBlockingElevation,
+            upperRightBlockingElevation,
+            renderer,
+            fakeShadowSettings);
+        controller.ApplyVisibilityContext(maximumGeneratedElevation, maximumGeneratedElevation);
+    }
+
     private void CreateCutawaySideFaces(
         Transform generatedRoot,
         Vector3 topPosition,
@@ -1538,6 +1687,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         cachedTopRightEdgeShadowSprite = CreateTopEdgeShadowSprite(TopShadowEdge.TopRight);
         cachedBottomLeftEdgeShadowSprite = CreateTopEdgeShadowSprite(TopShadowEdge.BottomLeft);
         cachedBottomRightEdgeShadowSprite = CreateTopEdgeShadowSprite(TopShadowEdge.BottomRight);
+        cachedFakeShadowFillSprite = CreateFakeShadowFillSprite();
         cachedLeftVisibleDebrisMaskSprite = CreateTopHalfMaskSprite(TopHalf.Left);
         cachedRightVisibleDebrisMaskSprite = CreateTopHalfMaskSprite(TopHalf.Right);
         cachedStairsTopSprite = cachedStairsTopSprite != null
@@ -1659,6 +1809,21 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
 
         FillPolygon(texture, shadowBand, cliffShadowColor);
         return FinalizeSprite(texture, spriteName);
+    }
+
+    private Sprite CreateFakeShadowFillSprite()
+    {
+        Texture2D texture = CreateTransparentTexture();
+        Vector2[] diamond =
+        {
+            new Vector2(64f, 96f),
+            new Vector2(127f, 64f),
+            new Vector2(64f, 32f),
+            new Vector2(0f, 64f)
+        };
+
+        FillPolygon(texture, diamond, Color.white);
+        return FinalizeSprite(texture, "Default_Isometric_FakeShadowFill");
     }
 
     private Sprite CreateTopHalfMaskSprite(TopHalf half)
