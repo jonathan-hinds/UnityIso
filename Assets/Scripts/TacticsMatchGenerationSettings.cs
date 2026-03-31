@@ -32,7 +32,7 @@ public sealed class TacticsMatchGenerationSettings
             maxElevation = maxElevation,
             debris = debris != null ? debris.Clone() : new ProceduralIsometricMapGenerator.DebrisSettings(),
             fakeShadows = fakeShadows != null ? fakeShadows.Clone() : new ProceduralIsometricMapGenerator.FakeShadowSettings(),
-            chestSpawns = chestSpawns,
+            chestSpawns = chestSpawns.Clone(),
             enemies = new List<TacticsMatchEnemySettings>(enemies.Count)
         };
 

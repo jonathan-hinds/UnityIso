@@ -140,6 +140,8 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     private TacticsPartySelectionService onlinePartySelectionService;
     private TacticsCharacterProgressionService localProgressionService;
     private TacticsCharacterProgressionService onlineProgressionService;
+    private TacticsCharacterInventoryService localInventoryService;
+    private TacticsCharacterInventoryService onlineInventoryService;
     private ITacticsAccountSessionService accountSessionService;
     private TacticsCoopSessionCoordinator coopSessionCoordinator;
     private TacticsEnemyTable enemyTable;
@@ -225,6 +227,8 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         TacticsPartySelectionService onlineSelectionService,
         TacticsCharacterProgressionService localCharacterProgressionService,
         TacticsCharacterProgressionService onlineCharacterProgressionService,
+        TacticsCharacterInventoryService localCharacterInventoryService,
+        TacticsCharacterInventoryService onlineCharacterInventoryService,
         TacticsEnemyTable availableEnemyTable,
         ITacticsAccountSessionService sessionService,
         TacticsCoopSessionCoordinator sessionCoordinator)
@@ -235,6 +239,8 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         this.onlinePartySelectionService = onlineSelectionService;
         localProgressionService = localCharacterProgressionService ?? new TacticsCharacterProgressionService(new TacticsSinglePlayerCharacterProgressionStore());
         onlineProgressionService = onlineCharacterProgressionService;
+        localInventoryService = localCharacterInventoryService ?? new TacticsCharacterInventoryService(new TacticsSinglePlayerCharacterInventoryStore());
+        onlineInventoryService = onlineCharacterInventoryService;
         enemyTable = availableEnemyTable;
         if (!ReferenceEquals(coopSessionCoordinator, sessionCoordinator))
         {
@@ -2311,8 +2317,9 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         }
 
         TacticsCharacterProgressionSnapshot progression = GetProgressionSnapshot(definition);
-        TacticsCharacterStats effectiveStats = progression.ApplyTo(definition.BaseStats);
-        TacticsCharacterDerivedStats derivedStats = effectiveStats.CalculateDerivedStats();
+        TacticsCharacterInventorySnapshot inventory = GetInventorySnapshot(definition);
+        TacticsCharacterStats effectiveStats = TacticsCharacterEquipmentStatUtility.BuildEffectiveStats(definition.BuildRuntimeData(), progression, inventory);
+        TacticsCharacterDerivedStats derivedStats = TacticsCharacterEquipmentStatUtility.BuildDerivedStats(effectiveStats, inventory);
 
         characterInspector.KickerLabel.text = workingSelection != null && workingSelection.Contains(definition.CharacterId)
             ? "DEPLOYMENT READY"
@@ -2628,6 +2635,19 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         return progressionService != null
             ? progressionService.GetProgression(definition)
             : TacticsCharacterProgressionSnapshot.CreateDefault(definition.CharacterId);
+    }
+
+    private TacticsCharacterInventorySnapshot GetInventorySnapshot(TacticsCharacterDefinition definition)
+    {
+        if (definition == null)
+        {
+            return TacticsCharacterInventorySnapshot.CreateDefault(string.Empty);
+        }
+
+        TacticsCharacterInventoryService inventoryService = isEditingOnlineParty ? onlineInventoryService : localInventoryService;
+        return inventoryService != null
+            ? inventoryService.GetInventory(definition.CharacterId)
+            : TacticsCharacterInventorySnapshot.CreateDefault(definition.CharacterId);
     }
 
     private static string NormalizeCharacterId(string characterId)

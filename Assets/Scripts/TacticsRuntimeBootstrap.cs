@@ -32,12 +32,15 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
     private TacticsMainMenuView mainMenuView;
     private TacticsPartySelectionService localPartySelectionService;
     private TacticsCharacterProgressionService localProgressionService;
+    private TacticsCharacterInventoryService localInventoryService;
     private TacticsPlayerCurrencyService localCurrencyService;
     private TacticsPartySelectionService accountPartySelectionService;
     private TacticsCharacterProgressionService accountProgressionService;
+    private TacticsCharacterInventoryService accountInventoryService;
     private TacticsPlayerCurrencyService accountCurrencyService;
     private TacticsPartySelectionService partySelectionService;
     private TacticsCharacterProgressionService progressionService;
+    private TacticsCharacterInventoryService inventoryService;
     private TacticsPlayerCurrencyService currencyService;
     private ITacticsAccountSessionService accountSessionService;
     private TacticsCoopSessionCoordinator coopSessionCoordinator;
@@ -46,6 +49,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
     private TacticsCoopBattleSetup pendingCoopBattleSetup;
     private bool sceneSetupComplete;
     private bool gameplayStartInProgress;
+    private TacticsLootBannerView lootBannerView;
 
     public bool IsSceneSetupComplete => sceneSetupComplete;
 
@@ -64,9 +68,11 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         TacticsLegacySaveCleanup.CleanupLegacyPlayerPrefs();
         localPartySelectionService = new TacticsPartySelectionService(new TacticsSinglePlayerPartySelectionStore());
         localProgressionService = new TacticsCharacterProgressionService(new TacticsSinglePlayerCharacterProgressionStore());
+        localInventoryService = new TacticsCharacterInventoryService(new TacticsSinglePlayerCharacterInventoryStore());
         localCurrencyService = new TacticsPlayerCurrencyService(new TacticsSinglePlayerCurrencyStore());
         partySelectionService = localPartySelectionService;
         progressionService = localProgressionService;
+        inventoryService = localInventoryService;
         currencyService = localCurrencyService;
         accountSessionService = new TacticsAccountSessionService();
         accountSessionService.StateChanged -= HandleAccountSessionStateChanged;
@@ -80,6 +86,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         coopSessionCoordinator.BattleSetupReady += HandleCoopBattleSetupReady;
         coopSessionCoordinator.SessionEnded -= HandleSessionEnded;
         coopSessionCoordinator.SessionEnded += HandleSessionEnded;
+        coopSessionCoordinator.AssignCharacterInventoryService(inventoryService);
         mainMenuView = EnsureMainMenuView();
         mainMenuView.AssignDependencies(
             mapGenerator,
@@ -87,6 +94,8 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             accountPartySelectionService,
             localProgressionService,
             accountProgressionService,
+            localInventoryService,
+            accountInventoryService,
             enemyTable,
             accountSessionService,
             coopSessionCoordinator);
@@ -148,6 +157,8 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             accountPartySelectionService,
             localProgressionService,
             accountProgressionService,
+            localInventoryService,
+            accountInventoryService,
             enemyTable,
             accountSessionService,
             coopSessionCoordinator);
@@ -301,6 +312,8 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         TacticsElevationSliderInputController elevationSliderInputController = EnsureElevationSliderInputController();
         TacticsTopRightNavBarView topRightNavBarView = EnsureTopRightNavBarView();
         TacticsCharacterMenuView characterMenuView = EnsureCharacterMenuView();
+        TacticsInventoryMenuView inventoryMenuView = EnsureInventoryMenuView();
+        lootBannerView = EnsureLootBannerView();
         TacticsTileTargetOverlay tileTargetOverlay = EnsureTileTargetOverlay();
         EnsureCombatTextSystem();
         EnsureAbilityHitEffectSystem();
@@ -338,6 +351,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             elevationSliderInputController,
             topRightNavBarView,
             characterMenuView,
+            inventoryMenuView,
             tileTargetOverlay,
             turnManager,
             combatSystem);
@@ -510,6 +524,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         TacticsElevationSliderInputController elevationSliderInputController,
         TacticsTopRightNavBarView topRightNavBarView,
         TacticsCharacterMenuView characterMenuView,
+        TacticsInventoryMenuView inventoryMenuView,
         TacticsTileTargetOverlay tileTargetOverlay,
         TacticsTurnManager turnManager,
         TacticsCombatSystem combatSystem)
@@ -541,6 +556,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         {
             topRightNavBarView.AssignElevationSliderView(elevationSliderView);
             topRightNavBarView.AssignCharacterMenuView(characterMenuView);
+            topRightNavBarView.AssignInventoryMenuView(inventoryMenuView);
             topRightNavBarView.QuitRequested -= HandleQuitRequested;
             topRightNavBarView.QuitRequested += HandleQuitRequested;
         }
@@ -552,6 +568,18 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             characterMenuView.ProgressionCommitRequested += HandleProgressionCommitRequested;
             BindCharacterProgressionPersistence(characterMenuView);
             characterMenuView.RefreshCharacterList();
+        }
+
+        if (inventoryMenuView != null)
+        {
+            inventoryMenuView.AssignDependencies(inventoryService, coopSessionCoordinator, turnManager);
+            BindCharacterInventoryPersistence();
+            inventoryMenuView.RefreshCharacterList();
+        }
+
+        if (lootBannerView != null)
+        {
+            BindCharacterLootNotifications();
         }
 
         TacticsPlayerController playerController = FindFirstObjectByType<TacticsPlayerController>();
@@ -659,6 +687,30 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
         GameObject hudObject = new GameObject("Tactics Character Menu HUD");
         return hudObject.AddComponent<TacticsCharacterMenuView>();
+    }
+
+    private TacticsInventoryMenuView EnsureInventoryMenuView()
+    {
+        TacticsInventoryMenuView existingView = FindFirstObjectByType<TacticsInventoryMenuView>();
+        if (existingView != null)
+        {
+            return existingView;
+        }
+
+        GameObject hudObject = new GameObject("Tactics Inventory Menu HUD");
+        return hudObject.AddComponent<TacticsInventoryMenuView>();
+    }
+
+    private TacticsLootBannerView EnsureLootBannerView()
+    {
+        TacticsLootBannerView existingView = FindFirstObjectByType<TacticsLootBannerView>();
+        if (existingView != null)
+        {
+            return existingView;
+        }
+
+        GameObject hudObject = new GameObject("Tactics Loot Banner HUD");
+        return hudObject.AddComponent<TacticsLootBannerView>();
     }
 
     private TacticsTurnManager EnsureTurnManager()
@@ -867,6 +919,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
             string characterId = character.CharacterData != null ? character.CharacterData.CharacterId : string.Empty;
             battleSetup.players[partyIndex].partyMembers[slotIndex].progression = character.Progression.WithCharacterId(characterId).Sanitize();
+            battleSetup.players[partyIndex].partyMembers[slotIndex].inventory = character.BuildInventorySnapshot().WithCharacterId(characterId).Sanitize();
         }
     }
 
@@ -935,6 +988,8 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         DestroyAllOfType<TacticsElevationSliderView>();
         DestroyAllOfType<TacticsTopRightNavBarView>();
         DestroyAllOfType<TacticsCharacterMenuView>();
+        DestroyAllOfType<TacticsInventoryMenuView>();
+        DestroyAllOfType<TacticsLootBannerView>();
         DestroyAllOfType<TacticsCombatTextSystem>();
         DestroyAllOfType<TacticsAbilityHitEffectSystem>();
         DestroyAllOfType<TacticsAbilityHitEffectInstance>();
@@ -1168,7 +1223,10 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
                 runtimeCharacterId: $"party_0_slot_{i}_{definition.CharacterId}",
                 progression: progressionService != null
                     ? progressionService.GetProgression(definition)
-                    : TacticsCharacterProgressionSnapshot.CreateDefault(definition.CharacterId));
+                    : TacticsCharacterProgressionSnapshot.CreateDefault(definition.CharacterId),
+                inventory: inventoryService != null
+                    ? inventoryService.GetInventory(definition.CharacterId)
+                    : TacticsCharacterInventorySnapshot.CreateDefault(definition.CharacterId));
             if (character != null)
             {
                 spawnedCharacters.Add(character);
@@ -1221,6 +1279,7 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         }
 
         Dictionary<string, TacticsCharacterProgressionSnapshot> progressionByRuntimeId = BuildProgressionLookup(plannedSpawns);
+        Dictionary<string, TacticsCharacterInventorySnapshot> inventoryByRuntimeId = BuildInventoryLookup(plannedSpawns);
         List<TacticsCharacterController> spawnedCharacters = new List<TacticsCharacterController>(plannedSpawns.Count);
 
         for (int i = 0; i < plannedSpawns.Count; i++)
@@ -1240,7 +1299,10 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
                 runtimeCharacterId: plannedSpawn.RuntimeId,
                 progression: progressionByRuntimeId.TryGetValue(plannedSpawn.RuntimeId, out TacticsCharacterProgressionSnapshot progression)
                     ? progression
-                    : TacticsCharacterProgressionSnapshot.CreateDefault(definition.CharacterId));
+                    : TacticsCharacterProgressionSnapshot.CreateDefault(definition.CharacterId),
+                inventory: inventoryByRuntimeId.TryGetValue(plannedSpawn.RuntimeId, out TacticsCharacterInventorySnapshot inventory)
+                    ? inventory
+                    : TacticsCharacterInventorySnapshot.CreateDefault(definition.CharacterId));
             if (character != null)
             {
                 spawnedCharacters.Add(character);
@@ -1483,6 +1545,58 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         return queue;
     }
 
+    private static Queue<TacticsCharacterInventorySnapshot> BuildInventoryQueue(List<TacticsCoopCharacterLoadout> loadout)
+    {
+        Queue<TacticsCharacterInventorySnapshot> queue = new Queue<TacticsCharacterInventorySnapshot>();
+        if (loadout == null)
+        {
+            return queue;
+        }
+
+        for (int i = 0; i < loadout.Count; i++)
+        {
+            TacticsCoopCharacterLoadout entry = loadout[i];
+            if (entry == null || string.IsNullOrWhiteSpace(entry.characterId))
+            {
+                continue;
+            }
+
+            queue.Enqueue(entry.inventory.WithCharacterId(entry.characterId).Sanitize());
+        }
+
+        return queue;
+    }
+
+    private Dictionary<string, TacticsCharacterInventorySnapshot> BuildInventoryLookup(
+        List<TacticsCoopSpawnPlanner.PlannedCharacterSpawn> plannedSpawns)
+    {
+        Dictionary<string, TacticsCharacterInventorySnapshot> lookup = new Dictionary<string, TacticsCharacterInventorySnapshot>(StringComparer.OrdinalIgnoreCase);
+        if (plannedSpawns == null || pendingCoopBattleSetup?.players == null)
+        {
+            return lookup;
+        }
+
+        Dictionary<int, Queue<TacticsCharacterInventorySnapshot>> queuesByPartyIndex = new Dictionary<int, Queue<TacticsCharacterInventorySnapshot>>();
+        for (int i = 0; i < pendingCoopBattleSetup.players.Count; i++)
+        {
+            queuesByPartyIndex[i] = BuildInventoryQueue(pendingCoopBattleSetup.players[i]?.partyMembers);
+        }
+
+        for (int i = 0; i < plannedSpawns.Count; i++)
+        {
+            TacticsCoopSpawnPlanner.PlannedCharacterSpawn spawn = plannedSpawns[i];
+            if (!queuesByPartyIndex.TryGetValue(spawn.PartyIndex, out Queue<TacticsCharacterInventorySnapshot> queue) ||
+                queue.Count == 0)
+            {
+                continue;
+            }
+
+            lookup[spawn.RuntimeId] = queue.Dequeue().WithCharacterId(spawn.CharacterId).Sanitize();
+        }
+
+        return lookup;
+    }
+
     private void BindCharacterProgressionPersistence(TacticsCharacterMenuView characterMenuView)
     {
         TacticsCharacterController[] characters = FindObjectsByType<TacticsCharacterController>(FindObjectsSortMode.None);
@@ -1496,6 +1610,38 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
             character.ProgressionChanged -= HandleCharacterProgressionChanged;
             character.ProgressionChanged += HandleCharacterProgressionChanged;
+        }
+    }
+
+    private void BindCharacterInventoryPersistence()
+    {
+        TacticsCharacterController[] characters = FindObjectsByType<TacticsCharacterController>(FindObjectsSortMode.None);
+        for (int i = 0; i < characters.Length; i++)
+        {
+            TacticsCharacterController character = characters[i];
+            if (character == null || !character.IsPlayerControlled)
+            {
+                continue;
+            }
+
+            character.InventoryChanged -= HandleCharacterInventoryChanged;
+            character.InventoryChanged += HandleCharacterInventoryChanged;
+        }
+    }
+
+    private void BindCharacterLootNotifications()
+    {
+        TacticsCharacterController[] characters = FindObjectsByType<TacticsCharacterController>(FindObjectsSortMode.None);
+        for (int i = 0; i < characters.Length; i++)
+        {
+            TacticsCharacterController character = characters[i];
+            if (character == null || !character.IsPlayerControlled)
+            {
+                continue;
+            }
+
+            character.InventoryItemAdded -= HandleCharacterInventoryItemAdded;
+            character.InventoryItemAdded += HandleCharacterInventoryItemAdded;
         }
     }
 
@@ -1514,6 +1660,43 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
         TacticsCharacterMenuView characterMenuView = FindFirstObjectByType<TacticsCharacterMenuView>();
         characterMenuView?.MarkProgressionCommitted(character);
+    }
+
+    private void HandleCharacterInventoryChanged(TacticsCharacterController character)
+    {
+        if (character == null || inventoryService == null || !character.IsPlayerControlled)
+        {
+            return;
+        }
+
+        bool isLocallyOwned = coopSessionCoordinator == null || coopSessionCoordinator.CanLocalPlayerControlCharacter(character);
+        if (isLocallyOwned)
+        {
+            inventoryService.SaveInventory(character.BuildInventorySnapshot().WithCharacterId(character.CharacterData != null ? character.CharacterData.CharacterId : string.Empty));
+        }
+
+        TacticsCharacterMenuView characterMenuView = FindFirstObjectByType<TacticsCharacterMenuView>();
+        characterMenuView?.RefreshCharacterList();
+
+        TacticsInventoryMenuView inventoryMenuView = FindFirstObjectByType<TacticsInventoryMenuView>();
+        inventoryMenuView?.RefreshCharacterList();
+    }
+
+    private void HandleCharacterInventoryItemAdded(TacticsCharacterController character, TacticsInventoryItemAddedEvent itemAddedEvent)
+    {
+        if (character == null || !character.IsPlayerControlled)
+        {
+            return;
+        }
+
+        bool isLocallyOwned = coopSessionCoordinator == null || coopSessionCoordinator.CanLocalPlayerControlCharacter(character);
+        if (!isLocallyOwned)
+        {
+            return;
+        }
+
+        lootBannerView ??= FindFirstObjectByType<TacticsLootBannerView>();
+        lootBannerView?.EnqueueLoot(character, itemAddedEvent);
     }
 
     private void HandleProgressionCommitRequested(TacticsCharacterController character, TacticsCharacterProgressionSnapshot snapshot)
@@ -1543,9 +1726,11 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         {
             accountPartySelectionService = new TacticsPartySelectionService(new TacticsCloudSavePartySelectionStore(accountSessionService.Profile));
             accountProgressionService = new TacticsCharacterProgressionService(new TacticsCloudSaveCharacterProgressionStore(accountSessionService.Profile));
+            accountInventoryService = new TacticsCharacterInventoryService(new TacticsCloudSaveCharacterInventoryStore(accountSessionService.Profile));
             accountCurrencyService = new TacticsPlayerCurrencyService(new TacticsCloudSaveCurrencyStore(accountSessionService.Profile));
             coopSessionCoordinator?.AssignPartySelectionService(accountPartySelectionService);
             coopSessionCoordinator?.AssignCharacterProgressionService(accountProgressionService);
+            coopSessionCoordinator?.AssignCharacterInventoryService(accountInventoryService);
             coopSessionCoordinator?.AssignCurrencyService(accountCurrencyService);
             coopSessionCoordinator?.AssignAccountSessionService(accountSessionService);
         }
@@ -1553,9 +1738,11 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
         {
             accountPartySelectionService = null;
             accountProgressionService = null;
+            accountInventoryService = null;
             accountCurrencyService = null;
             coopSessionCoordinator?.AssignPartySelectionService(null);
             coopSessionCoordinator?.AssignCharacterProgressionService(null);
+            coopSessionCoordinator?.AssignCharacterInventoryService(null);
             coopSessionCoordinator?.AssignCurrencyService(null);
             coopSessionCoordinator?.AssignAccountSessionService(accountSessionService);
         }
@@ -1566,6 +1753,8 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
             accountPartySelectionService,
             localProgressionService,
             accountProgressionService,
+            localInventoryService,
+            accountInventoryService,
             enemyTable,
             accountSessionService,
             coopSessionCoordinator);
@@ -1575,15 +1764,17 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
     {
         partySelectionService = localPartySelectionService;
         progressionService = localProgressionService;
+        inventoryService = localInventoryService;
         currencyService = localCurrencyService;
         coopSessionCoordinator?.AssignPartySelectionService(partySelectionService);
         coopSessionCoordinator?.AssignCharacterProgressionService(progressionService);
+        coopSessionCoordinator?.AssignCharacterInventoryService(inventoryService);
         coopSessionCoordinator?.AssignCurrencyService(currencyService);
     }
 
     private bool UseAccountServicesForOnline()
     {
-        if (accountPartySelectionService == null || accountProgressionService == null || accountCurrencyService == null)
+        if (accountPartySelectionService == null || accountProgressionService == null || accountInventoryService == null || accountCurrencyService == null)
         {
             mainMenuView?.SetStatusText(accountSessionService?.ErrorMessage ?? "Sign in before starting online co-op.");
             return false;
@@ -1591,9 +1782,11 @@ public class TacticsRuntimeBootstrap : MonoBehaviour
 
         partySelectionService = accountPartySelectionService;
         progressionService = accountProgressionService;
+        inventoryService = accountInventoryService;
         currencyService = accountCurrencyService;
         coopSessionCoordinator?.AssignPartySelectionService(partySelectionService);
         coopSessionCoordinator?.AssignCharacterProgressionService(progressionService);
+        coopSessionCoordinator?.AssignCharacterInventoryService(inventoryService);
         coopSessionCoordinator?.AssignCurrencyService(currencyService);
         return true;
     }

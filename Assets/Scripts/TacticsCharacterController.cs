@@ -37,6 +37,9 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     private TacticsCharacterRegistry characterRegistry;
     private readonly List<TacticsAbilityDefinition> abilities = new();
     private readonly List<TacticsStatusEffectInstance> activeStatusEffects = new();
+    private readonly List<TacticsInventoryItemSaveData> inventoryItems = new();
+    private readonly Dictionary<TacticsEquipmentSlot, TacticsInventoryItemSaveData> equippedItemsBySlot = new();
+    private readonly List<TacticsInventoryResolvedItem> reusableResolvedInventoryItems = new();
     private bool isPerformingAction;
     private bool isActionLockedThisTurn;
 
@@ -91,12 +94,15 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     public Vector3 TurnFocusPoint => transform.position;
     public IReadOnlyList<TacticsAbilityDefinition> Abilities => abilities;
     public IReadOnlyList<TacticsStatusEffectInstance> ActiveStatusEffects => activeStatusEffects;
+    public int InventoryItemCount => inventoryItems.Count;
     public bool IsActionLockedThisTurn => isActionLockedThisTurn;
     public bool IsTaunting => HasStatusEffect(TacticsStatusEffectType.Taunt);
 
     public event Action<ITacticsTurnParticipant> TurnEnded;
     public event Action<ITacticsTurnParticipant> TurnStateChanged;
     public event Action<TacticsCharacterController> ProgressionChanged;
+    public event Action<TacticsCharacterController> InventoryChanged;
+    public event Action<TacticsCharacterController, TacticsInventoryItemAddedEvent> InventoryItemAdded;
 
     public TacticsSelectionHudData BuildSelectionHudData()
     {
@@ -119,9 +125,18 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         TacticsCharacterDefinition definition,
         Vector2Int spawnTile,
         string runtimeCharacterId = "",
-        TacticsCharacterProgressionSnapshot startingProgression = default)
+        TacticsCharacterProgressionSnapshot startingProgression = default,
+        TacticsCharacterInventorySnapshot startingInventory = default)
     {
-        Initialize(generator, animator, definition != null ? definition.BuildRuntimeData() : null, spawnTile, definition, runtimeCharacterId, startingProgression);
+        Initialize(
+            generator,
+            animator,
+            definition != null ? definition.BuildRuntimeData() : null,
+            spawnTile,
+            definition,
+            runtimeCharacterId,
+            startingProgression,
+            startingInventory);
     }
 
     public void Initialize(
@@ -131,7 +146,8 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         Vector2Int spawnTile,
         TacticsCharacterDefinition definition = null,
         string runtimeCharacterId = "",
-        TacticsCharacterProgressionSnapshot startingProgression = default)
+        TacticsCharacterProgressionSnapshot startingProgression = default,
+        TacticsCharacterInventorySnapshot startingInventory = default)
     {
         mapGenerator = generator;
         characterAnimator = animator;
@@ -140,7 +156,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         RuntimeCharacterId = string.IsNullOrWhiteSpace(runtimeCharacterId)
             ? BuildFallbackRuntimeCharacterId(characterData, definition)
             : runtimeCharacterId.Trim();
-        ApplyCharacterData(characterData, startingProgression);
+        ApplyCharacterData(characterData, startingProgression, startingInventory);
         startingGridPosition = spawnTile;
         SubscribeToMap();
         SnapToTile(GetBestValidTile(spawnTile));
@@ -172,7 +188,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
             characterData = characterDefinition.BuildRuntimeData();
         }
 
-        ApplyCharacterData(characterData, progression);
+        ApplyCharacterData(characterData, progression, BuildInventorySnapshot());
         ResolveCharacterRegistry();
 
         if (mapGenerator == null || !mapGenerator.HasGeneratedMap)
@@ -488,6 +504,219 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         return BaseStats.GetPrimaryStat(stat);
     }
 
+    public TacticsCharacterInventorySnapshot BuildInventorySnapshot()
+    {
+        TacticsCharacterInventorySnapshot snapshot = new TacticsCharacterInventorySnapshot
+        {
+            characterId = characterData != null ? characterData.CharacterId : string.Empty,
+            items = new List<TacticsInventoryItemSaveData>(inventoryItems.Count),
+        equippedItems = new List<TacticsEquippedItemSaveData>(equippedItemsBySlot.Count)
+        };
+
+        for (int i = 0; i < inventoryItems.Count; i++)
+        {
+            snapshot.items.Add(inventoryItems[i]?.Clone());
+        }
+
+        foreach (KeyValuePair<TacticsEquipmentSlot, TacticsInventoryItemSaveData> pair in equippedItemsBySlot)
+        {
+            snapshot.equippedItems.Add(new TacticsEquippedItemSaveData
+            {
+                slot = pair.Key,
+                instanceId = pair.Value.instanceId,
+                itemId = pair.Value.itemId,
+                quantity = pair.Value.quantity
+            });
+        }
+
+        return snapshot.Sanitize();
+    }
+
+    public IReadOnlyList<TacticsInventoryResolvedItem> GetResolvedInventoryItems()
+    {
+        reusableResolvedInventoryItems.Clear();
+        for (int i = 0; i < inventoryItems.Count; i++)
+        {
+            TacticsInventoryItemSaveData item = inventoryItems[i];
+            if (item == null || !TacticsItemCatalogResources.TryGetItem(item.itemId, out TacticsItemDefinition definition))
+            {
+                continue;
+            }
+
+            reusableResolvedInventoryItems.Add(new TacticsInventoryResolvedItem(
+                item,
+                definition,
+                isEquipped: false,
+                item.quantity));
+        }
+
+        return reusableResolvedInventoryItems;
+    }
+
+    public bool IsItemEquipped(string itemInstanceId)
+    {
+        if (string.IsNullOrWhiteSpace(itemInstanceId))
+        {
+            return false;
+        }
+
+        foreach (KeyValuePair<TacticsEquipmentSlot, TacticsInventoryItemSaveData> pair in equippedItemsBySlot)
+        {
+            if (pair.Value != null &&
+                string.Equals(pair.Value.instanceId, itemInstanceId, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public bool TryGetEquippedItem(TacticsEquipmentSlot slot, out TacticsEquipmentRuntimeSummary summary)
+    {
+        summary = default;
+        if (!equippedItemsBySlot.TryGetValue(slot, out TacticsInventoryItemSaveData item) || item == null)
+        {
+            return false;
+        }
+
+        if (!TacticsItemCatalogResources.TryGetItem(item.itemId, out TacticsItemDefinition definition) ||
+            definition is not TacticsEquipmentItemDefinition equipment)
+        {
+            return false;
+        }
+
+        summary = new TacticsEquipmentRuntimeSummary(equipment, item);
+        return summary.IsValid;
+    }
+
+    public TacticsInventoryActionKind GetDefaultInventoryAction(string itemInstanceId)
+    {
+        TacticsInventoryItemSaveData item = FindInventoryItem(itemInstanceId);
+        if (item == null || !TacticsItemCatalogResources.TryGetItem(item.itemId, out TacticsItemDefinition definition))
+        {
+            return TacticsInventoryActionKind.None;
+        }
+
+        return definition switch
+        {
+            TacticsConsumableItemDefinition => TacticsInventoryActionKind.UseConsumable,
+            TacticsEquipmentItemDefinition => IsItemEquipped(item.instanceId)
+                ? TacticsInventoryActionKind.Unequip
+                : TacticsInventoryActionKind.Equip,
+            _ => TacticsInventoryActionKind.None
+        };
+    }
+
+    public bool TryEquipItem(string itemInstanceId)
+    {
+        TacticsInventoryItemSaveData item = FindInventoryItem(itemInstanceId);
+        if (item == null ||
+            !TacticsItemCatalogResources.TryGetItem(item.itemId, out TacticsItemDefinition definition) ||
+            definition is not TacticsEquipmentItemDefinition equipment)
+        {
+            return false;
+        }
+
+        TransferEquippedItemToInventory(equipment.Slot);
+        inventoryItems.Remove(item);
+        equippedItemsBySlot[equipment.Slot] = item;
+        RefreshStatsFromStatusEffects();
+        InventoryChanged?.Invoke(this);
+        NotifyTurnStateChanged();
+        return true;
+    }
+
+    public bool TryUnequipItem(TacticsEquipmentSlot slot)
+    {
+        if (!TransferEquippedItemToInventory(slot))
+        {
+            return false;
+        }
+
+        RefreshStatsFromStatusEffects();
+        InventoryChanged?.Invoke(this);
+        NotifyTurnStateChanged();
+        return true;
+    }
+
+    public bool TryAddInventoryItem(TacticsInventoryItemSaveData item)
+    {
+        TacticsInventoryItemSaveData cloned = item?.Clone();
+        if (cloned == null ||
+            string.IsNullOrWhiteSpace(cloned.itemId) ||
+            !TacticsItemCatalogResources.TryGetItem(cloned.itemId, out TacticsItemDefinition definition))
+        {
+            return false;
+        }
+
+        cloned.quantity = Mathf.Max(1, cloned.quantity);
+        if (definition is TacticsConsumableItemDefinition)
+        {
+            TacticsInventoryItemSaveData existingStack = FindConsumableStack(cloned.itemId);
+            if (existingStack != null)
+            {
+                int quantityAdded = cloned.quantity;
+                existingStack.quantity = AddInventoryQuantity(existingStack.quantity, quantityAdded);
+                RaiseInventoryItemAdded(existingStack, definition, quantityAdded, mergedIntoExistingStack: true);
+                InventoryChanged?.Invoke(this);
+                return true;
+            }
+
+            if (string.IsNullOrWhiteSpace(cloned.instanceId) || FindInventoryItem(cloned.instanceId) != null)
+            {
+                cloned.instanceId = CreateUniqueInventoryInstanceId();
+            }
+        }
+        else if (string.IsNullOrWhiteSpace(cloned.instanceId) || ContainsItemInstanceId(cloned.instanceId))
+        {
+            return false;
+        }
+
+        if (definition is not TacticsConsumableItemDefinition)
+        {
+            cloned.quantity = 1;
+        }
+
+        inventoryItems.Add(cloned);
+        RaiseInventoryItemAdded(cloned, definition, cloned.quantity, mergedIntoExistingStack: false);
+        InventoryChanged?.Invoke(this);
+        return true;
+    }
+
+    public bool TryUseConsumableItem(string itemInstanceId, TacticsCombatSystem combat, bool replicated)
+    {
+        TacticsInventoryItemSaveData item = FindInventoryItem(itemInstanceId);
+        if (item == null ||
+            !TacticsItemCatalogResources.TryGetItem(item.itemId, out TacticsItemDefinition definition) ||
+            definition is not TacticsConsumableItemDefinition consumable ||
+            consumable.LinkedAbility == null ||
+            combat == null)
+        {
+            return false;
+        }
+
+        bool success = replicated
+            ? combat.ApplyReplicatedAbility(this, consumable.LinkedAbility, GridPosition)
+            : combat.TryUseAbility(this, consumable.LinkedAbility, GridPosition);
+        if (!success)
+        {
+            return false;
+        }
+
+        if (item.quantity > 1)
+        {
+            item.quantity--;
+        }
+        else
+        {
+            RemoveInventoryItem(item.instanceId);
+        }
+
+        InventoryChanged?.Invoke(this);
+        return true;
+    }
+
     public bool ApplyDamage(
         int damageAmount,
         Vector3? damageSourceWorldPosition = null,
@@ -733,12 +962,17 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
             TacticsStatusEffectLibrary.TryApplyPersistentStatModifier(ref resolvedStats, activeStatusEffects[i]);
         }
 
+        ApplyEquipmentBonusesToStats(ref resolvedStats);
+
         return resolvedStats;
     }
 
     public TacticsCharacterDerivedStats GetDerivedStatsForProgression(TacticsCharacterProgressionSnapshot snapshot)
     {
-        return GetStatsForProgression(snapshot).CalculateDerivedStats();
+        TacticsCharacterStats resolvedStats = GetStatsForProgression(snapshot);
+        TacticsCharacterDerivedStats resolvedDerivedStats = resolvedStats.CalculateDerivedStats();
+        ApplyEquipmentBonusesToDerivedStats(ref resolvedDerivedStats);
+        return resolvedDerivedStats;
     }
 
     public void CommitAbilityUse()
@@ -1387,7 +1621,10 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         }
     }
 
-    private void ApplyCharacterData(TacticsCharacterData data, TacticsCharacterProgressionSnapshot startingProgression)
+    private void ApplyCharacterData(
+        TacticsCharacterData data,
+        TacticsCharacterProgressionSnapshot startingProgression,
+        TacticsCharacterInventorySnapshot startingInventory)
     {
         if (data == null)
         {
@@ -1405,6 +1642,7 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         progression = data.Team == TacticsUnitTeam.Player
             ? ResolveProgression(startingProgression, data.CharacterId)
             : TacticsCharacterProgressionSnapshot.CreateDefault(data.CharacterId);
+        ApplyInventorySnapshot(startingInventory, data.CharacterId);
         RefreshEffectiveStats(ref runtimeResources, refillResources: true);
         RebuildAbilities(data);
     }
@@ -1458,7 +1696,9 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
             TacticsStatusEffectLibrary.TryApplyPersistentStatModifier(ref effectiveStats, activeStatusEffects[i]);
         }
 
+        ApplyEquipmentBonusesToStats(ref effectiveStats);
         derivedStats = effectiveStats.CalculateDerivedStats();
+        ApplyEquipmentBonusesToDerivedStats(ref derivedStats);
         CurrentLevel = progression.Level;
         CurrentExperience = progression.CurrentExperience;
 
@@ -1605,6 +1845,370 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
         }
 
         abilities.Add(ability);
+    }
+
+    private void ApplyInventorySnapshot(TacticsCharacterInventorySnapshot snapshot, string characterId)
+    {
+        inventoryItems.Clear();
+        equippedItemsBySlot.Clear();
+
+        TacticsCharacterInventorySnapshot sanitized = snapshot.WithCharacterId(characterId).Sanitize();
+        List<TacticsInventoryItemSaveData> normalizedItems = NormalizeInventoryItems(sanitized.items);
+        for (int i = 0; i < sanitized.equippedItems.Count; i++)
+        {
+            TacticsEquippedItemSaveData equipped = sanitized.equippedItems[i];
+            if (!TryResolveEquippedInventoryItem(equipped, normalizedItems, out TacticsInventoryItemSaveData resolvedItem) ||
+                !TacticsItemCatalogResources.TryGetItem(resolvedItem.itemId, out TacticsItemDefinition definition) ||
+                definition is not TacticsEquipmentItemDefinition equipment ||
+                equipment.Slot != equipped.slot)
+            {
+                continue;
+            }
+
+            RemoveInventoryItemFromList(normalizedItems, resolvedItem.instanceId);
+            equippedItemsBySlot[equipped.slot] = resolvedItem;
+        }
+
+        for (int i = 0; i < normalizedItems.Count; i++)
+        {
+            inventoryItems.Add(normalizedItems[i]);
+        }
+    }
+
+    private void ApplyEquipmentBonusesToStats(ref TacticsCharacterStats stats)
+    {
+        foreach (TacticsInventoryItemSaveData item in equippedItemsBySlot.Values)
+        {
+            if (item == null ||
+                !TacticsItemCatalogResources.TryGetItem(item.itemId, out TacticsItemDefinition definition) ||
+                definition is not TacticsEquipmentItemDefinition equipment)
+            {
+                continue;
+            }
+
+            TacticsPrimaryStatBonuses primaryBonuses = equipment.PrimaryStatBonuses;
+            primaryBonuses.Apply(ref stats);
+            equipment.DerivedStatBonuses.ApplyToBaseStats(ref stats);
+        }
+    }
+
+    private void ApplyEquipmentBonusesToDerivedStats(ref TacticsCharacterDerivedStats stats)
+    {
+        foreach (TacticsInventoryItemSaveData item in equippedItemsBySlot.Values)
+        {
+            if (item == null ||
+                !TacticsItemCatalogResources.TryGetItem(item.itemId, out TacticsItemDefinition definition) ||
+                definition is not TacticsEquipmentItemDefinition equipment)
+            {
+                continue;
+            }
+
+            equipment.DerivedStatBonuses.ApplyToDerivedStats(ref stats);
+            if (equipment is not TacticsWeaponItemDefinition weapon)
+            {
+                continue;
+            }
+
+            int scalingBonus = weapon.EvaluateDamageScalingBonus(this);
+            if (weapon.DamageType == TacticsAbilityDamageType.Magic)
+            {
+                stats.baseMagicDamageMin = Mathf.Max(0, stats.baseMagicDamageMin + weapon.BaseDamageMinBonus + scalingBonus);
+                stats.baseMagicDamageMax = Mathf.Max(stats.baseMagicDamageMin, stats.baseMagicDamageMax + weapon.BaseDamageMaxBonus + scalingBonus);
+            }
+            else
+            {
+                stats.baseMeleeDamageMin = Mathf.Max(0, stats.baseMeleeDamageMin + weapon.BaseDamageMinBonus + scalingBonus);
+                stats.baseMeleeDamageMax = Mathf.Max(stats.baseMeleeDamageMin, stats.baseMeleeDamageMax + weapon.BaseDamageMaxBonus + scalingBonus);
+            }
+        }
+    }
+
+    private TacticsInventoryItemSaveData FindInventoryItem(string instanceId)
+    {
+        if (string.IsNullOrWhiteSpace(instanceId))
+        {
+            return null;
+        }
+
+        for (int i = 0; i < inventoryItems.Count; i++)
+        {
+            TacticsInventoryItemSaveData item = inventoryItems[i];
+            if (item != null &&
+                string.Equals(item.instanceId, instanceId, StringComparison.OrdinalIgnoreCase))
+            {
+                return item;
+            }
+        }
+
+        return null;
+    }
+
+    private TacticsInventoryItemSaveData FindConsumableStack(string itemId)
+    {
+        if (string.IsNullOrWhiteSpace(itemId))
+        {
+            return null;
+        }
+
+        for (int i = 0; i < inventoryItems.Count; i++)
+        {
+            TacticsInventoryItemSaveData item = inventoryItems[i];
+            if (item == null ||
+                !string.Equals(item.itemId, itemId, StringComparison.OrdinalIgnoreCase) ||
+                !TacticsItemCatalogResources.TryGetItem(item.itemId, out TacticsItemDefinition definition) ||
+                definition is not TacticsConsumableItemDefinition)
+            {
+                continue;
+            }
+
+            return item;
+        }
+
+        return null;
+    }
+
+    private bool RemoveInventoryItem(string instanceId)
+    {
+        if (string.IsNullOrWhiteSpace(instanceId))
+        {
+            return false;
+        }
+
+        bool removed = false;
+        for (int i = inventoryItems.Count - 1; i >= 0; i--)
+        {
+            TacticsInventoryItemSaveData item = inventoryItems[i];
+            if (item == null ||
+                !string.Equals(item.instanceId, instanceId, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            inventoryItems.RemoveAt(i);
+            removed = true;
+        }
+
+        if (!removed)
+        {
+            return false;
+        }
+
+        RefreshStatsFromStatusEffects();
+        return true;
+    }
+
+    private bool TryResolveEquippedInventoryItem(
+        TacticsEquippedItemSaveData equipped,
+        List<TacticsInventoryItemSaveData> normalizedItems,
+        out TacticsInventoryItemSaveData resolvedItem)
+    {
+        resolvedItem = null;
+        if (equipped == null)
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(equipped.itemId))
+        {
+            resolvedItem = new TacticsInventoryItemSaveData
+            {
+                instanceId = equipped.instanceId,
+                itemId = equipped.itemId,
+                quantity = Mathf.Max(1, equipped.quantity)
+            };
+            return true;
+        }
+
+        resolvedItem = FindInventoryItem(normalizedItems, equipped.instanceId)?.Clone();
+        return resolvedItem != null;
+    }
+
+    private bool TransferEquippedItemToInventory(TacticsEquipmentSlot slot)
+    {
+        if (!equippedItemsBySlot.TryGetValue(slot, out TacticsInventoryItemSaveData equippedItem) || equippedItem == null)
+        {
+            return false;
+        }
+
+        equippedItemsBySlot.Remove(slot);
+        inventoryItems.Add(equippedItem);
+        return true;
+    }
+
+    private bool ContainsItemInstanceId(string instanceId)
+    {
+        return FindInventoryItem(instanceId) != null || FindEquippedItemByInstanceId(instanceId) != null;
+    }
+
+    private TacticsInventoryItemSaveData FindEquippedItemByInstanceId(string instanceId)
+    {
+        if (string.IsNullOrWhiteSpace(instanceId))
+        {
+            return null;
+        }
+
+        foreach (TacticsInventoryItemSaveData item in equippedItemsBySlot.Values)
+        {
+            if (item != null &&
+                string.Equals(item.instanceId, instanceId, StringComparison.OrdinalIgnoreCase))
+            {
+                return item;
+            }
+        }
+
+        return null;
+    }
+
+    private static TacticsInventoryItemSaveData FindInventoryItem(List<TacticsInventoryItemSaveData> items, string instanceId)
+    {
+        if (items == null || string.IsNullOrWhiteSpace(instanceId))
+        {
+            return null;
+        }
+
+        for (int i = 0; i < items.Count; i++)
+        {
+            TacticsInventoryItemSaveData item = items[i];
+            if (item != null &&
+                string.Equals(item.instanceId, instanceId, StringComparison.OrdinalIgnoreCase))
+            {
+                return item;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool RemoveInventoryItemFromList(List<TacticsInventoryItemSaveData> items, string instanceId)
+    {
+        if (items == null || string.IsNullOrWhiteSpace(instanceId))
+        {
+            return false;
+        }
+
+        for (int i = items.Count - 1; i >= 0; i--)
+        {
+            TacticsInventoryItemSaveData item = items[i];
+            if (item != null &&
+                string.Equals(item.instanceId, instanceId, StringComparison.OrdinalIgnoreCase))
+            {
+                items.RemoveAt(i);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private List<TacticsInventoryItemSaveData> NormalizeInventoryItems(List<TacticsInventoryItemSaveData> items)
+    {
+        List<TacticsInventoryItemSaveData> normalizedItems = new List<TacticsInventoryItemSaveData>();
+        Dictionary<string, TacticsInventoryItemSaveData> consumableStacks =
+            new Dictionary<string, TacticsInventoryItemSaveData>(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> seenInstanceIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (items == null)
+        {
+            return normalizedItems;
+        }
+
+        for (int i = 0; i < items.Count; i++)
+        {
+            TacticsInventoryItemSaveData cloned = items[i]?.Clone();
+            if (cloned == null ||
+                string.IsNullOrWhiteSpace(cloned.itemId) ||
+                !TacticsItemCatalogResources.TryGetItem(cloned.itemId, out TacticsItemDefinition definition))
+            {
+                continue;
+            }
+
+            cloned.quantity = Mathf.Max(1, cloned.quantity);
+            if (definition is TacticsConsumableItemDefinition)
+            {
+                if (consumableStacks.TryGetValue(cloned.itemId, out TacticsInventoryItemSaveData existingStack))
+                {
+                    existingStack.quantity = AddInventoryQuantity(existingStack.quantity, cloned.quantity);
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(cloned.instanceId) || !seenInstanceIds.Add(cloned.instanceId))
+                {
+                    cloned.instanceId = CreateUniqueInventoryInstanceId(seenInstanceIds);
+                }
+
+                consumableStacks[cloned.itemId] = cloned;
+                normalizedItems.Add(cloned);
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(cloned.instanceId) || !seenInstanceIds.Add(cloned.instanceId))
+            {
+                continue;
+            }
+
+            cloned.quantity = 1;
+            normalizedItems.Add(cloned);
+        }
+
+        return normalizedItems;
+    }
+
+    private string CreateUniqueInventoryInstanceId(HashSet<string> reservedInstanceIds = null)
+    {
+        HashSet<string> usedInstanceIds = reservedInstanceIds ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (reservedInstanceIds == null)
+        {
+            for (int i = 0; i < inventoryItems.Count; i++)
+            {
+                TacticsInventoryItemSaveData item = inventoryItems[i];
+                if (item != null && !string.IsNullOrWhiteSpace(item.instanceId))
+                {
+                    usedInstanceIds.Add(item.instanceId);
+                }
+            }
+
+            foreach (TacticsInventoryItemSaveData item in equippedItemsBySlot.Values)
+            {
+                if (item != null && !string.IsNullOrWhiteSpace(item.instanceId))
+                {
+                    usedInstanceIds.Add(item.instanceId);
+                }
+            }
+        }
+
+        string instanceId;
+        do
+        {
+            instanceId = Guid.NewGuid().ToString("N");
+        }
+        while (!usedInstanceIds.Add(instanceId));
+
+        return instanceId;
+    }
+
+    private static int AddInventoryQuantity(int currentQuantity, int quantityToAdd)
+    {
+        long total = (long)Mathf.Max(1, currentQuantity) + Mathf.Max(1, quantityToAdd);
+        return (int)Math.Min(int.MaxValue, total);
+    }
+
+    private void RaiseInventoryItemAdded(
+        TacticsInventoryItemSaveData itemData,
+        TacticsItemDefinition itemDefinition,
+        int quantityAdded,
+        bool mergedIntoExistingStack)
+    {
+        if (itemData == null || itemDefinition == null)
+        {
+            return;
+        }
+
+        InventoryItemAdded?.Invoke(
+            this,
+            new TacticsInventoryItemAddedEvent(
+                itemData,
+                itemDefinition,
+                quantityAdded,
+                mergedIntoExistingStack));
     }
 
     private string BuildFallbackRuntimeCharacterId(TacticsCharacterData data, TacticsCharacterDefinition definition)

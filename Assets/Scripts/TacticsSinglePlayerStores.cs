@@ -121,3 +121,33 @@ public sealed class TacticsSinglePlayerPartySelectionStore : ITacticsPartySelect
         PlayerPrefs.Save();
     }
 }
+
+public sealed class TacticsSinglePlayerCharacterInventoryStore : ITacticsCharacterInventoryStore
+{
+    private const string SaveKey = "tactics.singleplayer.character.inventory.v1";
+
+    public bool TryLoad(out TacticsCharacterInventoryCollectionSaveData saveData)
+    {
+        saveData = null;
+        if (!PlayerPrefs.HasKey(SaveKey))
+        {
+            return false;
+        }
+
+        string json = PlayerPrefs.GetString(SaveKey, string.Empty);
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return false;
+        }
+
+        saveData = JsonUtility.FromJson<TacticsCharacterInventoryCollectionSaveData>(json);
+        return saveData != null;
+    }
+
+    public void Save(TacticsCharacterInventoryCollectionSaveData saveData)
+    {
+        string json = JsonUtility.ToJson(saveData ?? new TacticsCharacterInventoryCollectionSaveData());
+        PlayerPrefs.SetString(SaveKey, json);
+        PlayerPrefs.Save();
+    }
+}

@@ -755,17 +755,25 @@ public class TacticsPlayerController : MonoBehaviour
         RefreshHud();
     }
 
+    private void HandleSelectedCharacterInventoryChanged(TacticsCharacterController character)
+    {
+        RefreshHud();
+    }
+
     private void SubscribeToSelectedCharacter(TacticsCharacterController character)
     {
         if (selectedCharacter != null)
         {
             selectedCharacter.TurnStateChanged -= HandleSelectedCharacterStateChanged;
+            selectedCharacter.InventoryChanged -= HandleSelectedCharacterInventoryChanged;
         }
 
         if (character != null)
         {
             character.TurnStateChanged -= HandleSelectedCharacterStateChanged;
             character.TurnStateChanged += HandleSelectedCharacterStateChanged;
+            character.InventoryChanged -= HandleSelectedCharacterInventoryChanged;
+            character.InventoryChanged += HandleSelectedCharacterInventoryChanged;
         }
     }
 

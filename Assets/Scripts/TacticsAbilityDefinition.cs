@@ -814,10 +814,10 @@ public struct TacticsAbilityScalingDefinitionData
 public static class TacticsAbilityScalingCalculator
 {
     public static int EvaluateDamageBonus(
-        TacticsCharacterController source,
+        TacticsCharacterStats sourceStats,
         IReadOnlyList<TacticsAbilityScalingDefinitionData> scalingDefinitions)
     {
-        if (source == null || scalingDefinitions == null || scalingDefinitions.Count == 0)
+        if (scalingDefinitions == null || scalingDefinitions.Count == 0)
         {
             return 0;
         }
@@ -826,11 +826,23 @@ public static class TacticsAbilityScalingCalculator
         for (int i = 0; i < scalingDefinitions.Count; i++)
         {
             TacticsAbilityScalingDefinitionData scaling = scalingDefinitions[i];
-            int statValue = source.GetPrimaryStat(scaling.Stat);
+            int statValue = sourceStats.GetPrimaryStat(scaling.Stat);
             totalBonus += statValue * GetRankMultiplier(scaling.Rank);
         }
 
         return Mathf.Max(0, Mathf.RoundToInt(totalBonus));
+    }
+
+    public static int EvaluateDamageBonus(
+        TacticsCharacterController source,
+        IReadOnlyList<TacticsAbilityScalingDefinitionData> scalingDefinitions)
+    {
+        if (source == null)
+        {
+            return 0;
+        }
+
+        return EvaluateDamageBonus(source.BaseStats, scalingDefinitions);
     }
 
     private static float GetRankMultiplier(TacticsAbilityScalingRank rank)

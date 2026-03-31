@@ -20,6 +20,7 @@ public sealed class TacticsCloudSavePlayerProfile
     private const string CurrencyKey = "currency_wallet";
     private const string PartySelectionKey = "party_selection";
     private const string CharacterProgressionKey = "character_progression";
+    private const string CharacterInventoryKey = "character_inventory";
 
     private readonly object sync = new object();
     private readonly string playerId;
@@ -32,6 +33,7 @@ public sealed class TacticsCloudSavePlayerProfile
     private TacticsPlayerCurrencySaveData currency = new TacticsPlayerCurrencySaveData();
     private TacticsPartySelectionSaveData partySelection = new TacticsPartySelectionSaveData();
     private TacticsCharacterProgressionCollectionSaveData characterProgression = new TacticsCharacterProgressionCollectionSaveData();
+    private TacticsCharacterInventoryCollectionSaveData characterInventory = new TacticsCharacterInventoryCollectionSaveData();
 
     public TacticsCloudSavePlayerProfile(string playerId, string preferredUsername)
     {
@@ -55,7 +57,8 @@ public sealed class TacticsCloudSavePlayerProfile
             ProfileMetaKey,
             CurrencyKey,
             PartySelectionKey,
-            CharacterProgressionKey
+            CharacterProgressionKey,
+            CharacterInventoryKey
         };
 
         Dictionary<string, Item> items = await CloudSaveService.Instance.Data.Player.LoadAsync(keys);
@@ -68,6 +71,7 @@ public sealed class TacticsCloudSavePlayerProfile
         currency = ReadValue(items, CurrencyKey, new TacticsPlayerCurrencySaveData());
         partySelection = ReadValue(items, PartySelectionKey, new TacticsPartySelectionSaveData());
         characterProgression = ReadValue(items, CharacterProgressionKey, new TacticsCharacterProgressionCollectionSaveData());
+        characterInventory = ReadValue(items, CharacterInventoryKey, new TacticsCharacterInventoryCollectionSaveData());
 
         metaData.playerId = string.IsNullOrWhiteSpace(metaData.playerId) ? playerId : metaData.playerId.Trim();
         metaData.username = string.IsNullOrWhiteSpace(metaData.username) ? preferredUsername : metaData.username.Trim();
@@ -75,6 +79,7 @@ public sealed class TacticsCloudSavePlayerProfile
         currency.gold = Mathf.Max(0, currency.gold);
         partySelection.characterIds ??= new List<string>();
         characterProgression.characters ??= new List<TacticsCharacterProgressionSaveData>();
+        characterInventory.characters ??= new List<TacticsCharacterInventorySaveData>();
         isInitialized = true;
 
         QueueSave(ProfileMetaKey, metaData);
@@ -147,6 +152,32 @@ public sealed class TacticsCloudSavePlayerProfile
         characterProgression.characters ??= new List<TacticsCharacterProgressionSaveData>();
         TouchMeta();
         QueueSave(CharacterProgressionKey, characterProgression);
+        QueueSave(ProfileMetaKey, metaData);
+    }
+
+    public bool TryLoadCharacterInventory(out TacticsCharacterInventoryCollectionSaveData saveData)
+    {
+        saveData = null;
+        if (!isInitialized || characterInventory == null)
+        {
+            return false;
+        }
+
+        saveData = new TacticsCharacterInventoryCollectionSaveData
+        {
+            characters = characterInventory.characters != null
+                ? new List<TacticsCharacterInventorySaveData>(characterInventory.characters)
+                : new List<TacticsCharacterInventorySaveData>()
+        };
+        return true;
+    }
+
+    public void SaveCharacterInventory(TacticsCharacterInventoryCollectionSaveData saveData)
+    {
+        characterInventory = saveData ?? new TacticsCharacterInventoryCollectionSaveData();
+        characterInventory.characters ??= new List<TacticsCharacterInventorySaveData>();
+        TouchMeta();
+        QueueSave(CharacterInventoryKey, characterInventory);
         QueueSave(ProfileMetaKey, metaData);
     }
 
@@ -314,5 +345,31 @@ public sealed class TacticsCloudSaveCharacterProgressionStore : ITacticsCharacte
     public void Save(TacticsCharacterProgressionCollectionSaveData saveData)
     {
         profile?.SaveCharacterProgression(saveData);
+    }
+}
+
+public sealed class TacticsCloudSaveCharacterInventoryStore : ITacticsCharacterInventoryStore
+{
+    private readonly TacticsCloudSavePlayerProfile profile;
+
+    public TacticsCloudSaveCharacterInventoryStore(TacticsCloudSavePlayerProfile profile)
+    {
+        this.profile = profile;
+    }
+
+    public bool TryLoad(out TacticsCharacterInventoryCollectionSaveData saveData)
+    {
+        if (profile == null)
+        {
+            saveData = null;
+            return false;
+        }
+
+        return profile.TryLoadCharacterInventory(out saveData);
+    }
+
+    public void Save(TacticsCharacterInventoryCollectionSaveData saveData)
+    {
+        profile?.SaveCharacterInventory(saveData);
     }
 }

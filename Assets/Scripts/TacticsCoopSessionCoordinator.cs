@@ -34,6 +34,8 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
     private const string EndTurnCommandMessageName = "tactics.command.endturn.execute";
     private const string CommitProgressionRequestMessageName = "tactics.command.progression.request";
     private const string CommitProgressionCommandMessageName = "tactics.command.progression.execute";
+    private const string InventoryRequestMessageName = "tactics.command.inventory.request";
+    private const string InventoryCommandMessageName = "tactics.command.inventory.execute";
     private const string OpenChestRequestMessageName = "tactics.command.chest.request";
     private const string OpenChestCommandMessageName = "tactics.command.chest.execute";
     private const string DescendRequestMessageName = "tactics.command.descend.request";
@@ -53,6 +55,7 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
     private TacticsRoundProgressionService roundProgressionService;
     private TacticsPartySelectionService partySelectionService;
     private TacticsCharacterProgressionService progressionService;
+    private TacticsCharacterInventoryService inventoryService;
     private TacticsPlayerCurrencyService currencyService;
     private ITacticsAccountSessionService accountSessionService;
     private bool handlersRegistered;
@@ -105,6 +108,11 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
     public void AssignCharacterProgressionService(TacticsCharacterProgressionService service)
     {
         progressionService = service;
+    }
+
+    public void AssignCharacterInventoryService(TacticsCharacterInventoryService service)
+    {
+        inventoryService = service;
     }
 
     public void AssignCurrencyService(TacticsPlayerCurrencyService service)
@@ -380,6 +388,42 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         return true;
     }
 
+    public bool RequestInventoryAction(TacticsCharacterController character, TacticsInventoryActionKind actionKind, string itemInstanceId, TacticsEquipmentSlot slot = TacticsEquipmentSlot.Weapon)
+    {
+        if (character == null || actionKind == TacticsInventoryActionKind.None || !CanInitiateCommandForCharacter(character))
+        {
+            return false;
+        }
+
+        TacticsInventoryCommandMessage message = new TacticsInventoryCommandMessage
+        {
+            runtimeCharacterId = character.RuntimeCharacterId,
+            actionKind = actionKind,
+            itemInstanceId = string.IsNullOrWhiteSpace(itemInstanceId) ? string.Empty : itemInstanceId.Trim(),
+            slot = slot,
+            randomStateJson = SerializeRandomState(UnityEngine.Random.state)
+        };
+
+        if (!IsOnlineSession)
+        {
+            return ExecuteInventoryCommand(message);
+        }
+
+        if (IsHostAuthority)
+        {
+            if (!ExecuteInventoryCommand(message))
+            {
+                return false;
+            }
+
+            BroadcastMessage(InventoryCommandMessageName, JsonUtility.ToJson(message), includeHost: false);
+            return true;
+        }
+
+        SendMessageToServer(InventoryRequestMessageName, JsonUtility.ToJson(message));
+        return true;
+    }
+
     public bool RequestOpenChest(TacticsCharacterController character, TacticsChestController chest)
     {
         if (character == null || chest == null || !CanInitiateCommandForCharacter(character))
@@ -539,6 +583,8 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         messaging.RegisterNamedMessageHandler(EndTurnCommandMessageName, HandleEndTurnCommandMessage);
         messaging.RegisterNamedMessageHandler(CommitProgressionRequestMessageName, HandleCommitProgressionRequestMessage);
         messaging.RegisterNamedMessageHandler(CommitProgressionCommandMessageName, HandleCommitProgressionCommandMessage);
+        messaging.RegisterNamedMessageHandler(InventoryRequestMessageName, HandleInventoryRequestMessage);
+        messaging.RegisterNamedMessageHandler(InventoryCommandMessageName, HandleInventoryCommandMessage);
         messaging.RegisterNamedMessageHandler(OpenChestRequestMessageName, HandleOpenChestRequestMessage);
         messaging.RegisterNamedMessageHandler(OpenChestCommandMessageName, HandleOpenChestCommandMessage);
         messaging.RegisterNamedMessageHandler(DescendRequestMessageName, HandleDescendRequestMessage);
@@ -574,6 +620,8 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
             messaging.UnregisterNamedMessageHandler(EndTurnCommandMessageName);
             messaging.UnregisterNamedMessageHandler(CommitProgressionRequestMessageName);
             messaging.UnregisterNamedMessageHandler(CommitProgressionCommandMessageName);
+            messaging.UnregisterNamedMessageHandler(InventoryRequestMessageName);
+            messaging.UnregisterNamedMessageHandler(InventoryCommandMessageName);
             messaging.UnregisterNamedMessageHandler(OpenChestRequestMessageName);
             messaging.UnregisterNamedMessageHandler(OpenChestCommandMessageName);
             messaging.UnregisterNamedMessageHandler(DescendRequestMessageName);
@@ -827,6 +875,38 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         EnqueueReplicatedCommand(ReplicatedCommandType.CommitProgression, ReadPayload(ref reader));
     }
 
+    private void HandleInventoryRequestMessage(ulong senderClientId, FastBufferReader reader)
+    {
+        if (!IsHostAuthority)
+        {
+            return;
+        }
+
+        string payload = ReadPayload(ref reader);
+        TacticsInventoryCommandMessage message = JsonUtility.FromJson<TacticsInventoryCommandMessage>(payload);
+        if (!CanClientControlCharacter(senderClientId, message.runtimeCharacterId))
+        {
+            return;
+        }
+
+        message.randomStateJson = SerializeRandomState(UnityEngine.Random.state);
+        string resolvedPayload = JsonUtility.ToJson(message);
+        if (ExecuteInventoryCommand(message))
+        {
+            BroadcastMessage(InventoryCommandMessageName, resolvedPayload, includeHost: false);
+        }
+    }
+
+    private void HandleInventoryCommandMessage(ulong senderClientId, FastBufferReader reader)
+    {
+        if (IsHostAuthority)
+        {
+            return;
+        }
+
+        EnqueueReplicatedCommand(ReplicatedCommandType.Inventory, ReadPayload(ref reader));
+    }
+
     private void HandleOpenChestRequestMessage(ulong senderClientId, FastBufferReader reader)
     {
         if (!IsHostAuthority)
@@ -982,6 +1062,54 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         return character != null && character.TryCommitProgression(message.snapshot);
     }
 
+    private bool ExecuteInventoryCommand(TacticsInventoryCommandMessage message, bool requireLocalAuthorityState = true)
+    {
+        TacticsCharacterController character = FindCharacterByRuntimeId(message.runtimeCharacterId);
+        if (character == null)
+        {
+            return false;
+        }
+
+        bool canAct = requireLocalAuthorityState ? character.CanInteractThisTurn : character.IsTurnActive && character.IsAlive;
+        if (message.actionKind != TacticsInventoryActionKind.UseConsumable && !canAct)
+        {
+            return false;
+        }
+
+        switch (message.actionKind)
+        {
+            case TacticsInventoryActionKind.UseConsumable:
+                if ((requireLocalAuthorityState ? !character.CanUseAbilitiesThisTurn : !character.IsTurnActive) ||
+                    combatSystem == null)
+                {
+                    return false;
+                }
+
+                if (requireLocalAuthorityState)
+                {
+                    return character.TryUseConsumableItem(message.itemInstanceId, combatSystem, replicated: false);
+                }
+
+                if (TryDeserializeRandomState(message.randomStateJson, out UnityEngine.Random.State state))
+                {
+                    UnityEngine.Random.state = state;
+                }
+
+                return character.TryUseConsumableItem(message.itemInstanceId, combatSystem, replicated: true);
+
+            case TacticsInventoryActionKind.Equip:
+                return character.TryEquipItem(message.itemInstanceId) &&
+                       (requireLocalAuthorityState ? character.TryConsumeInteraction() : character.ApplyReplicatedInteraction());
+
+            case TacticsInventoryActionKind.Unequip:
+                return character.TryUnequipItem(message.slot) &&
+                       (requireLocalAuthorityState ? character.TryConsumeInteraction() : character.ApplyReplicatedInteraction());
+
+            default:
+                return false;
+        }
+    }
+
     private bool ExecuteOpenChestCommand(OpenChestCommandMessage message, bool requireLocalAuthorityState = true)
     {
         TacticsCharacterController character = FindCharacterByRuntimeId(message.runtimeCharacterId);
@@ -1029,6 +1157,14 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
             currencyService.AddGold(result.GoldReward);
         }
 
+        if (message.grantedItems != null)
+        {
+            for (int i = 0; i < message.grantedItems.Count; i++)
+            {
+                character.TryAddInventoryItem(message.grantedItems[i]);
+            }
+        }
+
         return true;
     }
 
@@ -1042,6 +1178,7 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
             runtimeCharacterId = character != null ? character.RuntimeCharacterId : string.Empty,
             runtimeChestId = chest != null ? chest.RuntimeChestId : string.Empty,
             goldReward = containsMimic ? 0 : RollChestReward(),
+            grantedItems = containsMimic ? new List<TacticsInventoryItemSaveData>() : RollChestItems(),
             containsMimic = containsMimic,
             mimicRuntimeCharacterId = containsMimic ? BuildMimicRuntimeCharacterId(chest.RuntimeChestId) : string.Empty,
             turnOrderSeed = containsMimic ? GenerateTurnOrderSeed() : 0
@@ -1166,7 +1303,10 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
                     characterId = characterId,
                     progression = progressionService != null
                         ? progressionService.GetProgression(characterId)
-                        : TacticsCharacterProgressionSnapshot.CreateDefault(characterId)
+                        : TacticsCharacterProgressionSnapshot.CreateDefault(characterId),
+                    inventory = inventoryService != null
+                        ? inventoryService.GetInventory(characterId)
+                        : TacticsCharacterInventorySnapshot.CreateDefault(characterId)
                 });
             }
         }
@@ -1596,6 +1736,17 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         return generator != null ? generator.RollChestGoldReward() : 0;
     }
 
+    private List<TacticsInventoryItemSaveData> RollChestItems()
+    {
+        ProceduralIsometricMapGenerator generator = FindFirstObjectByType<ProceduralIsometricMapGenerator>();
+        if (generator == null)
+        {
+            return new List<TacticsInventoryItemSaveData>();
+        }
+
+        return generator.RollChestItems();
+    }
+
     private static string BuildMimicRuntimeCharacterId(string runtimeChestId)
     {
         string normalizedChestId = string.IsNullOrWhiteSpace(runtimeChestId) ? "chest" : runtimeChestId.Trim();
@@ -1676,6 +1827,9 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
                 requireLocalAuthorityState: false),
             ReplicatedCommandType.CommitProgression => ExecuteCommitProgressionCommand(
                 JsonUtility.FromJson<CommitProgressionCommandMessage>(command.Payload)),
+            ReplicatedCommandType.Inventory => ExecuteInventoryCommand(
+                JsonUtility.FromJson<TacticsInventoryCommandMessage>(command.Payload),
+                requireLocalAuthorityState: false),
             ReplicatedCommandType.OpenChest => ExecuteOpenChestCommand(
                 JsonUtility.FromJson<OpenChestCommandMessage>(command.Payload),
                 requireLocalAuthorityState: false),
@@ -1771,6 +1925,7 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         public string runtimeCharacterId;
         public string runtimeChestId;
         public int goldReward;
+        public List<TacticsInventoryItemSaveData> grantedItems;
         public bool containsMimic;
         public string mimicRuntimeCharacterId;
         public int turnOrderSeed;
@@ -1816,7 +1971,8 @@ public sealed class TacticsCoopSessionCoordinator : MonoBehaviour
         Ability = 1,
         EndTurn = 2,
         CommitProgression = 3,
-        OpenChest = 4,
-        Descend = 5
+        Inventory = 4,
+        OpenChest = 5,
+        Descend = 6
     }
 }

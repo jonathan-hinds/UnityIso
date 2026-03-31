@@ -175,8 +175,30 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         [Min(0)] public int maxChestCount;
         [Min(0)] public int minGoldReward;
         [Min(0)] public int maxGoldReward;
+        [Min(0)] public int minItemDrops;
+        [Min(0)] public int maxItemDrops;
+        public List<TacticsChestItemPoolEntry> itemPool;
 
-        public bool IsEnabled => spawnChance > 0f && maxChestCount > 0 && maxGoldReward > 0;
+        public bool IsEnabled => spawnChance > 0f && maxChestCount > 0 && (maxGoldReward > 0 || maxItemDrops > 0);
+
+        public ChestSpawnSettings Clone()
+        {
+            ChestSpawnSettings clone = this;
+            clone.itemPool = new List<TacticsChestItemPoolEntry>();
+            if (itemPool != null)
+            {
+                for (int i = 0; i < itemPool.Count; i++)
+                {
+                    TacticsChestItemPoolEntry entry = itemPool[i];
+                    if (entry != null)
+                    {
+                        clone.itemPool.Add(entry.Clone());
+                    }
+                }
+            }
+
+            return clone;
+        }
 
         public void Sanitize()
         {
@@ -185,6 +207,25 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
             maxChestCount = Mathf.Max(0, maxChestCount);
             minGoldReward = Mathf.Max(0, minGoldReward);
             maxGoldReward = Mathf.Max(minGoldReward, maxGoldReward);
+            minItemDrops = Mathf.Max(0, minItemDrops);
+            maxItemDrops = Mathf.Max(minItemDrops, maxItemDrops);
+            itemPool ??= new List<TacticsChestItemPoolEntry>();
+
+            for (int i = itemPool.Count - 1; i >= 0; i--)
+            {
+                TacticsChestItemPoolEntry entry = itemPool[i];
+                if (entry == null)
+                {
+                    itemPool.RemoveAt(i);
+                    continue;
+                }
+
+                entry.Sanitize();
+                if (!entry.IsValid)
+                {
+                    itemPool.RemoveAt(i);
+                }
+            }
         }
     }
 
@@ -278,7 +319,10 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         mimicChance = 0.2f,
         maxChestCount = 4,
         minGoldReward = 5,
-        maxGoldReward = 100
+        maxGoldReward = 100,
+        minItemDrops = 0,
+        maxItemDrops = 1,
+        itemPool = null
     };
 
     private const string GeneratedRootName = "Generated Isometric Map";
@@ -343,7 +387,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
             maxElevation = maxElevation,
             debris = debrisSettings != null ? debrisSettings.Clone() : new DebrisSettings(),
             fakeShadows = fakeShadowSettings != null ? fakeShadowSettings.Clone() : new FakeShadowSettings(),
-            chestSpawns = chestSpawnSettings,
+            chestSpawns = chestSpawnSettings.Clone(),
             enemies = new List<TacticsMatchEnemySettings>(enemySpawnEntries.Count)
         };
 
@@ -387,7 +431,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         debrisSettings.Sanitize();
         fakeShadowSettings = sanitized.fakeShadows != null ? sanitized.fakeShadows.Clone() : new FakeShadowSettings();
         fakeShadowSettings.Sanitize();
-        chestSpawnSettings = sanitized.chestSpawns;
+        chestSpawnSettings = sanitized.chestSpawns.Clone();
         chestSpawnSettings.Sanitize();
 
         enemySpawnEntries = new List<TacticsEnemySpawnEntry>(sanitized.enemies.Count);
@@ -1240,6 +1284,57 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         }
 
         return UnityEngine.Random.Range(settings.minGoldReward, settings.maxGoldReward + 1);
+    }
+
+    public List<TacticsInventoryItemSaveData> RollChestItems()
+    {
+        ChestSpawnSettings settings = chestSpawnSettings;
+        settings.Sanitize();
+        List<TacticsInventoryItemSaveData> results = new List<TacticsInventoryItemSaveData>();
+        if (settings.maxItemDrops <= 0 || settings.itemPool == null || settings.itemPool.Count == 0)
+        {
+            return results;
+        }
+
+        int dropCount = UnityEngine.Random.Range(settings.minItemDrops, settings.maxItemDrops + 1);
+        if (dropCount <= 0)
+        {
+            return results;
+        }
+
+        int totalWeight = 0;
+        for (int i = 0; i < settings.itemPool.Count; i++)
+        {
+            totalWeight += Mathf.Max(1, settings.itemPool[i].weight);
+        }
+
+        for (int dropIndex = 0; dropIndex < dropCount && totalWeight > 0; dropIndex++)
+        {
+            int roll = UnityEngine.Random.Range(0, totalWeight);
+            int cumulative = 0;
+            for (int entryIndex = 0; entryIndex < settings.itemPool.Count; entryIndex++)
+            {
+                TacticsChestItemPoolEntry entry = settings.itemPool[entryIndex];
+                cumulative += Mathf.Max(1, entry.weight);
+                if (roll >= cumulative)
+                {
+                    continue;
+                }
+
+                if (!string.IsNullOrWhiteSpace(entry.itemId) && TacticsItemCatalogResources.TryGetItem(entry.itemId, out _))
+                {
+                    results.Add(new TacticsInventoryItemSaveData
+                    {
+                        instanceId = Guid.NewGuid().ToString("N"),
+                        itemId = entry.itemId
+                    });
+                }
+
+                break;
+            }
+        }
+
+        return results;
     }
 
     private int GetHeight(int[,] heights, int x, int y)

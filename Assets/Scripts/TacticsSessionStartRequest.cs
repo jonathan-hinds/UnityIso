@@ -154,13 +154,15 @@ public sealed class TacticsCoopCharacterLoadout
 {
     public string characterId;
     public TacticsCharacterProgressionSnapshot progression;
+    public TacticsCharacterInventorySnapshot inventory;
 
     public TacticsCoopCharacterLoadout Clone()
     {
         return new TacticsCoopCharacterLoadout
         {
             characterId = characterId,
-            progression = progression.Sanitize()
+            progression = progression.Sanitize(),
+            inventory = inventory.Sanitize()
         };
     }
 }

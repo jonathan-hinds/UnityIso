@@ -1,0 +1,44 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b94e70c5f0778d9449be8a6a9f9f4665, type: 3}
+  m_Name: ApprenticeWand
+  m_EditorClassIdentifier: 
+  itemId: apprentice_wand
+  displayName: Apprentice Wand
+  description: Focused casting wand for intellect scaling.
+  thumbnail: {fileID: -770412480171958558, guid: 53143e5eb439693449650ce6ae975efd, type: 3}
+  slot: 0
+  primaryStatBonuses:
+    stamina: 0
+    strength: 0
+    agility: 0
+    wisdom: 0
+    intelligence: 0
+  derivedStatBonuses:
+    maxHitPoints: 0
+    maxStamina: 0
+    maxMana: 0
+    moveRange: 0
+    jumpHeight: 0
+    meleeDamageMin: 0
+    meleeDamageMax: 0
+    magicDamageMin: 0
+    magicDamageMax: 0
+    meleeCriticalHitChanceBonus: 0
+    magicCriticalHitChanceBonus: 0
+  weaponType: 3
+  damageType: 1
+  baseDamageMinBonus: 1
+  baseDamageMaxBonus: 4
+  damageScaling:
+  - stat: 4
+    rank: 3

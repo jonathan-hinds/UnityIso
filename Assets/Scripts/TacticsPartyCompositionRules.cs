@@ -118,7 +118,10 @@ public static class TacticsPartyCompositionRules
                 characterId = characterId,
                 progression = entry?.progression != null
                     ? entry.progression.WithCharacterId(characterId).Sanitize()
-                    : TacticsCharacterProgressionSnapshot.CreateDefault(characterId)
+                    : TacticsCharacterProgressionSnapshot.CreateDefault(characterId),
+                inventory = entry?.inventory != null
+                    ? entry.inventory.WithCharacterId(characterId).Sanitize()
+                    : TacticsCharacterInventorySnapshot.CreateDefault(characterId)
             });
         }
 

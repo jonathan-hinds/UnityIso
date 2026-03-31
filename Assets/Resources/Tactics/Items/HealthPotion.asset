@@ -1,0 +1,19 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 00c6e46192a356741a7e34551815cee9, type: 3}
+  m_Name: HealthPotion
+  m_EditorClassIdentifier: 
+  itemId: health_potion
+  displayName: Health Potion
+  description: Restores health using the standard healing ability.
+  thumbnail: {fileID: 3550045812420307109, guid: ead0a3b0be744724f99ee5c2b0edbb20, type: 3}
+  linkedAbility: {fileID: 11400000, guid: dd09d101c109af94a81f2b0c02905d85, type: 2}

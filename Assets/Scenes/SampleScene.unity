@@ -578,18 +578,24 @@ MonoBehaviour:
   enemySpawnEntries:
   - enemyId: bandit
     count: 1
-  - enemyId: shaman
-    count: 1
-  - enemyId: hobgoblin
-    count: 1
-  - enemyId: trickster
-    count: 1
   chestSpawnSettings:
     spawnChance: 1
-    mimicChance: 1
+    mimicChance: 0
     maxChestCount: 4
     minGoldReward: 5
     maxGoldReward: 100
+    minItemDrops: 2
+    maxItemDrops: 1
+    itemPool:
+    - itemDefinition: {fileID: 11400000, guid: 42959f5b8c3c5cc439a91dc0bd1677b5, type: 2}
+      itemId: health_potion
+      weight: 10
+    - itemDefinition: {fileID: 11400000, guid: bd937c22fbc2277428d65c8f1ec03a6d, type: 2}
+      itemId: mana_potion
+      weight: 6
+    - itemDefinition: {fileID: 11400000, guid: 3de94f0fc623ff6468c35203f5ae0c04, type: 2}
+      itemId: stamina_potion
+      weight: 8
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

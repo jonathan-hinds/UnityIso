@@ -492,8 +492,8 @@ public sealed class TacticsCharacterMenuView : MonoBehaviour
 
         TacticsCharacterStats committedStats = selectedCharacter.GetStatsForProgression(plan.CommittedSnapshot);
         TacticsCharacterStats previewStats = selectedCharacter.GetStatsForProgression(plan.WorkingSnapshot);
-        TacticsCharacterDerivedStats committedDerived = committedStats.CalculateDerivedStats();
-        TacticsCharacterDerivedStats previewDerived = previewStats.CalculateDerivedStats();
+        TacticsCharacterDerivedStats committedDerived = selectedCharacter.GetDerivedStatsForProgression(plan.CommittedSnapshot);
+        TacticsCharacterDerivedStats previewDerived = selectedCharacter.GetDerivedStatsForProgression(plan.WorkingSnapshot);
 
         subtitleText.text = selectedCharacter.DisplayName.ToUpperInvariant();
         progressionText.text =
