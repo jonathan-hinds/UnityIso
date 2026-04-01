@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using Unity.Profiling;
 
 public interface ITacticsAutomatedTurnController
 {
@@ -12,6 +13,16 @@ public interface ITacticsAutomatedTurnController
 [RequireComponent(typeof(TacticsCharacterController))]
 public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTurnController
 {
+    private static readonly ProfilerMarker ExecuteTurnRoutineMarker = new("TacticsEnemyController.ExecuteTurnRoutine");
+    private static readonly ProfilerMarker BuildStrategicContextMarker = new("TacticsEnemyController.BuildStrategicContext");
+    private static readonly ProfilerMarker ResolveBleedResponseMarker = new("TacticsEnemyController.ResolveBleedResponse");
+    private static readonly ProfilerMarker PriorityPlanMarker = new("TacticsEnemyController.TryBuildPriorityTargetAbilityPlan");
+    private static readonly ProfilerMarker BestAbilityPlanMarker = new("TacticsEnemyController.TryBuildBestAbilityPlan");
+    private static readonly ProfilerMarker BestMovementPlanMarker = new("TacticsEnemyController.TryBuildBestMovementPlan");
+    private static readonly ProfilerMarker ImmediateAbilityPlanMarker = new("TacticsEnemyController.TryUseBestAbilityFromCurrentPosition");
+    private static readonly ProfilerMarker EvaluateAbilityPlansForTileMarker = new("TacticsEnemyController.EvaluateAbilityPlansForTile");
+    private static readonly ProfilerMarker BestOffenseOpportunityMarker = new("TacticsEnemyController.GetBestOffensiveAbilityOpportunityScore");
+
     private enum EnemyBleedResponseMode
     {
         Ignore = 0,
@@ -48,9 +59,13 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
     private readonly List<TacticsCharacterController> reusableAlliedTargets = new();
     private readonly List<TacticsCharacterController> reusableAlliedTargetsIncludingSelf = new();
     private readonly List<Vector2Int> reusableThrowDestinationTiles = new();
+    private readonly Dictionary<TacticsCharacterController, List<Vector2Int>> cachedPathsByTarget = new();
+    private readonly Dictionary<Vector2Int, float> cachedOffenseScoreWithMovementByTile = new();
+    private readonly Dictionary<Vector2Int, float> cachedOffenseScoreWithoutMovementByTile = new();
     private string priorityTargetRuntimeCharacterId = string.Empty;
     private TacticsEnemyStrategicContext strategicContext;
     private EnemyBleedResponseMode currentBleedResponseMode = EnemyBleedResponseMode.FightThrough;
+    private bool turnTargetCacheInitialized;
 
     private readonly struct EnemyAbilityPlan
     {
@@ -157,6 +172,8 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
             StopCoroutine(turnRoutine);
             turnRoutine = null;
         }
+
+        ClearTurnEvaluationCaches();
     }
 
     public void AssignTurnManager(TacticsTurnManager manager)
@@ -201,6 +218,7 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
 
         StopCoroutine(turnRoutine);
         turnRoutine = null;
+        ClearTurnEvaluationCaches();
     }
 
     public void SetPriorityTarget(TacticsCharacterController target)
@@ -221,8 +239,16 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
             yield break;
         }
 
-        strategicContext = BuildStrategicContext();
-        currentBleedResponseMode = ResolveBleedResponseMode();
+        PrepareTurnEvaluationCaches();
+        using (BuildStrategicContextMarker.Auto())
+        {
+            strategicContext = BuildStrategicContext();
+        }
+
+        using (ResolveBleedResponseMarker.Auto())
+        {
+            currentBleedResponseMode = ResolveBleedResponseMode();
+        }
 
         bool attemptedAction = false;
         if (TryBuildPriorityTargetAbilityPlan(out EnemyAbilityPlan priorityPlan))
@@ -262,9 +288,13 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
 
         if (!attemptedAction)
         {
-            TryUseBestAbilityFromCurrentPosition();
+            using (ImmediateAbilityPlanMarker.Auto())
+            {
+                TryUseBestAbilityFromCurrentPosition();
+            }
         }
 
+        ClearTurnEvaluationCaches();
         priorityTargetRuntimeCharacterId = string.Empty;
         strategicContext = null;
         currentBleedResponseMode = EnemyBleedResponseMode.FightThrough;
@@ -363,11 +393,6 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
             TacticsAbilityDefinition ability = abilities[i];
             if (ability == null ||
                 !character.TryGetAbilityCostPayment(ability, movementAvailable: true, out TacticsAbilityCostPayment payment))
-            {
-                continue;
-            }
-
-            if (!combatSystem.CanTargetTileFromTile(character, character.GridPosition, ability, priorityTarget.GridPosition))
             {
                 continue;
             }
@@ -570,116 +595,114 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         ref bool foundPlan,
         ref EnemyAbilityPlan bestPlan)
     {
-        bool movementAvailable = !requiresMovement && character != null && character.HasMovementAvailableForAbilityCost;
-
-        for (int i = 0; i < abilities.Count; i++)
+        using (EvaluateAbilityPlansForTileMarker.Auto())
         {
-            TacticsAbilityDefinition ability = abilities[i];
-            if (ability == null ||
-                !character.TryGetAbilityCostPayment(ability, movementAvailable, out TacticsAbilityCostPayment payment))
-            {
-                continue;
-            }
+            bool movementAvailable = !requiresMovement && character != null && character.HasMovementAvailableForAbilityCost;
 
-            IReadOnlyList<TacticsCharacterController> candidateTargets = combatSystem.GetPrimaryTargetCandidatesFromTile(
-                character,
-                sourceTile,
-                ability,
-                reusableCandidateTargets);
-            for (int targetIndex = 0; targetIndex < candidateTargets.Count; targetIndex++)
+            for (int i = 0; i < abilities.Count; i++)
             {
-                TacticsCharacterController primaryTarget = candidateTargets[targetIndex];
-                if (primaryTarget == null || !primaryTarget.isActiveAndEnabled || !primaryTarget.IsAlive)
+                TacticsAbilityDefinition ability = abilities[i];
+                if (ability == null ||
+                    !character.TryGetAbilityCostPayment(ability, movementAvailable, out TacticsAbilityCostPayment payment))
                 {
                     continue;
                 }
 
-                if (!combatSystem.CanTargetTileFromTile(character, sourceTile, ability, primaryTarget.GridPosition))
-                {
-                    continue;
-                }
-
-                IReadOnlyList<TacticsCharacterController> affectedTargets = combatSystem.GetPreviewTargetsFromTile(
+                IReadOnlyList<TacticsCharacterController> candidateTargets = combatSystem.GetPrimaryTargetCandidatesFromTile(
                     character,
                     sourceTile,
                     ability,
-                    primaryTarget.GridPosition,
-                    movementAvailable);
-
-                if (affectedTargets.Count == 0)
+                    reusableCandidateTargets);
+                for (int targetIndex = 0; targetIndex < candidateTargets.Count; targetIndex++)
                 {
-                    continue;
-                }
-
-                if (ability.AppliesThrowing)
-                {
-                    IReadOnlyList<Vector2Int> throwDestinations = combatSystem.GetValidThrowDestinationsFromTile(
-                        character,
-                        sourceTile,
-                        primaryTarget,
-                        ability,
-                        reusableThrowDestinationTiles);
-                    for (int throwIndex = 0; throwIndex < throwDestinations.Count; throwIndex++)
+                    TacticsCharacterController primaryTarget = candidateTargets[targetIndex];
+                    if (primaryTarget == null || !primaryTarget.isActiveAndEnabled || !primaryTarget.IsAlive)
                     {
-                        Vector2Int throwDestination = throwDestinations[throwIndex];
-                        if (!TryScoreAbilityPlan(
-                                ability,
-                                primaryTarget,
-                                sourceTile,
-                                payment,
-                                requiresMovement,
-                                affectedTargets,
-                                throwDestination,
-                                out float planScore))
-                        {
-                            continue;
-                        }
-
-                        if (!foundPlan || planScore > bestPlan.Score)
-                        {
-                            foundPlan = true;
-                            bestPlan = new EnemyAbilityPlan(
-                                ability,
-                                primaryTarget,
-                                sourceTile,
-                                primaryTarget.GridPosition,
-                                throwDestination,
-                                moveDestination,
-                                payment,
-                                requiresMovement,
-                                planScore);
-                        }
+                        continue;
                     }
 
-                    continue;
-                }
-
-                if (!TryScoreAbilityPlan(
-                        ability,
-                        primaryTarget,
+                    IReadOnlyList<TacticsCharacterController> affectedTargets = combatSystem.GetPreviewTargetsFromTile(
+                        character,
                         sourceTile,
-                        payment,
-                        requiresMovement,
-                        affectedTargets,
-                        null,
-                        out float score))
-                {
-                    continue;
-                }
-
-                if (!foundPlan || score > bestPlan.Score)
-                {
-                    foundPlan = true;
-                    bestPlan = new EnemyAbilityPlan(
                         ability,
-                        primaryTarget,
-                        sourceTile,
                         primaryTarget.GridPosition,
-                        null,
-                        moveDestination,
-                        payment,
-                        requiresMovement,
-                        score);
+                        movementAvailable);
+
+                    if (affectedTargets.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    if (ability.AppliesThrowing)
+                    {
+                        IReadOnlyList<Vector2Int> throwDestinations = combatSystem.GetValidThrowDestinationsFromTile(
+                            character,
+                            sourceTile,
+                            primaryTarget,
+                            ability,
+                            reusableThrowDestinationTiles);
+                        for (int throwIndex = 0; throwIndex < throwDestinations.Count; throwIndex++)
+                        {
+                            Vector2Int throwDestination = throwDestinations[throwIndex];
+                            if (!TryScoreAbilityPlan(
+                                    ability,
+                                    primaryTarget,
+                                    sourceTile,
+                                    payment,
+                                    requiresMovement,
+                                    affectedTargets,
+                                    throwDestination,
+                                    out float planScore))
+                            {
+                                continue;
+                            }
+
+                            if (!foundPlan || planScore > bestPlan.Score)
+                            {
+                                foundPlan = true;
+                                bestPlan = new EnemyAbilityPlan(
+                                    ability,
+                                    primaryTarget,
+                                    sourceTile,
+                                    primaryTarget.GridPosition,
+                                    throwDestination,
+                                    moveDestination,
+                                    payment,
+                                    requiresMovement,
+                                    planScore);
+                            }
+                        }
+
+                        continue;
+                    }
+
+                    if (!TryScoreAbilityPlan(
+                            ability,
+                            primaryTarget,
+                            sourceTile,
+                            payment,
+                            requiresMovement,
+                            affectedTargets,
+                            null,
+                            out float score))
+                    {
+                        continue;
+                    }
+
+                    if (!foundPlan || score > bestPlan.Score)
+                    {
+                        foundPlan = true;
+                        bestPlan = new EnemyAbilityPlan(
+                            ability,
+                            primaryTarget,
+                            sourceTile,
+                            primaryTarget.GridPosition,
+                            null,
+                            moveDestination,
+                            payment,
+                            requiresMovement,
+                            score);
+                    }
                 }
             }
         }
@@ -702,11 +725,12 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         }
 
         bool movementAvailable = !requiresMovement && character != null && character.HasMovementAvailableForAbilityCost;
-        float bestAlternativeOffenseScore = IsSupportAbility(ability)
-            ? GetBestOffensiveAbilityOpportunityScore(sourceTile, movementAvailable)
+        bool isSupportAbility = IsSupportAbility(ability);
+        float bestAlternativeOffenseScore = isSupportAbility
+            ? GetCachedBestOffensiveAbilityOpportunityScore(sourceTile, movementAvailable)
             : 0f;
         float tacticalValue = EvaluateAbilityTacticalValue(ability, sourceTile, affectedTargets, target, throwDestination, bestAlternativeOffenseScore);
-        if (IsSupportAbility(ability) && tacticalValue <= 0f)
+        if (isSupportAbility && tacticalValue <= 0f)
         {
             return false;
         }
@@ -1385,109 +1409,127 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
 
     private float GetBestOffensiveAbilityOpportunityScore(Vector2Int sourceTile, bool movementAvailable)
     {
-        if (character == null || combatSystem == null)
+        using (BestOffenseOpportunityMarker.Auto())
         {
-            return 0f;
-        }
-
-        float bestScore = 0f;
-        IReadOnlyList<TacticsAbilityDefinition> abilities = character.Abilities;
-        if (abilities == null)
-        {
-            return 0f;
-        }
-
-        for (int i = 0; i < abilities.Count; i++)
-        {
-            TacticsAbilityDefinition ability = abilities[i];
-            if (ability == null ||
-                IsSupportAbility(ability) ||
-                !character.TryGetAbilityCostPayment(ability, movementAvailable, out TacticsAbilityCostPayment payment))
+            if (character == null || combatSystem == null)
             {
-                continue;
+                return 0f;
             }
 
-            IReadOnlyList<TacticsCharacterController> candidateTargets = combatSystem.GetPrimaryTargetCandidatesFromTile(
-                character,
-                sourceTile,
-                ability,
-                reusableCandidateTargets);
-            for (int targetIndex = 0; targetIndex < candidateTargets.Count; targetIndex++)
+            float bestScore = 0f;
+            IReadOnlyList<TacticsAbilityDefinition> abilities = character.Abilities;
+            if (abilities == null)
             {
-                TacticsCharacterController primaryTarget = candidateTargets[targetIndex];
-                if (primaryTarget == null ||
-                    !primaryTarget.isActiveAndEnabled ||
-                    !primaryTarget.IsAlive ||
-                    !combatSystem.CanTargetTileFromTile(character, sourceTile, ability, primaryTarget.GridPosition))
+                return 0f;
+            }
+
+            for (int i = 0; i < abilities.Count; i++)
+            {
+                TacticsAbilityDefinition ability = abilities[i];
+                if (ability == null ||
+                    IsSupportAbility(ability) ||
+                    !character.TryGetAbilityCostPayment(ability, movementAvailable, out TacticsAbilityCostPayment payment))
                 {
                     continue;
                 }
 
-                IReadOnlyList<TacticsCharacterController> affectedTargets = combatSystem.GetPreviewTargetsFromTile(
+                IReadOnlyList<TacticsCharacterController> candidateTargets = combatSystem.GetPrimaryTargetCandidatesFromTile(
                     character,
                     sourceTile,
                     ability,
-                    primaryTarget.GridPosition,
-                    movementAvailable);
-                if (affectedTargets.Count == 0)
+                    reusableCandidateTargets);
+                for (int targetIndex = 0; targetIndex < candidateTargets.Count; targetIndex++)
                 {
-                    continue;
-                }
-
-                if (ability.AppliesThrowing)
-                {
-                    IReadOnlyList<Vector2Int> throwDestinations = combatSystem.GetValidThrowDestinationsFromTile(
-                        character,
-                        sourceTile,
-                        primaryTarget,
-                        ability,
-                        reusableThrowDestinationTiles);
-                    for (int throwIndex = 0; throwIndex < throwDestinations.Count; throwIndex++)
+                    TacticsCharacterController primaryTarget = candidateTargets[targetIndex];
+                    if (primaryTarget == null ||
+                        !primaryTarget.isActiveAndEnabled ||
+                        !primaryTarget.IsAlive)
                     {
-                        Vector2Int throwDestination = throwDestinations[throwIndex];
-                        float throwTacticalValue = EvaluateAbilityTacticalValue(ability, sourceTile, affectedTargets, primaryTarget, throwDestination);
-                        if (throwTacticalValue <= 0f)
-                        {
-                            continue;
-                        }
-
-                        float throwScore = ScoreAbilityPlan(
-                            ability,
-                            primaryTarget,
-                            sourceTile,
-                            payment,
-                            requiresMovement: !movementAvailable,
-                            affectedTargets,
-                            throwTacticalValue,
-                            bestAlternativeOffenseScore: 0f,
-                            includeSupportCommitmentAdjustment: false);
-                        bestScore = Mathf.Max(bestScore, throwScore);
+                        continue;
                     }
 
-                    continue;
-                }
+                    IReadOnlyList<TacticsCharacterController> affectedTargets = combatSystem.GetPreviewTargetsFromTile(
+                        character,
+                        sourceTile,
+                        ability,
+                        primaryTarget.GridPosition,
+                        movementAvailable);
+                    if (affectedTargets.Count == 0)
+                    {
+                        continue;
+                    }
 
-                float tacticalValue = EvaluateAbilityTacticalValue(ability, sourceTile, affectedTargets, primaryTarget);
-                if (tacticalValue <= 0f)
-                {
-                    continue;
-                }
+                    if (ability.AppliesThrowing)
+                    {
+                        IReadOnlyList<Vector2Int> throwDestinations = combatSystem.GetValidThrowDestinationsFromTile(
+                            character,
+                            sourceTile,
+                            primaryTarget,
+                            ability,
+                            reusableThrowDestinationTiles);
+                        for (int throwIndex = 0; throwIndex < throwDestinations.Count; throwIndex++)
+                        {
+                            Vector2Int throwDestination = throwDestinations[throwIndex];
+                            float throwTacticalValue = EvaluateAbilityTacticalValue(ability, sourceTile, affectedTargets, primaryTarget, throwDestination);
+                            if (throwTacticalValue <= 0f)
+                            {
+                                continue;
+                            }
 
-                float score = ScoreAbilityPlan(
-                    ability,
-                    primaryTarget,
-                    sourceTile,
-                    payment,
-                    requiresMovement: !movementAvailable,
-                    affectedTargets,
-                    tacticalValue,
-                    bestAlternativeOffenseScore: 0f,
-                    includeSupportCommitmentAdjustment: false);
-                bestScore = Mathf.Max(bestScore, score);
+                            float throwScore = ScoreAbilityPlan(
+                                ability,
+                                primaryTarget,
+                                sourceTile,
+                                payment,
+                                requiresMovement: !movementAvailable,
+                                affectedTargets,
+                                throwTacticalValue,
+                                bestAlternativeOffenseScore: 0f,
+                                includeSupportCommitmentAdjustment: false);
+                            bestScore = Mathf.Max(bestScore, throwScore);
+                        }
+
+                        continue;
+                    }
+
+                    float tacticalValue = EvaluateAbilityTacticalValue(ability, sourceTile, affectedTargets, primaryTarget);
+                    if (tacticalValue <= 0f)
+                    {
+                        continue;
+                    }
+
+                    float score = ScoreAbilityPlan(
+                        ability,
+                        primaryTarget,
+                        sourceTile,
+                        payment,
+                        requiresMovement: !movementAvailable,
+                        affectedTargets,
+                        tacticalValue,
+                        bestAlternativeOffenseScore: 0f,
+                        includeSupportCommitmentAdjustment: false);
+                    bestScore = Mathf.Max(bestScore, score);
+                }
             }
+
+            return bestScore;
+        }
+    }
+
+    private float GetCachedBestOffensiveAbilityOpportunityScore(Vector2Int sourceTile, bool movementAvailable)
+    {
+        Dictionary<Vector2Int, float> cache = movementAvailable
+            ? cachedOffenseScoreWithMovementByTile
+            : cachedOffenseScoreWithoutMovementByTile;
+
+        if (cache.TryGetValue(sourceTile, out float cachedScore))
+        {
+            return cachedScore;
         }
 
-        return bestScore;
+        float score = GetBestOffensiveAbilityOpportunityScore(sourceTile, movementAvailable);
+        cache[sourceTile] = score;
+        return score;
     }
 
     private float ScoreMovementTile(Vector2Int sourceTile, TacticsCharacterController anchorTarget, int pathIndex)
@@ -1632,11 +1674,19 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
             return false;
         }
 
-        return character.TryGetPathTo(target.GridPosition, out path, enforceMoveRange: false);
+        if (cachedPathsByTarget.TryGetValue(target, out path))
+        {
+            return path != null && path.Count > 1;
+        }
+
+        bool foundPath = character.TryGetPathTo(target.GridPosition, out path, enforceMoveRange: false);
+        cachedPathsByTarget[target] = foundPath ? path : null;
+        return foundPath;
     }
 
     private List<TacticsCharacterController> BuildMovementAnchorTargets()
     {
+        EnsureTurnTargetCache();
         reusableAnchorTargets.Clear();
         AddTargetsIfMissing(reusableAnchorTargets, GetTauntingHostileTargets());
         AddTargetsIfMissing(reusableAnchorTargets, GetHostileTargets());
@@ -1656,6 +1706,7 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
 
     private List<TacticsCharacterController> GetTauntingHostileTargets()
     {
+        EnsureTurnTargetCache();
         reusableCandidateTargets.Clear();
         List<TacticsCharacterController> hostiles = GetHostileTargets();
         for (int i = 0; i < hostiles.Count; i++)
@@ -1672,30 +1723,56 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
 
     private List<TacticsCharacterController> GetHostileTargets()
     {
-        reusableHostileTargets.Clear();
-        if (characterRegistry == null)
-        {
-            return reusableHostileTargets;
-        }
-
-        characterRegistry.GetHostileCharacters(character, reusableHostileTargets);
+        EnsureTurnTargetCache();
         return reusableHostileTargets;
     }
 
     private List<TacticsCharacterController> GetAlliedTargets(bool includeSelf)
     {
-        List<TacticsCharacterController> results = includeSelf
+        EnsureTurnTargetCache();
+        return includeSelf
             ? reusableAlliedTargetsIncludingSelf
             : reusableAlliedTargets;
-        results.Clear();
+    }
 
-        if (characterRegistry == null)
+    private void PrepareTurnEvaluationCaches()
+    {
+        ClearTurnEvaluationCaches();
+        EnsureTurnTargetCache();
+    }
+
+    private void EnsureTurnTargetCache()
+    {
+        if (turnTargetCacheInitialized)
         {
-            return results;
+            return;
         }
 
-        characterRegistry.GetAlliedCharacters(character, includeSelf, results);
-        return results;
+        reusableHostileTargets.Clear();
+        reusableAlliedTargets.Clear();
+        reusableAlliedTargetsIncludingSelf.Clear();
+
+        if (characterRegistry != null)
+        {
+            characterRegistry.GetHostileCharacters(character, reusableHostileTargets);
+            characterRegistry.GetAlliedCharacters(character, includeSelf: false, reusableAlliedTargets);
+            characterRegistry.GetAlliedCharacters(character, includeSelf: true, reusableAlliedTargetsIncludingSelf);
+        }
+
+        turnTargetCacheInitialized = true;
+    }
+
+    private void ClearTurnEvaluationCaches()
+    {
+        cachedPathsByTarget.Clear();
+        cachedOffenseScoreWithMovementByTile.Clear();
+        cachedOffenseScoreWithoutMovementByTile.Clear();
+        reusableHostileTargets.Clear();
+        reusableAlliedTargets.Clear();
+        reusableAlliedTargetsIncludingSelf.Clear();
+        reusableAnchorTargets.Clear();
+        reusableCandidateTargets.Clear();
+        turnTargetCacheInitialized = false;
     }
 
     private bool HasHealingAbility()

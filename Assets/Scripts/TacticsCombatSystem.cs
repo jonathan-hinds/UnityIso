@@ -22,6 +22,7 @@ public sealed class TacticsCombatSystem : MonoBehaviour
     private readonly List<TacticsCharacterController> reusableTauntBuffer = new();
     private readonly List<TacticsKnockbackPlan> reusableKnockbackPlans = new();
     private readonly List<TacticsThrowPlan> reusableThrowPlans = new();
+    private readonly List<TacticsCharacterController> reusableTargetCandidateBuffer = new();
     private Coroutine resolveRoutine;
 
     public event Action StateChanged;
@@ -370,10 +371,10 @@ public sealed class TacticsCombatSystem : MonoBehaviour
             return results;
         }
 
-        characterRegistry.GetAllCharacters(reusableCharacterBuffer);
-        for (int i = 0; i < reusableCharacterBuffer.Count; i++)
+        GetPotentialTargetsForAbility(source, ability, reusableTargetCandidateBuffer);
+        for (int i = 0; i < reusableTargetCandidateBuffer.Count; i++)
         {
-            TacticsCharacterController candidate = reusableCharacterBuffer[i];
+            TacticsCharacterController candidate = reusableTargetCandidateBuffer[i];
             if (IsValidTarget(source, sourceTile, ability, candidate))
             {
                 results.Add(candidate);
@@ -478,17 +479,26 @@ public sealed class TacticsCombatSystem : MonoBehaviour
             return results;
         }
 
-        GetTargetableTilesFromTile(source, sourceTile, ability, reusableThrowCandidateTiles);
-        for (int i = 0; i < reusableThrowCandidateTiles.Count; i++)
-        {
-            Vector2Int candidateTile = reusableThrowCandidateTiles[i];
-            if (candidateTile == target.GridPosition ||
-                !CanOccupyThrowDestination(source, target, candidateTile))
-            {
-                continue;
-            }
+        int minX = Mathf.Max(0, sourceTile.x - ability.Range);
+        int maxX = Mathf.Min(mapGenerator.Width - 1, sourceTile.x + ability.Range);
+        int minY = Mathf.Max(0, sourceTile.y - ability.Range);
+        int maxY = Mathf.Min(mapGenerator.Length - 1, sourceTile.y + ability.Range);
 
-            results.Add(candidateTile);
+        for (int x = minX; x <= maxX; x++)
+        {
+            for (int y = minY; y <= maxY; y++)
+            {
+                Vector2Int candidateTile = new Vector2Int(x, y);
+                if (candidateTile == target.GridPosition ||
+                    !mapGenerator.IsTraversable(x, y) ||
+                    !CanTargetTile(source, sourceTile, ability, candidateTile) ||
+                    !CanOccupyThrowDestination(source, target, candidateTile))
+                {
+                    continue;
+                }
+
+                results.Add(candidateTile);
+            }
         }
 
         return results;
@@ -601,7 +611,7 @@ public sealed class TacticsCombatSystem : MonoBehaviour
             return results;
         }
 
-        characterRegistry.GetAllCharacters(reusableCharacterBuffer);
+        GetPotentialTargetsForAbility(source, ability, reusableCharacterBuffer);
         for (int i = 0; i < reusableCharacterBuffer.Count; i++)
         {
             TacticsCharacterController target = reusableCharacterBuffer[i];
@@ -765,8 +775,15 @@ public sealed class TacticsCombatSystem : MonoBehaviour
             return false;
         }
 
-        List<Vector2Int> traversedTiles = GetLineTiles(sourceTile, targetTile);
-        if (traversedTiles.Count <= 2)
+        int x = sourceTile.x;
+        int y = sourceTile.y;
+        int deltaX = Mathf.Abs(targetTile.x - sourceTile.x);
+        int deltaY = Mathf.Abs(targetTile.y - sourceTile.y);
+        int stepX = sourceTile.x < targetTile.x ? 1 : -1;
+        int stepY = sourceTile.y < targetTile.y ? 1 : -1;
+        int error = deltaX - deltaY;
+
+        if (deltaX + deltaY <= 1)
         {
             return true;
         }
@@ -775,9 +792,27 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         int targetElevation = mapGenerator.GetTileElevation(targetTile.x, targetTile.y);
         int blockingElevationThreshold = Mathf.Min(sourceElevation, targetElevation);
 
-        for (int i = 1; i < traversedTiles.Count - 1; i++)
+        while (true)
         {
-            Vector2Int tile = traversedTiles[i];
+            int doubledError = error * 2;
+            if (doubledError > -deltaY)
+            {
+                error -= deltaY;
+                x += stepX;
+            }
+
+            if (doubledError < deltaX)
+            {
+                error += deltaX;
+                y += stepY;
+            }
+
+            if (x == targetTile.x && y == targetTile.y)
+            {
+                break;
+            }
+
+            Vector2Int tile = new Vector2Int(x, y);
             int tileElevation = mapGenerator.GetTileElevation(tile.x, tile.y);
 
             // Ranged line of sight behaves like same-level visibility plus the ability
@@ -836,41 +871,40 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         return true;
     }
 
-    private static List<Vector2Int> GetLineTiles(Vector2Int start, Vector2Int end)
+    private void GetPotentialTargetsForAbility(
+        TacticsCharacterController source,
+        TacticsAbilityDefinition ability,
+        List<TacticsCharacterController> results)
     {
-        List<Vector2Int> tiles = new();
-
-        int x = start.x;
-        int y = start.y;
-        int deltaX = Mathf.Abs(end.x - start.x);
-        int deltaY = Mathf.Abs(end.y - start.y);
-        int stepX = start.x < end.x ? 1 : -1;
-        int stepY = start.y < end.y ? 1 : -1;
-        int error = deltaX - deltaY;
-
-        while (true)
+        if (results == null)
         {
-            tiles.Add(new Vector2Int(x, y));
-            if (x == end.x && y == end.y)
-            {
-                break;
-            }
-
-            int doubledError = error * 2;
-            if (doubledError > -deltaY)
-            {
-                error -= deltaY;
-                x += stepX;
-            }
-
-            if (doubledError < deltaX)
-            {
-                error += deltaX;
-                y += stepY;
-            }
+            throw new ArgumentNullException(nameof(results));
         }
 
-        return tiles;
+        results.Clear();
+        if (source == null || ability == null || characterRegistry == null)
+        {
+            return;
+        }
+
+        switch (ability.TargetRule)
+        {
+            case TacticsAbilityTargetRule.HostileUnit:
+                characterRegistry.GetHostileCharacters(source, results);
+                break;
+
+            case TacticsAbilityTargetRule.AlliedUnit:
+                characterRegistry.GetAlliedCharacters(source, includeSelf: false, results);
+                break;
+
+            case TacticsAbilityTargetRule.AlliedUnitOrSelf:
+                characterRegistry.GetAlliedCharacters(source, includeSelf: true, results);
+                break;
+
+            case TacticsAbilityTargetRule.Self:
+                results.Add(source);
+                break;
+        }
     }
 
     private void RestoreIdleState()

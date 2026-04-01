@@ -82,12 +82,23 @@ public sealed class TacticsChestController : MonoBehaviour, ITacticsCombatTextAn
         EnsureComponents();
         ApplyVisualState();
         SnapToTile();
+        TacticsTileBlockerRegistry.Refresh(this);
     }
 
     private void Awake()
     {
         EnsureComponents();
         ApplyVisualState();
+    }
+
+    private void OnEnable()
+    {
+        TacticsTileBlockerRegistry.Register(this);
+    }
+
+    private void OnDisable()
+    {
+        TacticsTileBlockerRegistry.Unregister(this);
     }
 
     private void LateUpdate()
@@ -210,6 +221,7 @@ public sealed class TacticsChestController : MonoBehaviour, ITacticsCombatTextAn
         IsOpened = true;
         blocksTile = false;
         ApplyVisualState();
+        TacticsTileBlockerRegistry.Refresh(this);
         ChestOpened?.Invoke(this);
         SetPresentationVisible(false);
         return true;
@@ -280,17 +292,7 @@ public sealed class TacticsChestController : MonoBehaviour, ITacticsCombatTextAn
 
     public static bool IsBlockingTile(Vector2Int tile)
     {
-        TacticsChestController[] chests = FindObjectsByType<TacticsChestController>(FindObjectsSortMode.None);
-        for (int i = 0; i < chests.Length; i++)
-        {
-            TacticsChestController chest = chests[i];
-            if (chest != null && chest.BlocksTile && chest.GridPosition == tile)
-            {
-                return true;
-            }
-        }
-
-        return false;
+        return TacticsTileBlockerUtility.IsBlockingTile(tile);
     }
 
     public static TacticsChestController FindBestAdjacentClosedChest(TacticsCharacterController character)

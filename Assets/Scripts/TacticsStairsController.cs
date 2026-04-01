@@ -26,11 +26,22 @@ public sealed class TacticsStairsController : MonoBehaviour, ITacticsCombatTextA
         GridPosition = gridPosition;
 
         CacheComponents();
+        TacticsTileBlockerRegistry.Refresh(this);
     }
 
     private void Awake()
     {
         CacheComponents();
+    }
+
+    private void OnEnable()
+    {
+        TacticsTileBlockerRegistry.Register(this);
+    }
+
+    private void OnDisable()
+    {
+        TacticsTileBlockerRegistry.Unregister(this);
     }
 
     public bool IsAdjacentAndInteractable(TacticsCharacterController character)
