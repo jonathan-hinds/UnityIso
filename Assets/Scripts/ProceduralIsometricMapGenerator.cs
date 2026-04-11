@@ -419,6 +419,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
 
         TacticsMatchGenerationSettings sanitized = settings.Clone();
         sanitized.Sanitize();
+        List<Sprite> fallbackDebrisSprites = CaptureDebrisSpriteFallback();
 
         seed = sanitized.seed;
         width = sanitized.width;
@@ -428,6 +429,7 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
         minElevation = sanitized.minElevation;
         maxElevation = sanitized.maxElevation;
         debrisSettings = sanitized.debris != null ? sanitized.debris.Clone() : new DebrisSettings();
+        RestoreMissingDebrisSprites(debrisSettings, fallbackDebrisSprites);
         debrisSettings.Sanitize();
         fakeShadowSettings = sanitized.fakeShadows != null ? sanitized.fakeShadows.Clone() : new FakeShadowSettings();
         fakeShadowSettings.Sanitize();
@@ -444,6 +446,47 @@ public class ProceduralIsometricMapGenerator : MonoBehaviour
             }
 
             enemySpawnEntries.Add(new TacticsEnemySpawnEntry(enemy.enemyId, enemy.count));
+        }
+    }
+
+    private List<Sprite> CaptureDebrisSpriteFallback()
+    {
+        List<Sprite> fallback = new List<Sprite>();
+        if (debrisSettings?.topSprites == null)
+        {
+            return fallback;
+        }
+
+        for (int i = 0; i < debrisSettings.topSprites.Count; i++)
+        {
+            Sprite sprite = debrisSettings.topSprites[i];
+            if (sprite != null)
+            {
+                fallback.Add(sprite);
+            }
+        }
+
+        return fallback;
+    }
+
+    private static void RestoreMissingDebrisSprites(DebrisSettings targetSettings, List<Sprite> fallbackSprites)
+    {
+        if (targetSettings == null ||
+            targetSettings.HasSprites ||
+            fallbackSprites == null ||
+            fallbackSprites.Count == 0)
+        {
+            return;
+        }
+
+        targetSettings.topSprites = new List<Sprite>(fallbackSprites.Count);
+        for (int i = 0; i < fallbackSprites.Count; i++)
+        {
+            Sprite sprite = fallbackSprites[i];
+            if (sprite != null)
+            {
+                targetSettings.topSprites.Add(sprite);
+            }
         }
     }
 

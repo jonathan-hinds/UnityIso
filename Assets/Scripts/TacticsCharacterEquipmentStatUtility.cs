@@ -60,13 +60,16 @@ public static class TacticsCharacterEquipmentStatUtility
             }
 
             int scalingBonus = TacticsAbilityScalingCalculator.EvaluateDamageBonus(effectiveStats, weapon.DamageScaling);
+            float displayedBonus = ((weapon.BaseDamageMinBonus + weapon.BaseDamageMaxBonus) * 0.5f) + scalingBonus;
             if (weapon.DamageType == TacticsAbilityDamageType.Magic)
             {
+                stats.baseMagicDamage = Mathf.Max(0f, stats.baseMagicDamage + displayedBonus);
                 stats.baseMagicDamageMin = Mathf.Max(0, stats.baseMagicDamageMin + weapon.BaseDamageMinBonus + scalingBonus);
                 stats.baseMagicDamageMax = Mathf.Max(stats.baseMagicDamageMin, stats.baseMagicDamageMax + weapon.BaseDamageMaxBonus + scalingBonus);
             }
             else
             {
+                stats.baseMeleeDamage = Mathf.Max(0f, stats.baseMeleeDamage + displayedBonus);
                 stats.baseMeleeDamageMin = Mathf.Max(0, stats.baseMeleeDamageMin + weapon.BaseDamageMinBonus + scalingBonus);
                 stats.baseMeleeDamageMax = Mathf.Max(stats.baseMeleeDamageMin, stats.baseMeleeDamageMax + weapon.BaseDamageMaxBonus + scalingBonus);
             }

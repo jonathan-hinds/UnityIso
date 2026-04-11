@@ -23,6 +23,7 @@ public sealed class TacticsCombatSystem : MonoBehaviour
     private readonly List<TacticsKnockbackPlan> reusableKnockbackPlans = new();
     private readonly List<TacticsThrowPlan> reusableThrowPlans = new();
     private readonly List<TacticsCharacterController> reusableTargetCandidateBuffer = new();
+    private readonly Dictionary<TacticsCharacterController, TacticsAttackResolution> reusableAttackResolutions = new();
     private Coroutine resolveRoutine;
 
     public event Action StateChanged;
@@ -976,7 +977,7 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         for (int i = 0; i < context.Targets.Count; i++)
         {
             TacticsCharacterController target = context.Targets[i];
-            if (target == null || !target.isActiveAndEnabled || !target.IsAlive)
+            if (target == null || !target.isActiveAndEnabled || !target.IsAlive || !context.CanApplyEffectsTo(target))
             {
                 continue;
             }
@@ -1028,6 +1029,11 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         if (target == null || !ReferenceEquals(target, context.Targets[0]))
         {
             target = context.Targets[0];
+        }
+
+        if (!context.CanApplyEffectsTo(target))
+        {
+            return reusableThrowPlans;
         }
 
         if (!TryBuildThrowPlan(
@@ -1313,6 +1319,20 @@ public sealed class TacticsCombatSystem : MonoBehaviour
 
     private IEnumerator ResolveAbilityRoutine(TacticsAbilityExecutionContext context)
     {
+        IReadOnlyDictionary<TacticsCharacterController, TacticsAttackResolution> targetResolutions = ResolveAttackResolutions(context);
+        if (targetResolutions != null)
+        {
+            context = new TacticsAbilityExecutionContext(
+                context.Source,
+                context.Ability,
+                context.TargetTile,
+                context.Targets,
+                context.CostPayment,
+                context.ThrowDestination,
+                context.DelayedImpactTargets,
+                targetResolutions);
+        }
+
         List<TacticsThrowPlan> throwPlans = TryBuildThrowPlans(context);
         List<TacticsKnockbackPlan> knockbackPlans = BuildKnockbackPlans(context);
         HashSet<TacticsCharacterController> delayedImpactTargets = throwPlans.Count > 0 || knockbackPlans.Count > 0
@@ -1337,7 +1357,8 @@ public sealed class TacticsCombatSystem : MonoBehaviour
                 context.Targets,
                 context.CostPayment,
                 context.ThrowDestination,
-                delayedImpactTargets);
+                delayedImpactTargets,
+                context.TargetResolutions);
         }
 
         if (context.Source != null && context.Source.isActiveAndEnabled)
@@ -1350,6 +1371,7 @@ public sealed class TacticsCombatSystem : MonoBehaviour
             yield return PlayProjectilePresentationRoutine(context);
         }
 
+        ShowAttackOutcomeText(context);
         PlayHitEffectPresentation(context);
 
         bool appliedAnyEffect = false;
@@ -1397,7 +1419,8 @@ public sealed class TacticsCombatSystem : MonoBehaviour
             yield return ResolveKnockbackRoutine(knockbackPlans, context.Source);
         }
 
-        if (appliedAnyEffect && context.Source != null && context.Source.isActiveAndEnabled)
+        bool shouldConsumeAbility = appliedAnyEffect || HasResolvedAttackOutcome(context);
+        if (shouldConsumeAbility && context.Source != null && context.Source.isActiveAndEnabled)
         {
             if (context.Source.TrySpendAbilityCost(context.CostPayment))
             {
@@ -1445,7 +1468,7 @@ public sealed class TacticsCombatSystem : MonoBehaviour
         for (int i = 0; i < context.Targets.Count; i++)
         {
             TacticsCharacterController target = context.Targets[i];
-            if (target == null || !target.isActiveAndEnabled || !target.IsAlive)
+            if (target == null || !target.isActiveAndEnabled || !target.IsAlive || !context.CanApplyEffectsTo(target))
             {
                 continue;
             }
@@ -1491,6 +1514,56 @@ public sealed class TacticsCombatSystem : MonoBehaviour
                 : TacticsAbilityCostPayment.None;
     }
 
+    private IReadOnlyDictionary<TacticsCharacterController, TacticsAttackResolution> ResolveAttackResolutions(TacticsAbilityExecutionContext context)
+    {
+        reusableAttackResolutions.Clear();
+        if (context.Targets == null || context.Targets.Count == 0)
+        {
+            return null;
+        }
+
+        for (int i = 0; i < context.Targets.Count; i++)
+        {
+            TacticsCharacterController target = context.Targets[i];
+            if (target == null || !target.isActiveAndEnabled || !target.IsAlive)
+            {
+                continue;
+            }
+
+            TacticsAttackResolution resolution = TacticsCombatResolutionUtility.Resolve(context.Source, target, context.Ability);
+            if (resolution.Outcome != TacticsAttackOutcome.Hit)
+            {
+                reusableAttackResolutions[target] = resolution;
+            }
+        }
+
+        return reusableAttackResolutions.Count > 0 ? reusableAttackResolutions : null;
+    }
+
+    private static void ShowAttackOutcomeText(TacticsAbilityExecutionContext context)
+    {
+        if (context.Targets == null || context.Targets.Count == 0 || context.TargetResolutions == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < context.Targets.Count; i++)
+        {
+            TacticsCharacterController target = context.Targets[i];
+            if (target == null || !context.TryGetAttackResolution(target, out TacticsAttackResolution resolution) || resolution.DidLand)
+            {
+                continue;
+            }
+
+            TacticsCombatTextSystem.ShowAttackOutcome(target, resolution.Outcome);
+        }
+    }
+
+    private static bool HasResolvedAttackOutcome(TacticsAbilityExecutionContext context)
+    {
+        return context.TargetResolutions != null && context.TargetResolutions.Count > 0;
+    }
+
     private void SetState(TacticsCombatState nextState)
     {
         State = nextState;
@@ -1514,7 +1587,8 @@ public readonly struct TacticsAbilityExecutionContext
         IReadOnlyList<TacticsCharacterController> targets,
         TacticsAbilityCostPayment costPayment,
         Vector2Int? throwDestination = null,
-        IReadOnlyCollection<TacticsCharacterController> delayedImpactTargets = null)
+        IReadOnlyCollection<TacticsCharacterController> delayedImpactTargets = null,
+        IReadOnlyDictionary<TacticsCharacterController, TacticsAttackResolution> targetResolutions = null)
     {
         Source = source;
         Ability = ability;
@@ -1523,6 +1597,7 @@ public readonly struct TacticsAbilityExecutionContext
         CostPayment = costPayment;
         ThrowDestination = throwDestination;
         DelayedImpactTargets = delayedImpactTargets;
+        TargetResolutions = targetResolutions;
     }
 
     public TacticsCharacterController Source { get; }
@@ -1532,6 +1607,7 @@ public readonly struct TacticsAbilityExecutionContext
     public TacticsAbilityCostPayment CostPayment { get; }
     public Vector2Int? ThrowDestination { get; }
     public IReadOnlyCollection<TacticsCharacterController> DelayedImpactTargets { get; }
+    public IReadOnlyDictionary<TacticsCharacterController, TacticsAttackResolution> TargetResolutions { get; }
 
     public bool ShouldDelayImpactFor(TacticsCharacterController target)
     {
@@ -1550,6 +1626,20 @@ public readonly struct TacticsAbilityExecutionContext
 
         return false;
     }
+
+    public bool CanApplyEffectsTo(TacticsCharacterController target)
+    {
+        return target != null &&
+               (!TryGetAttackResolution(target, out TacticsAttackResolution resolution) || resolution.DidLand);
+    }
+
+    public bool TryGetAttackResolution(TacticsCharacterController target, out TacticsAttackResolution resolution)
+    {
+        resolution = default;
+        return target != null &&
+               TargetResolutions != null &&
+               TargetResolutions.TryGetValue(target, out resolution);
+    }
 }
 
 public interface ITacticsAbilityEffectProcessor
@@ -1564,7 +1654,21 @@ public sealed class TacticsDealDamageEffectProcessor : ITacticsAbilityEffectProc
 
     public bool CanApply(TacticsAbilityExecutionContext context, TacticsAbilityEffectDefinitionData effect)
     {
-        return context.Source != null && context.Targets != null && context.Targets.Count > 0;
+        if (context.Source == null || context.Targets == null || context.Targets.Count == 0)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < context.Targets.Count; i++)
+        {
+            TacticsCharacterController target = context.Targets[i];
+            if (target != null && target.isActiveAndEnabled && target.IsAlive && context.CanApplyEffectsTo(target))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public void Apply(TacticsAbilityExecutionContext context, TacticsAbilityEffectDefinitionData effect)
@@ -1590,7 +1694,7 @@ public sealed class TacticsDealDamageEffectProcessor : ITacticsAbilityEffectProc
         for (int i = 0; i < targets.Count; i++)
         {
             TacticsCharacterController target = targets[i];
-            if (target == null || !target.isActiveAndEnabled || !target.IsAlive)
+            if (target == null || !target.isActiveAndEnabled || !target.IsAlive || !context.CanApplyEffectsTo(target))
             {
                 continue;
             }
@@ -1613,7 +1717,11 @@ public sealed class TacticsRestoreHitPointsEffectProcessor : ITacticsAbilityEffe
         for (int i = 0; i < context.Targets.Count; i++)
         {
             TacticsCharacterController target = context.Targets[i];
-            if (target != null && target.isActiveAndEnabled && target.IsAlive && target.CurrentHitPoints < target.MaxHitPoints)
+            if (target != null &&
+                target.isActiveAndEnabled &&
+                target.IsAlive &&
+                context.CanApplyEffectsTo(target) &&
+                target.CurrentHitPoints < target.MaxHitPoints)
             {
                 return true;
             }
@@ -1635,7 +1743,7 @@ public sealed class TacticsRestoreHitPointsEffectProcessor : ITacticsAbilityEffe
         for (int i = 0; i < targets.Count; i++)
         {
             TacticsCharacterController target = targets[i];
-            if (target == null || !target.isActiveAndEnabled || !target.IsAlive)
+            if (target == null || !target.isActiveAndEnabled || !target.IsAlive || !context.CanApplyEffectsTo(target))
             {
                 continue;
             }
@@ -1666,6 +1774,7 @@ public sealed class TacticsRestoreResourceEffectProcessor : ITacticsAbilityEffec
             if (target != null &&
                 target.isActiveAndEnabled &&
                 target.IsAlive &&
+                context.CanApplyEffectsTo(target) &&
                 target.GetCurrentResource(resourceType) < target.GetMaxResource(resourceType))
             {
                 return true;
@@ -1688,7 +1797,7 @@ public sealed class TacticsRestoreResourceEffectProcessor : ITacticsAbilityEffec
         for (int i = 0; i < targets.Count; i++)
         {
             TacticsCharacterController target = targets[i];
-            if (target == null || !target.isActiveAndEnabled || !target.IsAlive)
+            if (target == null || !target.isActiveAndEnabled || !target.IsAlive || !context.CanApplyEffectsTo(target))
             {
                 continue;
             }
@@ -1707,7 +1816,21 @@ public sealed class TacticsApplyStatusEffectProcessor
             return false;
         }
 
-        return effect.DurationTurns > 0;
+        if (effect.DurationTurns <= 0)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < context.Targets.Count; i++)
+        {
+            TacticsCharacterController target = context.Targets[i];
+            if (target != null && target.isActiveAndEnabled && target.IsAlive && context.CanApplyEffectsTo(target))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public void Apply(TacticsAbilityExecutionContext context, TacticsApplyStatusEffectData statusEffect)
@@ -1722,7 +1845,7 @@ public sealed class TacticsApplyStatusEffectProcessor
         for (int i = 0; i < targets.Count; i++)
         {
             TacticsCharacterController target = targets[i];
-            if (target == null || !target.isActiveAndEnabled || !target.IsAlive)
+            if (target == null || !target.isActiveAndEnabled || !target.IsAlive || !context.CanApplyEffectsTo(target))
             {
                 continue;
             }

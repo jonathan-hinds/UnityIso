@@ -28,9 +28,9 @@ MonoBehaviour:
   preferredSpawnTile: {x: 0, y: 0}
   baseStats:
     primaryStats:
-      stamina: 6
-      strength: 6
-      agility: 1
+      stamina: 5
+      strength: 7
+      agility: 2
       wisdom: 1
       intelligence: 1
     mobilityStats:

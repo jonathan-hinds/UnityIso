@@ -66,8 +66,13 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
     public int BaseMeleeDamageMax => derivedStats.baseMeleeDamageMax;
     public int BaseMagicDamageMin => derivedStats.baseMagicDamageMin;
     public int BaseMagicDamageMax => derivedStats.baseMagicDamageMax;
+    public float BaseMeleeDamage => derivedStats.baseMeleeDamage;
+    public float BaseMagicDamage => derivedStats.baseMagicDamage;
     public float MeleeCriticalHitChance => derivedStats.meleeCriticalHitChance;
     public float MagicCriticalHitChance => derivedStats.magicCriticalHitChance;
+    public float BlockChance => derivedStats.blockChance;
+    public float DodgeChance => derivedStats.dodgeChance;
+    public float HitChance => derivedStats.hitChance;
     public TacticsCharacterStats BaseStats => effectiveStats;
     public TacticsCharacterStats DefinitionBaseStats => characterData != null ? characterData.BaseStats : TacticsCharacterStats.Default();
     public int MoveRange => BaseStats.MoveRange;
@@ -1910,13 +1915,16 @@ public class TacticsCharacterController : MonoBehaviour, ITacticsSelectionHudTar
             }
 
             int scalingBonus = weapon.EvaluateDamageScalingBonus(this);
+            float displayedBonus = ((weapon.BaseDamageMinBonus + weapon.BaseDamageMaxBonus) * 0.5f) + scalingBonus;
             if (weapon.DamageType == TacticsAbilityDamageType.Magic)
             {
+                stats.baseMagicDamage = Mathf.Max(0f, stats.baseMagicDamage + displayedBonus);
                 stats.baseMagicDamageMin = Mathf.Max(0, stats.baseMagicDamageMin + weapon.BaseDamageMinBonus + scalingBonus);
                 stats.baseMagicDamageMax = Mathf.Max(stats.baseMagicDamageMin, stats.baseMagicDamageMax + weapon.BaseDamageMaxBonus + scalingBonus);
             }
             else
             {
+                stats.baseMeleeDamage = Mathf.Max(0f, stats.baseMeleeDamage + displayedBonus);
                 stats.baseMeleeDamageMin = Mathf.Max(0, stats.baseMeleeDamageMin + weapon.BaseDamageMinBonus + scalingBonus);
                 stats.baseMeleeDamageMax = Mathf.Max(stats.baseMeleeDamageMin, stats.baseMeleeDamageMax + weapon.BaseDamageMaxBonus + scalingBonus);
             }

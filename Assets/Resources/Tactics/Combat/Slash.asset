@@ -36,7 +36,26 @@ MonoBehaviour:
     worldOffset: {x: 0, y: 0}
     tint: {r: 1, g: 1, b: 1, a: 1}
     sortingOrderOffset: 0
-  effects: []
+  effects:
+  - effectKind: 0
+    dealDamage:
+      damageFormula: 0
+      flatAmount: 0
+      bonusMultiplier: 1
+      scaling:
+      - stat: 0
+        rank: 1
+    restoreHitPoints:
+      healingFormula: 0
+      flatAmount: 0
+      bonusMultiplier: 1
+      scaling: []
+    restoreResource:
+      resourceType: 1
+      restoreFormula: 0
+      flatAmount: 0
+      bonusMultiplier: 1
+      scaling: []
   statusEffects:
   - statusEffectType: 3
     durationTurns: 3

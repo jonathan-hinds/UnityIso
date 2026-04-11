@@ -533,7 +533,7 @@ MonoBehaviour:
   length: 20
   width: 20
   minElevation: 1
-  maxElevation: 5
+  maxElevation: 8
   noiseScale: 5
   noiseOctaves: 3
   persistence: 0.5
@@ -577,7 +577,13 @@ MonoBehaviour:
   cameraPadding: 1
   enemySpawnEntries:
   - enemyId: bandit
-    count: 10
+    count: 1
+  - enemyId: shaman
+    count: 1
+  - enemyId: hobgoblin
+    count: 5
+  - enemyId: trickster
+    count: 1
   chestSpawnSettings:
     spawnChance: 1
     mimicChance: 0
@@ -595,6 +601,27 @@ MonoBehaviour:
       weight: 6
     - itemDefinition: {fileID: 11400000, guid: 3de94f0fc623ff6468c35203f5ae0c04, type: 2}
       itemId: stamina_potion
+      weight: 8
+    - itemDefinition: {fileID: 11400000, guid: 3de94f0fc623ff6468c35203f5ae0c04, type: 2}
+      itemId: iron_helm
+      weight: 8
+    - itemDefinition: {fileID: 11400000, guid: bd937c22fbc2277428d65c8f1ec03a6d, type: 2}
+      itemId: iron_sword
+      weight: 8
+    - itemDefinition: {fileID: 11400000, guid: 016e5fae78af1f943a64d407e9310c72, type: 2}
+      itemId: leather_tunic
+      weight: 8
+    - itemDefinition: {fileID: 11400000, guid: e9b7427985f424245a728c0daaff7a98, type: 2}
+      itemId: oak_staff
+      weight: 8
+    - itemDefinition: {fileID: 11400000, guid: eed082dd0c598a843b041558a20c82cd, type: 2}
+      itemId: quick_dagger
+      weight: 8
+    - itemDefinition: {fileID: 11400000, guid: 936681ee85c504d4ebde70df6eace77a, type: 2}
+      itemId: scout_boots
+      weight: 8
+    - itemDefinition: {fileID: 11400000, guid: b42169767339201438e15dd9f47d7b71, type: 2}
+      itemId: war_mace
       weight: 8
 --- !u!1660057539 &9223372036854775807
 SceneRoots:

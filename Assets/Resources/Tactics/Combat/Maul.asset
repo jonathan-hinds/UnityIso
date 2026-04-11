@@ -58,7 +58,7 @@ MonoBehaviour:
       scaling: []
   statusEffects:
   - statusEffectType: 1
-    durationTurns: 2
+    durationTurns: 1
     potencyFormula: 0
     flatPotency: 0
     potencyMultiplier: 1

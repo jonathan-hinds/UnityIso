@@ -991,10 +991,20 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
                         continue;
                     }
 
+                    bool targetAlreadyStunned = target.HasStatusEffect(TacticsStatusEffectType.Stun);
                     float denialValue = 18f * statusEffect.DurationTurns;
                     float offensiveSuppression = GetTargetOffensivePotential(target) * 0.65f;
                     float focusFireBonus = CountAlliedPressureOnTarget(target) * 2.5f;
-                    float refreshBonus = target.HasStatusEffect(TacticsStatusEffectType.Stun) ? 2f : 6f;
+                    float refreshBonus = targetAlreadyStunned ? 2f : 6f;
+
+                    if (targetAlreadyStunned && HasAlternativeAbilityChoice(ability))
+                    {
+                        denialValue *= 0.05f;
+                        offensiveSuppression *= 0.05f;
+                        focusFireBonus *= 0.2f;
+                        refreshBonus = 0.5f;
+                    }
+
                     totalValue += denialValue + offensiveSuppression + focusFireBonus + refreshBonus;
                     break;
                 }
@@ -1900,6 +1910,26 @@ public sealed class TacticsEnemyController : MonoBehaviour, ITacticsAutomatedTur
         for (int i = 0; i < statusEffects.Count; i++)
         {
             if (statusEffects[i].StatusEffectType == TacticsStatusEffectType.Taunt)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool HasAlternativeAbilityChoice(TacticsAbilityDefinition currentAbility)
+    {
+        IReadOnlyList<TacticsAbilityDefinition> abilities = character != null ? character.Abilities : null;
+        if (abilities == null)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < abilities.Count; i++)
+        {
+            TacticsAbilityDefinition ability = abilities[i];
+            if (ability != null && !ReferenceEquals(ability, currentAbility))
             {
                 return true;
             }

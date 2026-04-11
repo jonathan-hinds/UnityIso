@@ -15,7 +15,7 @@ MonoBehaviour:
   characterId: chris
   displayName: Chris
   team: 0
-  spriteSheetResourcePath: Characters/Player/Character8
+  spriteSheetResourcePath: Characters/Player/Character3
   walkFramesPerSecond: 5
   baseColor: {r: 1, g: 1, b: 1, a: 1}
   selectedColor: {r: 1, g: 0.95, b: 0.65, a: 1}
@@ -30,8 +30,8 @@ MonoBehaviour:
     primaryStats:
       stamina: 3
       strength: 1
-      agility: 1
-      wisdom: 7
+      agility: 2
+      wisdom: 6
       intelligence: 3
     mobilityStats:
       moveRange: 4

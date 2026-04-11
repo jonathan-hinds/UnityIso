@@ -2378,7 +2378,7 @@ public sealed class TacticsMainMenuView : MonoBehaviour
 
         characterInspector.SummaryContainer.Clear();
         AddSummaryLine(characterInspector.SummaryContainer, $"Move {effectiveStats.MoveRange}  /  Jump {effectiveStats.JumpHeight}  /  XP {progression.CurrentExperience}/{definition.ExperienceToNextLevel}");
-        AddSummaryLine(characterInspector.SummaryContainer, $"HP {derivedStats.maxHitPoints}  /  Stamina {derivedStats.maxStamina}  /  Mana {derivedStats.maxMana}");
+        AddSummaryLine(characterInspector.SummaryContainer, $"HP {TacticsCharacterStatDisplayUtility.FormatResourceValue(derivedStats.maxHitPointsValue)}  /  SP {TacticsCharacterStatDisplayUtility.FormatResourceValue(derivedStats.maxStaminaValue)}  /  MP {TacticsCharacterStatDisplayUtility.FormatResourceValue(derivedStats.maxManaValue)}");
         AddSummaryLine(characterInspector.SummaryContainer, workingSelection != null && workingSelection.Contains(definition.CharacterId)
             ? "Assigned to the current battle plan."
             : "Available for deployment in the current battle plan.");
@@ -2411,12 +2411,14 @@ public sealed class TacticsMainMenuView : MonoBehaviour
         }
 
         characterInspector.DerivedStatsContainer.Clear();
-        AddStatRow(characterInspector.DerivedStatsContainer, "MOVE", effectiveStats.MoveRange.ToString("00"));
-        AddStatRow(characterInspector.DerivedStatsContainer, "JUMP", effectiveStats.JumpHeight.ToString("00"));
-        AddStatRow(characterInspector.DerivedStatsContainer, "MELEE", $"{derivedStats.baseMeleeDamageMin}-{derivedStats.baseMeleeDamageMax}");
-        AddStatRow(characterInspector.DerivedStatsContainer, "MAGIC", $"{derivedStats.baseMagicDamageMin}-{derivedStats.baseMagicDamageMax}");
-        AddStatRow(characterInspector.DerivedStatsContainer, "MELEE CRIT", FormatPercent(derivedStats.meleeCriticalHitChance));
-        AddStatRow(characterInspector.DerivedStatsContainer, "MAGIC CRIT", FormatPercent(derivedStats.magicCriticalHitChance));
+
+        foreach (TacticsDerivedStatDisplayDefinition definition in TacticsCharacterStatDisplayUtility.InspectorDerivedStatDefinitions)
+        {
+            AddStatRow(
+                characterInspector.DerivedStatsContainer,
+                definition.Label,
+                TacticsCharacterStatDisplayUtility.FormatDerivedValue(definition.StatType, effectiveStats, derivedStats));
+        }
     }
 
     private void PopulateAbilities(TacticsCharacterDefinition definition)
@@ -2666,11 +2668,6 @@ public sealed class TacticsMainMenuView : MonoBehaviour
     private static string FormatStatValue(int value, int bonusValue)
     {
         return bonusValue > 0 ? $"{value:00}  +{bonusValue}" : value.ToString("00");
-    }
-
-    private static string FormatPercent(float value)
-    {
-        return $"{Mathf.RoundToInt(Mathf.Clamp01(value) * 100f)}%";
     }
 
     private static string DescribeAbilityRange(TacticsAbilityDefinition ability)

@@ -111,6 +111,9 @@ public struct TacticsDerivedStatBonuses
     public int magicDamageMax;
     [Range(-1f, 1f)] public float meleeCriticalHitChanceBonus;
     [Range(-1f, 1f)] public float magicCriticalHitChanceBonus;
+    [Range(-1f, 1f)] public float blockChanceBonus;
+    [Range(-1f, 1f)] public float dodgeChanceBonus;
+    [Range(-1f, 1f)] public float hitChanceBonus;
 
     public void ApplyToBaseStats(ref TacticsCharacterStats stats)
     {
@@ -123,12 +126,20 @@ public struct TacticsDerivedStatBonuses
         stats.maxHitPoints = Mathf.Max(1, stats.maxHitPoints + maxHitPoints);
         stats.maxStamina = Mathf.Max(0, stats.maxStamina + maxStamina);
         stats.maxMana = Mathf.Max(0, stats.maxMana + maxMana);
+        stats.maxHitPointsValue = Mathf.Max(1f, stats.maxHitPointsValue + maxHitPoints);
+        stats.maxStaminaValue = Mathf.Max(0f, stats.maxStaminaValue + maxStamina);
+        stats.maxManaValue = Mathf.Max(0f, stats.maxManaValue + maxMana);
+        stats.baseMeleeDamage = Mathf.Max(0f, stats.baseMeleeDamage + ((meleeDamageMin + meleeDamageMax) * 0.5f));
         stats.baseMeleeDamageMin = Mathf.Max(0, stats.baseMeleeDamageMin + meleeDamageMin);
         stats.baseMeleeDamageMax = Mathf.Max(stats.baseMeleeDamageMin, stats.baseMeleeDamageMax + meleeDamageMax);
+        stats.baseMagicDamage = Mathf.Max(0f, stats.baseMagicDamage + ((magicDamageMin + magicDamageMax) * 0.5f));
         stats.baseMagicDamageMin = Mathf.Max(0, stats.baseMagicDamageMin + magicDamageMin);
         stats.baseMagicDamageMax = Mathf.Max(stats.baseMagicDamageMin, stats.baseMagicDamageMax + magicDamageMax);
         stats.meleeCriticalHitChance = Mathf.Clamp01(stats.meleeCriticalHitChance + meleeCriticalHitChanceBonus);
         stats.magicCriticalHitChance = Mathf.Clamp01(stats.magicCriticalHitChance + magicCriticalHitChanceBonus);
+        stats.blockChance = Mathf.Clamp01(stats.blockChance + blockChanceBonus);
+        stats.dodgeChance = Mathf.Clamp01(stats.dodgeChance + dodgeChanceBonus);
+        stats.hitChance = Mathf.Clamp01(stats.hitChance + hitChanceBonus);
     }
 
     public bool HasAnyValue =>
@@ -142,7 +153,10 @@ public struct TacticsDerivedStatBonuses
         magicDamageMin != 0 ||
         magicDamageMax != 0 ||
         Mathf.Abs(meleeCriticalHitChanceBonus) > Mathf.Epsilon ||
-        Mathf.Abs(magicCriticalHitChanceBonus) > Mathf.Epsilon;
+        Mathf.Abs(magicCriticalHitChanceBonus) > Mathf.Epsilon ||
+        Mathf.Abs(blockChanceBonus) > Mathf.Epsilon ||
+        Mathf.Abs(dodgeChanceBonus) > Mathf.Epsilon ||
+        Mathf.Abs(hitChanceBonus) > Mathf.Epsilon;
 }
 
 [Serializable]
@@ -427,7 +441,7 @@ public static class TacticsItemTooltipUtility
     private static void AppendDerivedBonuses(StringBuilder builder, TacticsDerivedStatBonuses bonuses)
     {
         AppendSignedLine(builder, "Max HP", bonuses.maxHitPoints);
-        AppendSignedLine(builder, "Max ST", bonuses.maxStamina);
+        AppendSignedLine(builder, "Max SP", bonuses.maxStamina);
         AppendSignedLine(builder, "Max MP", bonuses.maxMana);
         AppendSignedLine(builder, "Move", bonuses.moveRange);
         AppendSignedLine(builder, "Jump", bonuses.jumpHeight);
@@ -437,6 +451,9 @@ public static class TacticsItemTooltipUtility
         AppendSignedLine(builder, "Magic dmg max", bonuses.magicDamageMax);
         AppendSignedPercentLine(builder, "Melee crit", bonuses.meleeCriticalHitChanceBonus);
         AppendSignedPercentLine(builder, "Magic crit", bonuses.magicCriticalHitChanceBonus);
+        AppendSignedPercentLine(builder, "Block", bonuses.blockChanceBonus);
+        AppendSignedPercentLine(builder, "Dodge", bonuses.dodgeChanceBonus);
+        AppendSignedPercentLine(builder, "Hit", bonuses.hitChanceBonus);
     }
 
     private static void AppendSignedLine(StringBuilder builder, string label, int value)

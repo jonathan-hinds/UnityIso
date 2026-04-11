@@ -28,11 +28,11 @@ MonoBehaviour:
   preferredSpawnTile: {x: 2, y: 0}
   baseStats:
     primaryStats:
-      stamina: 3
+      stamina: 2
       strength: 1
       agility: 1
-      wisdom: 6
-      intelligence: 4
+      wisdom: 4
+      intelligence: 7
     mobilityStats:
       moveRange: 4
       jumpHeight: 2

@@ -51,7 +51,7 @@ MonoBehaviour:
       bonusMultiplier: 1
       scaling:
       - stat: 3
-        rank: 2
+        rank: 5
     restoreResource:
       resourceType: 1
       restoreFormula: 0

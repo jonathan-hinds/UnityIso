@@ -58,6 +58,16 @@ public sealed class TacticsCombatTextSystem : MonoBehaviour
         Instance.SpawnDamageNumber(target, amount, isCriticalHit);
     }
 
+    public static void ShowAttackOutcome(ITacticsCombatTextAnchor target, TacticsAttackOutcome outcome)
+    {
+        if (target == null || outcome == TacticsAttackOutcome.Hit)
+        {
+            return;
+        }
+
+        Instance.SpawnAttackOutcomeText(target, outcome);
+    }
+
     public static void ShowHealing(ITacticsCombatTextAnchor target, int amount)
     {
         if (target == null || amount <= 0)
@@ -121,6 +131,36 @@ public sealed class TacticsCombatTextSystem : MonoBehaviour
     private void SpawnDamageNumber(ITacticsCombatTextAnchor target, int amount, bool isCriticalHit)
     {
         SpawnText(target, isCriticalHit ? $"-{amount}!" : $"-{amount}", Color.white, Color.black);
+    }
+
+    private void SpawnAttackOutcomeText(ITacticsCombatTextAnchor target, TacticsAttackOutcome outcome)
+    {
+        string text = outcome switch
+        {
+            TacticsAttackOutcome.Block => "BLOCKED",
+            TacticsAttackOutcome.Dodge => "DODGED",
+            TacticsAttackOutcome.Miss => "MISSED",
+            _ => string.Empty
+        };
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        Color fillColor = outcome switch
+        {
+            TacticsAttackOutcome.Block => new Color(0.96f, 0.86f, 0.48f, 1f),
+            TacticsAttackOutcome.Dodge => new Color(0.7f, 0.94f, 1f, 1f),
+            _ => new Color(0.88f, 0.88f, 0.88f, 1f)
+        };
+        Color outlineColor = outcome switch
+        {
+            TacticsAttackOutcome.Block => new Color(0.32f, 0.2f, 0.02f, 1f),
+            TacticsAttackOutcome.Dodge => new Color(0.08f, 0.22f, 0.34f, 1f),
+            _ => new Color(0.18f, 0.18f, 0.18f, 1f)
+        };
+
+        SpawnText(target, text, fillColor, outlineColor);
     }
 
     private void SpawnHealingNumber(ITacticsCombatTextAnchor target, int amount)

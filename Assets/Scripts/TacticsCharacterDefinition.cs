@@ -171,32 +171,42 @@ public struct TacticsCharacterStats
 
     public TacticsCharacterDerivedStats CalculateDerivedStats()
     {
-        int maxHitPoints = 40 + (primaryStats.stamina * 10);
-        int maxStamina = 15 + (primaryStats.agility * 5);
-        int maxMana = 10 + (primaryStats.wisdom * 5);
+        float meleeBaseDamage = TacticsCharacterDerivedStatFormula.CalculateBaseMeleeDamage(primaryStats);
+        float magicBaseDamage = TacticsCharacterDerivedStatFormula.CalculateBaseMagicDamage(primaryStats);
+        float maxHitPointsValue = TacticsCharacterDerivedStatFormula.CalculateHitPoints(primaryStats);
+        float maxManaValue = TacticsCharacterDerivedStatFormula.CalculateMana(primaryStats);
+        float maxStaminaValue = TacticsCharacterDerivedStatFormula.CalculateStamina(primaryStats);
+        float meleeCriticalHitChance = TacticsCharacterDerivedStatFormula.CalculateMeleeCriticalHitChance(primaryStats);
+        float magicCriticalHitChance = TacticsCharacterDerivedStatFormula.CalculateMagicCriticalHitChance(primaryStats);
+        float blockChance = TacticsCharacterDerivedStatFormula.CalculateBlockChance(primaryStats);
+        float dodgeChance = TacticsCharacterDerivedStatFormula.CalculateDodgeChance(primaryStats);
+        float hitChance = TacticsCharacterDerivedStatFormula.CalculateHitChance(primaryStats);
 
-        int calculatedMeleeDamageMin = 1 + (primaryStats.strength * 2);
-        int clampedMeleeDamageMin = Mathf.Max(0, calculatedMeleeDamageMin);
-        int calculatedMeleeDamageMax = calculatedMeleeDamageMin + Mathf.Max(1, primaryStats.strength);
-
-        int calculatedMagicDamageMin = 1 + (primaryStats.intelligence * 2);
-        int clampedMagicDamageMin = Mathf.Max(0, calculatedMagicDamageMin);
-        int calculatedMagicDamageMax = calculatedMagicDamageMin + Mathf.Max(1, primaryStats.intelligence);
-
-        float meleeCriticalHitChance = Mathf.Clamp01(0.05f + (primaryStats.agility * 0.015f));
-        float magicCriticalHitChance = Mathf.Clamp01(0.05f + (primaryStats.wisdom * 0.015f));
+        int roundedHitPoints = Mathf.Max(1, Mathf.RoundToInt(maxHitPointsValue));
+        int roundedStamina = Mathf.Max(0, Mathf.RoundToInt(maxStaminaValue));
+        int roundedMana = Mathf.Max(0, Mathf.RoundToInt(maxManaValue));
+        int roundedMeleeDamage = Mathf.Max(0, Mathf.RoundToInt(meleeBaseDamage));
+        int roundedMagicDamage = Mathf.Max(0, Mathf.RoundToInt(magicBaseDamage));
 
         return new TacticsCharacterDerivedStats
         {
-            maxHitPoints = Mathf.Max(1, maxHitPoints),
-            maxStamina = Mathf.Max(0, maxStamina),
-            maxMana = Mathf.Max(0, maxMana),
-            baseMeleeDamageMin = clampedMeleeDamageMin,
-            baseMeleeDamageMax = Mathf.Max(clampedMeleeDamageMin, calculatedMeleeDamageMax),
-            baseMagicDamageMin = clampedMagicDamageMin,
-            baseMagicDamageMax = Mathf.Max(clampedMagicDamageMin, calculatedMagicDamageMax),
+            maxHitPoints = roundedHitPoints,
+            maxStamina = roundedStamina,
+            maxMana = roundedMana,
+            maxHitPointsValue = roundedHitPoints,
+            maxStaminaValue = roundedStamina,
+            maxManaValue = roundedMana,
+            baseMeleeDamage = roundedMeleeDamage,
+            baseMeleeDamageMin = roundedMeleeDamage,
+            baseMeleeDamageMax = roundedMeleeDamage,
+            baseMagicDamage = roundedMagicDamage,
+            baseMagicDamageMin = roundedMagicDamage,
+            baseMagicDamageMax = roundedMagicDamage,
             meleeCriticalHitChance = meleeCriticalHitChance,
-            magicCriticalHitChance = magicCriticalHitChance
+            magicCriticalHitChance = magicCriticalHitChance,
+            blockChance = blockChance,
+            dodgeChance = dodgeChance,
+            hitChance = hitChance
         };
     }
 
@@ -275,12 +285,20 @@ public struct TacticsCharacterDerivedStats
     [Min(1)] public int maxHitPoints;
     [Min(0)] public int maxStamina;
     [Min(0)] public int maxMana;
+    [Min(0f)] public float maxHitPointsValue;
+    [Min(0f)] public float maxStaminaValue;
+    [Min(0f)] public float maxManaValue;
+    [Min(0f)] public float baseMeleeDamage;
     [Min(0)] public int baseMeleeDamageMin;
     [Min(0)] public int baseMeleeDamageMax;
+    [Min(0f)] public float baseMagicDamage;
     [Min(0)] public int baseMagicDamageMin;
     [Min(0)] public int baseMagicDamageMax;
     [Range(0f, 1f)] public float meleeCriticalHitChance;
     [Range(0f, 1f)] public float magicCriticalHitChance;
+    [Range(0f, 1f)] public float blockChance;
+    [Range(0f, 1f)] public float dodgeChance;
+    [Range(0f, 1f)] public float hitChance;
 }
 
 [Serializable]
@@ -298,5 +316,92 @@ public struct TacticsCharacterRuntimeResources
             stamina = derivedStats.maxStamina,
             mana = derivedStats.maxMana
         };
+    }
+}
+
+public static class TacticsCharacterDerivedStatFormula
+{
+    public static float Soft(float value, float knee)
+    {
+        if (value <= 0f)
+        {
+            return 0f;
+        }
+
+        return value / (value + Mathf.Max(0.0001f, knee));
+    }
+
+    public static float CalculateBaseMeleeDamage(TacticsPrimaryStats primaryStats)
+    {
+        return 3f +
+               (1.8f * primaryStats.strength) +
+               (0.4f * primaryStats.agility) +
+               (3f * Soft(primaryStats.strength, 4f));
+    }
+
+    public static float CalculateBaseMagicDamage(TacticsPrimaryStats primaryStats)
+    {
+        return 3f +
+               (1.8f * primaryStats.intelligence) +
+               (0.4f * primaryStats.wisdom) +
+               (3f * Soft(primaryStats.intelligence, 4f));
+    }
+
+    public static float CalculateMeleeCriticalHitChance(TacticsPrimaryStats primaryStats)
+    {
+        return PercentToFraction(1f + (10f * Soft(primaryStats.agility + (0.5f * primaryStats.strength), 8f)));
+    }
+
+    public static float CalculateMagicCriticalHitChance(TacticsPrimaryStats primaryStats)
+    {
+        return PercentToFraction(1f + (10f * Soft(primaryStats.wisdom + (0.5f * primaryStats.intelligence), 8f)));
+    }
+
+    public static float CalculateHitPoints(TacticsPrimaryStats primaryStats)
+    {
+        return 20f +
+               (10f * primaryStats.stamina) +
+               (10f * Soft(primaryStats.stamina, 4f));
+    }
+
+    public static float CalculateMana(TacticsPrimaryStats primaryStats)
+    {
+        return 8f +
+               (4f * primaryStats.intelligence) +
+               (5f * primaryStats.wisdom) +
+               (8f * Soft(primaryStats.intelligence + primaryStats.wisdom, 6f));
+    }
+
+    public static float CalculateStamina(TacticsPrimaryStats primaryStats)
+    {
+        return 10f +
+               (5f * primaryStats.agility) +
+               (3f * primaryStats.stamina) +
+               (8f * Soft(primaryStats.agility + primaryStats.stamina, 6f));
+    }
+
+    public static float CalculateBlockChance(TacticsPrimaryStats primaryStats)
+    {
+        return PercentToFraction(1f + (8f * Soft(primaryStats.stamina + (0.5f * primaryStats.strength), 10f)));
+    }
+
+    public static float CalculateDodgeChance(TacticsPrimaryStats primaryStats)
+    {
+        return PercentToFraction(1f + (8f * Soft(primaryStats.agility + (0.5f * primaryStats.wisdom), 10f)));
+    }
+
+    public static float CalculateHitChance(TacticsPrimaryStats primaryStats)
+    {
+        return PercentToFraction(70f + (20f * Soft(primaryStats.agility + (0.5f * primaryStats.wisdom), 6f)));
+    }
+
+    public static float FractionToPercent(float value)
+    {
+        return Mathf.Clamp01(value) * 100f;
+    }
+
+    private static float PercentToFraction(float percent)
+    {
+        return Mathf.Clamp01(percent / 100f);
     }
 }

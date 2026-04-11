@@ -44,7 +44,7 @@ MonoBehaviour:
       bonusMultiplier: 1.2
       scaling:
       - stat: 3
-        rank: 4
+        rank: 2
     restoreHitPoints:
       healingFormula: 0
       flatAmount: 0
